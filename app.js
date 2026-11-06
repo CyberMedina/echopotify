@@ -4419,15 +4419,16 @@
     });
   }
 
-  // Responsive Viewport Scaling (1:1 zero-transform fast path on 1280x800 Echo Show 8)
+  // Responsive Viewport Scaling (Robust 1280x800 Echo Show 8 fallback)
   function fitViewport() {
-    const vw = window.innerWidth || document.documentElement.clientWidth;
-    const vh = window.innerHeight || document.documentElement.clientHeight;
+    const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+    if (vw <= 10 || vh <= 10) return;
     const scale = Math.min(vw / 1280, vh / 800);
-    if (Math.abs(scale - 1) < 0.008) {
+    if (!isFinite(scale) || scale <= 0 || Math.abs(scale - 1) < 0.02) {
       echoViewport.style.transform = 'none';
-      echoViewport.style.width = '1280px';
-      echoViewport.style.height = '800px';
+      echoViewport.style.width = '100vw';
+      echoViewport.style.height = '100vh';
     } else {
       echoViewport.style.transform = `scale(${scale})`;
       echoViewport.style.width = `${Math.round(vw / scale)}px`;
