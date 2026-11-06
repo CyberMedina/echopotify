@@ -11,7 +11,13 @@ app/build/
 *.apk
 *.idsig
 
+# Rust librespot build binaries
+librespot/
+librespot_build.ps1
+
 # Temporal
 mockup_server.py
 scratch/
+spotify_oauth_catcher.py
+*.png
 
