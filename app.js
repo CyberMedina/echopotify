@@ -15,10 +15,36 @@
   const bridge = window.AndroidBridge || null;
   const DEFAULT_CLIENT_ID = 'a5170a7428304034b906e71c4995e2a4';
 
+  // Safe storage polyfill for environments that restrict or disable localStorage (e.g. Alexa WebView, iframes)
+  const memStore = {};
+  const safeStorage = {
+    getItem(k) {
+      try {
+        return (typeof window !== 'undefined' && window.localStorage) ? window.localStorage.getItem(k) : (memStore[k] || null);
+      } catch (e) {
+        return memStore[k] || null;
+      }
+    },
+    setItem(k, v) {
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) window.localStorage.setItem(k, v);
+      } catch (e) {
+        memStore[k] = String(v);
+      }
+    },
+    removeItem(k) {
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) window.localStorage.removeItem(k);
+      } catch (e) {
+        delete memStore[k];
+      }
+    }
+  };
+
   const spotifyAuth = {
-    clientId: (bridge && bridge.getClientId) ? bridge.getClientId() : (localStorage.getItem('sp_client_id') || DEFAULT_CLIENT_ID),
-    accessToken: localStorage.getItem('sp_access_token') || '',
-    refreshToken: (bridge && bridge.getRefreshToken) ? bridge.getRefreshToken() : (localStorage.getItem('sp_refresh_token') || ''),
+    clientId: (bridge && bridge.getClientId) ? bridge.getClientId() : (safeStorage.getItem('sp_client_id') || DEFAULT_CLIENT_ID),
+    accessToken: safeStorage.getItem('sp_access_token') || '',
+    refreshToken: (bridge && bridge.getRefreshToken) ? bridge.getRefreshToken() : (safeStorage.getItem('sp_refresh_token') || ''),
     engineDeviceName: bridge ? bridge.getEngineDeviceName() : null,
     engineDeviceId: null,
     activeDeviceId: null,
@@ -29,7 +55,7 @@
     repeatState: 'off'
   };
 
-  if (spotifyAuth.clientId) localStorage.setItem('sp_client_id', spotifyAuth.clientId);
+  if (spotifyAuth.clientId) safeStorage.setItem('sp_client_id', spotifyAuth.clientId);
 
   // Fallback Demo Catalog (used before network finishes or if offline)
   const ALBUMS = {
@@ -320,7 +346,7 @@
 
   function saveHomeCache(data) {
     try {
-      localStorage.setItem(HOME_CACHE_KEY, JSON.stringify({
+      safeStorage.setItem(HOME_CACHE_KEY, JSON.stringify({
         jumpCards: data.jumpCards || [],
         recentCards: data.recentCards || [],
         banners: data.banners || [],
@@ -338,7 +364,7 @@
 
   function loadHomeCache() {
     try {
-      const raw = localStorage.getItem(HOME_CACHE_KEY);
+      const raw = safeStorage.getItem(HOME_CACHE_KEY);
       if (!raw) return null;
       return JSON.parse(raw);
     } catch (e) {
@@ -551,7 +577,7 @@
       const hashed = await sha256(codeVerifier);
       const codeChallenge = base64encode(hashed);
 
-      localStorage.setItem(PKCE_VERIFIER_KEY, codeVerifier);
+      safeStorage.setItem(PKCE_VERIFIER_KEY, codeVerifier);
 
       const scopes = [
         'streaming',
@@ -599,9 +625,9 @@
 
     if (!code) return false;
 
-    const codeVerifier = localStorage.getItem(PKCE_VERIFIER_KEY);
+    const codeVerifier = safeStorage.getItem(PKCE_VERIFIER_KEY);
     if (!codeVerifier) {
-      console.warn('[PKCE] No code verifier found in localStorage');
+      console.warn('[PKCE] No code verifier found in storage');
       window.history.replaceState({}, document.title, window.location.pathname);
       return false;
     }
@@ -622,7 +648,7 @@
         })
       });
 
-      localStorage.removeItem(PKCE_VERIFIER_KEY);
+      safeStorage.removeItem(PKCE_VERIFIER_KEY);
       window.history.replaceState({}, document.title, window.location.pathname);
 
       if (!response.ok) {
@@ -633,11 +659,11 @@
       const data = await response.json();
       if (data.access_token) {
         spotifyAuth.accessToken = data.access_token;
-        localStorage.setItem('sp_access_token', data.access_token);
+        safeStorage.setItem('sp_access_token', data.access_token);
       }
       if (data.refresh_token) {
         spotifyAuth.refreshToken = data.refresh_token;
-        localStorage.setItem('sp_refresh_token', data.refresh_token);
+        safeStorage.setItem('sp_refresh_token', data.refresh_token);
       }
       console.log('[PKCE] Autenticación completada con éxito!');
       return true;
@@ -674,12 +700,12 @@
       const data = await res.json();
       if (data.access_token) {
         spotifyAuth.accessToken = data.access_token;
-        localStorage.setItem('sp_access_token', data.access_token);
+        safeStorage.setItem('sp_access_token', data.access_token);
         if (spotifyTokenInput) spotifyTokenInput.value = data.access_token;
       }
       if (data.refresh_token) {
         spotifyAuth.refreshToken = data.refresh_token;
-        localStorage.setItem('sp_refresh_token', data.refresh_token);
+        safeStorage.setItem('sp_refresh_token', data.refresh_token);
       }
       if (bridge && bridge.saveTokens) {
         bridge.saveTokens(spotifyAuth.clientId, spotifyAuth.refreshToken);
@@ -4282,7 +4308,7 @@
   // THEME CONTROLLER (Auto Day/Night, Light, Dark)
   // --------------------------------------------------------------------------
   const THEME_STORAGE_KEY = 'echo_theme_mode';
-  let currentThemeMode = localStorage.getItem(THEME_STORAGE_KEY) || 'auto';
+  let currentThemeMode = safeStorage.getItem(THEME_STORAGE_KEY) || 'auto';
   let autoThemeTimer = null;
 
   function isNightTime() {
@@ -4293,7 +4319,7 @@
 
   function applyTheme(mode, updateUI = true) {
     currentThemeMode = mode;
-    localStorage.setItem(THEME_STORAGE_KEY, mode);
+    safeStorage.setItem(THEME_STORAGE_KEY, mode);
 
     let isDark = false;
     if (mode === 'dark') {
@@ -4600,10 +4626,10 @@
 
   // Cerrar Sesión (Logout)
   function logoutUser() {
-    localStorage.removeItem('sp_access_token');
-    localStorage.removeItem('sp_refresh_token');
-    localStorage.removeItem(HOME_CACHE_KEY);
-    localStorage.removeItem(PKCE_VERIFIER_KEY);
+    safeStorage.removeItem('sp_access_token');
+    safeStorage.removeItem('sp_refresh_token');
+    safeStorage.removeItem(HOME_CACHE_KEY);
+    safeStorage.removeItem(PKCE_VERIFIER_KEY);
     spotifyAuth.accessToken = '';
     spotifyAuth.refreshToken = '';
     state.isPlaying = false;
