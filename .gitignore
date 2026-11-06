@@ -1,0 +1,16 @@
+# Tokens y secretos privados
+spotify_tokens.json
+cert.pem
+key.pem
+*.log
+
+# Android builds
+.gradle/
+build/
+app/build/
+*.apk
+*.idsig
+
+# Temporal
+mockup_server.py
+scratch/
