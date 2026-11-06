@@ -4484,8 +4484,55 @@
     renderInitialSkeletons();
   }
 
+  async function initAlexaSDK() {
+    if (typeof window !== 'undefined' && window.Alexa && typeof window.Alexa.create === 'function') {
+      try {
+        console.log('[Alexa HTML SDK] Conectando con Alexa client...');
+        const args = await window.Alexa.create({ version: '1.0' });
+        const message = args ? args.message : null;
+        console.log('[Alexa HTML SDK] Conectado exitosamente! Datos recibidos:', message);
+        if (message) {
+          if (message.accessToken) {
+            spotifyAuth.accessToken = message.accessToken;
+            safeStorage.setItem('sp_access_token', message.accessToken);
+          }
+          if (message.refreshToken) {
+            spotifyAuth.refreshToken = message.refreshToken;
+            safeStorage.setItem('sp_refresh_token', message.refreshToken);
+          }
+          if (message.clientId) {
+            spotifyAuth.clientId = message.clientId;
+            safeStorage.setItem('sp_client_id', message.clientId);
+          }
+          return !!(spotifyAuth.accessToken || spotifyAuth.refreshToken);
+        }
+      } catch (err) {
+        console.warn('[Alexa HTML SDK] No se pudo inicializar o no está en entorno Echo Show:', err);
+      }
+    }
+    return false;
+  }
+
+  function checkHashToken() {
+    if (window.location.hash && window.location.hash.includes('access_token')) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const token = hashParams.get('access_token');
+      if (token) {
+        spotifyAuth.accessToken = token;
+        safeStorage.setItem('sp_access_token', token);
+        window.history.replaceState({}, document.title, window.location.pathname);
+        return true;
+      }
+    }
+    return false;
+  }
+
   // Initialize fresh OAuth token, start native librespot engine, and load user data
   (async function initSpotifyEcho() {
+    // 0. Revisar si recibimos token por Alexa HTML SDK o por URL hash
+    checkHashToken();
+    await initAlexaSDK();
+
     // 1. Revisar si venimos de regreso de una autenticación PKCE con ?code=...
     const justAuthed = await checkPKCEAuthCallback();
     const hasAuthNow = !!(spotifyAuth.refreshToken || spotifyAuth.accessToken);
