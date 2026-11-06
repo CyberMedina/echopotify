@@ -4,12 +4,14 @@ cert.pem
 key.pem
 *.log
 
-# Android builds
+# Android projects
 .gradle/
 build/
 app/build/
 *.apk
 *.idsig
+android/
+android-compose/
 
 # Rust librespot build binaries
 librespot/
