@@ -638,7 +638,7 @@
     </aside>
 
     <!-- ==================================================================
-         PROFILE / SETTINGS MODAL (Redesigned Design System)
+         PROFILE / SETTINGS MODAL (Pixel-Perfect Echo Show Design System)
          ================================================================== -->
     <div class="spotify-modal-backdrop" id="spotifyModal">
       <div class="spotify-modal-card">
@@ -647,65 +647,72 @@
             <div class="modal-user-avatar-wrap">
               <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23888'><path d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/></svg>" alt="User" id="modalUserAvatar" />
             </div>
-            <div>
-              <h2 class="modal-user-name" id="modalUserName">Spotify Echo</h2>
-              <div class="modal-user-status">
-                <span class="status-dot connected" id="spotifyStatusDot"></span>
-                <span id="modalUserProduct">Conectado a Spotify Premium</span>
-              </div>
-            </div>
+            <h2 class="modal-user-name" id="modalUserName">Spotify Echo</h2>
+            <span id="modalUserProduct" style="display:none">Conectado a Spotify Premium</span>
+            <span id="spotifyStatusDot" style="display:none"></span>
           </div>
           <button class="modal-close-btn" id="closeSpotifyModalBtn" title="Cerrar">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
         </div>
 
-        <!-- Appearance Section -->
-        <div class="modal-section modal-section-clean">
-          <div class="modal-section-title">Apariencia de Pantalla</div>
-          <div class="modal-section-desc">
-            Elige el modo visual adaptativo para la pantalla del Echo Show:
-          </div>
+        <!-- Section 1: Apariencia de pantalla -->
+        <div class="modal-section-clean">
+          <div class="modal-section-title">Apariencia de pantalla</div>
+          <div class="modal-section-desc">Personaliza cómo se ve tu pantalla.</div>
+          
           <div class="theme-segmented-control" id="themeSegmented">
             <button type="button" class="theme-seg-btn active" data-theme-val="auto">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-              Automático (Día/Noche)
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
+              <span>Automático</span>
             </button>
             <button type="button" class="theme-seg-btn" data-theme-val="light">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-              Claro
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+              <span>Claro</span>
             </button>
             <button type="button" class="theme-seg-btn" data-theme-val="dark">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-              Oscuro
+              <span>Oscuro</span>
             </button>
           </div>
-          <div style="margin-top: 14px;">
-            <button type="button" class="btn-fullscreen-action" id="fullscreenModalBtn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
-              </svg>
-              <span>Alternar Pantalla Completa</span>
+
+          <!-- Fullscreen toggle row with iOS/Echo switch -->
+          <div class="modal-setting-row" id="fullscreenSettingRow">
+            <div class="modal-setting-left">
+              <div class="modal-setting-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                </svg>
+              </div>
+              <div class="modal-setting-text">
+                <div class="modal-setting-label">Pantalla completa</div>
+                <div class="modal-setting-desc">Usa toda la pantalla de tu Echo Show.</div>
+              </div>
+            </div>
+            <button type="button" class="apple-switch" id="fullscreenToggleSwitch" role="switch" aria-checked="false" aria-label="Pantalla completa">
+              <span class="apple-switch-thumb"></span>
             </button>
           </div>
         </div>
 
-        <!-- Account / Logout Section -->
-        <div class="modal-section modal-section-clean" style="border-bottom: none;">
+        <!-- Section 2: Cuenta -->
+        <div class="modal-section-clean modal-section-account">
           <div class="modal-section-title">Cuenta</div>
-          <div class="modal-section-desc">
-            Desvincula tu cuenta de Spotify de este dispositivo.
-          </div>
-          <div style="margin-top: 14px;">
-            <button type="button" class="btn-logout-danger" id="logoutBtn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <div class="modal-section-desc">Desconecta tu cuenta de este dispositivo.</div>
+          
+          <button type="button" class="modal-action-card-btn" id="logoutBtn">
+            <div class="modal-action-left">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                 <polyline points="16 17 21 12 16 7"></polyline>
                 <line x1="21" y1="12" x2="9" y2="12"></line>
               </svg>
-              <span>Cerrar Sesión</span>
-            </button>
-          </div>
+              <span>Cerrar sesión</span>
+            </div>
+            <svg class="modal-action-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
         </div>
       </div>
     </div>

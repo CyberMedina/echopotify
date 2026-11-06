@@ -4259,6 +4259,7 @@
   document.querySelectorAll('.profile-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
+      syncFullscreenSwitchUI();
       spotifyModal.classList.add('open');
     });
   });
@@ -4522,24 +4523,47 @@
   // --------------------------------------------------------------------------
   // FULLSCREEN CONTROLLER FOR SILK BROWSER (ECHO SHOW 8)
   // --------------------------------------------------------------------------
+  function isFullscreenActive() {
+    const doc = document;
+    return !!(doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement);
+  }
+
+  function syncFullscreenSwitchUI() {
+    const isFs = isFullscreenActive();
+    const sw = document.getElementById('fullscreenToggleSwitch');
+    if (sw) {
+      sw.classList.toggle('active', isFs);
+      sw.setAttribute('aria-checked', isFs ? 'true' : 'false');
+    }
+  }
+
   function toggleFullscreen() {
     const doc = document;
     const docEl = doc.documentElement;
     const requestFs = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.mozRequestFullScreen || docEl.msRequestFullscreen;
     const exitFs = doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen;
 
-    const isFs = doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement;
+    const isFs = isFullscreenActive();
 
     if (!isFs) {
       if (requestFs) {
-        requestFs.call(docEl).catch(err => console.warn('Error fullscreen:', err));
+        requestFs.call(docEl)
+          .then(() => syncFullscreenSwitchUI())
+          .catch(err => console.warn('Error fullscreen:', err));
       }
     } else {
       if (exitFs) {
-        exitFs.call(doc);
+        exitFs.call(doc)
+          .then(() => syncFullscreenSwitchUI())
+          .catch(err => console.warn('Error exit fullscreen:', err));
       }
     }
   }
+
+  document.addEventListener('fullscreenchange', syncFullscreenSwitchUI);
+  document.addEventListener('webkitfullscreenchange', syncFullscreenSwitchUI);
+  document.addEventListener('mozfullscreenchange', syncFullscreenSwitchUI);
+  document.addEventListener('MSFullscreenChange', syncFullscreenSwitchUI);
 
   const fsBtn = document.getElementById('fullscreenBtn');
   if (fsBtn) {
@@ -4549,9 +4573,17 @@
     });
   }
 
-  const fsModalBtn = document.getElementById('fullscreenModalBtn');
-  if (fsModalBtn) {
-    fsModalBtn.addEventListener('click', (e) => {
+  const fsSwitch = document.getElementById('fullscreenToggleSwitch');
+  if (fsSwitch) {
+    fsSwitch.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleFullscreen();
+    });
+  }
+
+  const fsRow = document.getElementById('fullscreenSettingRow');
+  if (fsRow) {
+    fsRow.addEventListener('click', (e) => {
       e.stopPropagation();
       toggleFullscreen();
     });
