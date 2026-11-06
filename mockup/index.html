@@ -19,14 +19,46 @@
     <div class="ambient-bg" id="ambientBg"></div>
 
     <!-- ==================================================================
-         MAIN VIEWS WRAPPER (Home, Library, Search, Album Detail)
+         MAIN VIEWS WRAPPER (Login Landing, Home, Library, Search, Album Detail)
          ================================================================== -->
     <div class="views-wrapper">
 
       <!-- ================================================================
+           VIEW 0: LOGIN LANDING PAGE (Echo Show 8 1280x800 Native)
+           ================================================================ -->
+      <section class="screen-view login-landing-view" id="view-login">
+        <div class="landing-content">
+          <div class="landing-hero-badge">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="#1ed760">
+              <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.224-2.722c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.52-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.256 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.129-1.166-.623-.148-.495.13-1.015.625-1.166 3.532-1.073 9.404-.866 13.115 1.337.445.264.59.838.327 1.282-.264.443-.838.59-1.283.327z"/>
+            </svg>
+          </div>
+          <h1 class="landing-title">Spotify Echo Show</h1>
+          <p class="landing-subtitle">Apple Music Edition • Tu música, biblioteca y letras en vivo</p>
+          
+          <div class="landing-card-glass">
+            <p class="landing-desc">Conecta tu cuenta de Spotify Premium para sincronizar tus canciones, playlists y streaming de audio en este Echo Show.</p>
+            <button class="btn-spotify-landing" id="landingLoginBtn">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.224-2.722c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.52-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.256 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.129-1.166-.623-.148-.495.13-1.015.625-1.166 3.532-1.073 9.404-.866 13.115 1.337.445.264.59.838.327 1.282-.264.443-.838.59-1.283.327z"/>
+              </svg>
+              <span>Iniciar Sesión con Spotify</span>
+            </button>
+            <div class="landing-privacy-badge">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+              <span>Acceso seguro OAuth 2.0 PKCE • Sin contraseñas guardadas</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
            VIEW 1: HOME
            ================================================================ -->
-      <section class="screen-view active" id="view-home">
+      <section class="screen-view" id="view-home">
         <header class="top-header">
           <div>
             <h1 class="page-title" id="homeGreeting">Good morning</h1>
@@ -606,32 +638,33 @@
     </aside>
 
     <!-- ==================================================================
-         SPOTIFY ACCOUNT & CONNECTION MODAL (Real Spotify + Demo Mode)
+         PROFILE / SETTINGS MODAL (Redesigned Design System)
          ================================================================== -->
     <div class="spotify-modal-backdrop" id="spotifyModal">
       <div class="spotify-modal-card">
         <div class="modal-header">
-          <div class="modal-title-wrap">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="#1db954">
-              <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.224-2.722c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.52-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.256 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.129-1.166-.623-.148-.495.13-1.015.625-1.166 3.532-1.073 9.404-.866 13.115 1.337.445.264.59.838.327 1.282-.264.443-.838.59-1.283.327z"/>
-            </svg>
-            <h2 class="modal-title">Spotify Premium & Echo Show</h2>
+          <div class="modal-user-profile">
+            <div class="modal-user-avatar-wrap">
+              <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23888'><path d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/></svg>" alt="User" id="modalUserAvatar" />
+            </div>
+            <div>
+              <h2 class="modal-user-name" id="modalUserName">Spotify Echo</h2>
+              <div class="modal-user-status">
+                <span class="status-dot connected" id="spotifyStatusDot"></span>
+                <span id="modalUserProduct">Conectado a Spotify Premium</span>
+              </div>
+            </div>
           </div>
-          <button class="modal-close-btn" id="closeSpotifyModalBtn">
+          <button class="modal-close-btn" id="closeSpotifyModalBtn" title="Cerrar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
         </div>
 
-        <div class="status-pill">
-          <span class="status-dot" id="spotifyStatusDot"></span>
-          <span id="spotifyStatusText">Modo Demo Activo (Listo para conectar Spotify Premium)</span>
-        </div>
-
-        <!-- Appearance / Theme Selector (Hybrid Auto / Light / Dark) -->
-        <div class="modal-section">
+        <!-- Appearance Section -->
+        <div class="modal-section modal-section-clean">
           <div class="modal-section-title">Apariencia de Pantalla</div>
           <div class="modal-section-desc">
-            Elige el modo visual para la pantalla del Echo Show:
+            Elige el modo visual adaptativo para la pantalla del Echo Show:
           </div>
           <div class="theme-segmented-control" id="themeSegmented">
             <button type="button" class="theme-seg-btn active" data-theme-val="auto">
@@ -648,43 +681,30 @@
             </button>
           </div>
           <div style="margin-top: 14px;">
-            <button type="button" class="btn-spotify-secondary" id="fullscreenModalBtn" style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;font-size:14px;border-radius:999px;cursor:pointer;">
+            <button type="button" class="btn-fullscreen-action" id="fullscreenModalBtn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
               </svg>
-              Alternar Pantalla Completa
+              <span>Alternar Pantalla Completa</span>
             </button>
           </div>
         </div>
 
-        <!-- Option 1: OAuth 2.0 PKCE Login with Client ID -->
-        <div class="modal-section">
-          <div class="modal-section-title">Conectar con Spotify Premium</div>
+        <!-- Account / Logout Section -->
+        <div class="modal-section modal-section-clean" style="border-bottom: none;">
+          <div class="modal-section-title">Cuenta</div>
           <div class="modal-section-desc">
-            Inicia sesión de forma segura y directa con tu cuenta de Spotify mediante OAuth 2.0 PKCE. Tus credenciales quedan guardadas únicamente en este dispositivo:
+            Desvincula tu cuenta de Spotify de este dispositivo.
           </div>
-          <div class="modal-btn-row" style="margin-top: 14px;">
-            <button class="btn-spotify-green" id="spotifyOAuthLoginBtn" style="padding: 14px 28px; font-size: 15px; font-weight: 700; width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.224-2.722c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.52-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.256 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.129-1.166-.623-.148-.495.13-1.015.625-1.166 3.532-1.073 9.404-.866 13.115 1.337.445.264.59.838.327 1.282-.264.443-.838.59-1.283.327z"/>
+          <div style="margin-top: 14px;">
+            <button type="button" class="btn-logout-danger" id="logoutBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
               </svg>
-              Iniciar Sesión con Spotify
+              <span>Cerrar Sesión</span>
             </button>
-          </div>
-        </div>
-
-        <!-- Option 2: Fast Token Paste (Zero setup / PC Sync) -->
-        <div class="modal-section">
-          <div class="modal-section-title">2. Conexión Rápida por Token (Opcional)</div>
-          <div class="modal-section-desc">
-            Si ya tienes un Access Token de Spotify API, pégalo aquí para sincronizar de inmediato tus Playlists, Escuchas Recientes, Reproducción en Vivo y Letras de Apple Music (LRCLIB):
-          </div>
-          <div class="modal-input-group">
-            <input type="password" class="modal-input" id="spotifyTokenInput" placeholder="Pegar Access Token (BQD...)" />
-            <div class="modal-btn-row">
-              <button class="btn-spotify-green" id="saveTokenBtn">Activar Cuenta Spotify</button>
-              <button class="btn-spotify-secondary" id="resetDemoModeBtn">Volver a Modo Demo</button>
-            </div>
           </div>
         </div>
       </div>

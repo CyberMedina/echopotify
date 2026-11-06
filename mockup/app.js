@@ -297,12 +297,25 @@
   const HOME_CACHE_KEY = 'sp_home_cache_v5';
 
   function renderUserProfile(profile) {
-    if (!profile || !profile.avatar) return;
-    document.querySelectorAll('.profile-btn').forEach(btn => {
-      if (btn.dataset.renderedAvatar === profile.avatar) return;
-      btn.dataset.renderedAvatar = profile.avatar;
-      btn.innerHTML = `<img src="${profile.avatar}" alt="${profile.name || 'User'}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" decoding="async" />`;
-    });
+    if (!profile) return;
+    if (profile.avatar) {
+      document.querySelectorAll('.profile-btn').forEach(btn => {
+        if (btn.dataset.renderedAvatar === profile.avatar) return;
+        btn.dataset.renderedAvatar = profile.avatar;
+        btn.innerHTML = `<img src="${profile.avatar}" alt="${profile.name || 'User'}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" decoding="async" />`;
+      });
+      const modalAvatar = document.getElementById('modalUserAvatar');
+      if (modalAvatar) modalAvatar.src = profile.avatar;
+    }
+    const modalName = document.getElementById('modalUserName');
+    if (modalName && profile.name) {
+      modalName.textContent = profile.name;
+    }
+    const modalProduct = document.getElementById('modalUserProduct');
+    if (modalProduct) {
+      const plan = profile.product ? (profile.product.charAt(0).toUpperCase() + profile.product.slice(1)) : 'Premium';
+      modalProduct.textContent = `Spotify ${plan} • Conectado`;
+    }
   }
 
   function saveHomeCache(data) {
@@ -518,6 +531,11 @@
       .replace(/=+$/, '');
   }
 
+  function getPKCERedirectUri() {
+    const raw = window.location.origin + window.location.pathname;
+    return raw.replace(/\/index\.html$/, '/');
+  }
+
   async function startSpotifyPKCELogin() {
     try {
       if (window.location.protocol === 'file:') {
@@ -526,8 +544,8 @@
       }
 
       const clientId = spotifyAuth.clientId || DEFAULT_CLIENT_ID;
-      // Limpiar query params o hash de la redirectUri
-      const redirectUri = window.location.origin + window.location.pathname;
+      // Normalizar URI eliminando index.html para coincidir con la configuración del Dashboard
+      const redirectUri = getPKCERedirectUri();
 
       const codeVerifier = generateRandomString(64);
       const hashed = await sha256(codeVerifier);
@@ -589,7 +607,7 @@
     }
 
     const clientId = spotifyAuth.clientId || DEFAULT_CLIENT_ID;
-    const redirectUri = window.location.origin + window.location.pathname;
+    const redirectUri = getPKCERedirectUri();
 
     try {
       const response = await fetch('https://accounts.spotify.com/api/token', {
@@ -657,7 +675,7 @@
       if (data.access_token) {
         spotifyAuth.accessToken = data.access_token;
         localStorage.setItem('sp_access_token', data.access_token);
-        spotifyTokenInput.value = data.access_token;
+        if (spotifyTokenInput) spotifyTokenInput.value = data.access_token;
       }
       if (data.refresh_token) {
         spotifyAuth.refreshToken = data.refresh_token;
@@ -1370,7 +1388,7 @@
   async function loadAllRealSpotifyData() {
     updateGreeting();
     if (!spotifyAuth.accessToken) {
-      loadDemoCatalog();
+      switchScreen('login');
       return;
     }
 
@@ -1388,10 +1406,10 @@
     // 1. User Profile
     let currentUserProfile = null;
     if (me && me.display_name) {
-      spotifyStatusDot.classList.add('connected');
-      spotifyStatusText.textContent = `Conectado: ${me.display_name} (${me.product || 'Premium'})`;
+      if (spotifyStatusDot) spotifyStatusDot.classList.add('connected');
+      if (spotifyStatusText) spotifyStatusText.textContent = `Conectado: ${me.display_name} (${me.product || 'Premium'})`;
       const avatarUrl = (me.images && me.images.length > 0) ? me.images[0].url : null;
-      currentUserProfile = { name: me.display_name, avatar: avatarUrl };
+      currentUserProfile = { name: me.display_name, avatar: avatarUrl, product: me.product };
       renderUserProfile(currentUserProfile);
     }
 
@@ -3450,6 +3468,15 @@
       tab.classList.toggle('active', navTarget === screenName);
     });
 
+    const miniEl = document.getElementById('miniPlayer');
+    if (screenName === 'login') {
+      document.body.classList.add('login-view-active');
+      if (miniEl) miniEl.style.display = 'none';
+    } else {
+      document.body.classList.remove('login-view-active');
+      if (miniEl && state.playingTrackId) miniEl.style.display = 'flex';
+    }
+
     if (screenName === 'album') {
       document.body.classList.remove('artist-view-active');
       if (state.selectedEntityId === 'liked_songs' || (liveCatalog.entities[state.selectedEntityId] && liveCatalog.entities[state.selectedEntityId].type === 'liked')) {
@@ -4236,9 +4263,19 @@
     });
   });
 
-  document.getElementById('closeSpotifyModalBtn').addEventListener('click', () => {
-    spotifyModal.classList.remove('open');
-  });
+  const closeSpotifyModalBtn = document.getElementById('closeSpotifyModalBtn');
+  if (closeSpotifyModalBtn) {
+    closeSpotifyModalBtn.addEventListener('click', () => {
+      spotifyModal.classList.remove('open');
+    });
+  }
+  if (spotifyModal) {
+    spotifyModal.addEventListener('click', (e) => {
+      if (e.target === spotifyModal) {
+        spotifyModal.classList.remove('open');
+      }
+    });
+  }
 
   // --------------------------------------------------------------------------
   // THEME CONTROLLER (Auto Day/Night, Light, Dark)
@@ -4394,8 +4431,12 @@
   const cachedHome = loadHomeCache();
   const hasAuth = !!(spotifyAuth.refreshToken || spotifyAuth.accessToken);
 
-  if (cachedHome && cachedHome.jumpCards && cachedHome.jumpCards.length > 0) {
-    // 0ms Instant Cache Render: Populate entity map so clicking immediately plays/opens
+  if (!hasAuth) {
+    // Si no está autenticado, pantalla de aterrizaje / login limpia
+    switchScreen('login');
+  } else if (cachedHome && cachedHome.jumpCards && cachedHome.jumpCards.length > 0) {
+    // Instant Cache Render: popular UI sin parpadeos mientras refresca en paralelo
+    switchScreen('home');
     if (cachedHome.entities) {
       Object.assign(liveCatalog.entities, cachedHome.entities);
     }
@@ -4409,10 +4450,9 @@
       const miniEl = document.getElementById('miniPlayer');
       if (miniEl) miniEl.style.display = 'flex';
     }
-  } else if (hasAuth) {
-    // First cold launch without cache: show clean neutral skeletons while network loads
-    renderInitialSkeletons();
   } else {
+    // Autenticado pero sin caché aún: Home limpio con Skeletons shimmer (cero mocks)
+    switchScreen('home');
     renderInitialSkeletons();
   }
 
@@ -4420,6 +4460,17 @@
   (async function initSpotifyEcho() {
     // 1. Revisar si venimos de regreso de una autenticación PKCE con ?code=...
     const justAuthed = await checkPKCEAuthCallback();
+    const hasAuthNow = !!(spotifyAuth.refreshToken || spotifyAuth.accessToken);
+
+    if (!hasAuthNow) {
+      switchScreen('login');
+      return;
+    }
+
+    switchScreen('home');
+    if (!cachedHome || !cachedHome.jumpCards || cachedHome.jumpCards.length === 0) {
+      renderInitialSkeletons();
+    }
 
     if (spotifyAuth.refreshToken && spotifyAuth.clientId) {
       await refreshSpotifyAccessToken();
@@ -4506,48 +4557,55 @@
     });
   }
 
-  // Botón oficial de Login con Spotify PKCE
-  const oauthBtn = document.getElementById('spotifyOAuthLoginBtn');
-  if (oauthBtn) {
-    oauthBtn.addEventListener('click', (e) => {
+  // Botón de Login en Landing Page (OAuth 2.0 PKCE)
+  const landingLoginBtn = document.getElementById('landingLoginBtn');
+  if (landingLoginBtn) {
+    landingLoginBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       startSpotifyPKCELogin();
     });
   }
 
-  // Guardar token manual (Opción 2)
-  const saveTokenBtn = document.getElementById('saveTokenBtn');
-  if (saveTokenBtn) {
-    saveTokenBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const token = (spotifyTokenInput.value || '').trim();
-      if (!token) {
-        alert('Por favor pega un Access Token de Spotify');
-        return;
-      }
-      spotifyAuth.accessToken = token;
-      localStorage.setItem('sp_access_token', token);
+  // Cerrar Sesión (Logout)
+  function logoutUser() {
+    localStorage.removeItem('sp_access_token');
+    localStorage.removeItem('sp_refresh_token');
+    localStorage.removeItem(HOME_CACHE_KEY);
+    localStorage.removeItem(PKCE_VERIFIER_KEY);
+    spotifyAuth.accessToken = '';
+    spotifyAuth.refreshToken = '';
+    state.isPlaying = false;
+    state.pcmFlowing = false;
+    state.playingTrackId = null;
+
+    if (webPlayer) {
+      try { webPlayer.disconnect(); } catch (e) {}
+      webPlayer = null;
+      webPlayerDeviceId = null;
+    }
+
+    const audio = document.getElementById('nativeAudioPlayer');
+    if (audio) {
+      audio.pause();
+      audio.src = '';
+    }
+
+    if (spotifyModal) {
       spotifyModal.classList.remove('open');
-      initWebPlayer();
-      await loadAllRealSpotifyData();
-      await pollSpotifyCurrentPlayback();
-    });
+    }
+
+    const miniEl = document.getElementById('miniPlayer');
+    if (miniEl) miniEl.style.display = 'none';
+
+    showToast('Sesión de Spotify cerrada');
+    switchScreen('login');
   }
 
-  // Volver a Modo Demo
-  const resetDemoBtn = document.getElementById('resetDemoModeBtn');
-  if (resetDemoBtn) {
-    resetDemoBtn.addEventListener('click', (e) => {
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      localStorage.removeItem('sp_access_token');
-      localStorage.removeItem('sp_refresh_token');
-      localStorage.removeItem(HOME_CACHE_KEY);
-      spotifyAuth.accessToken = '';
-      spotifyAuth.refreshToken = '';
-      spotifyStatusDot.classList.remove('connected');
-      spotifyStatusText.textContent = 'Modo Demo Activo';
-      spotifyModal.classList.remove('open');
-      loadDemoCatalog();
+      logoutUser();
     });
   }
 
