@@ -837,18 +837,21 @@
     if (webPlayerDeviceId) {
       return `?device_id=${webPlayerDeviceId}`;
     }
-    if (spotifyAuth.engineDeviceName) {
-      const id = spotifyAuth.engineDeviceId || await findEngineDeviceId();
-      if (id) return `?device_id=${id}`;
-    }
     if (spotifyAuth.activeDeviceId) return `?device_id=${spotifyAuth.activeDeviceId}`;
 
     const devRes = await spotifyFetch('/me/player/devices');
     if (devRes && Array.isArray(devRes.devices) && devRes.devices.length > 0) {
       spotifyAuth.availableDevices = devRes.devices;
-      const active = devRes.devices.find(d => d.is_active) || devRes.devices[0];
+
+      // 1. Priorizar si existe el hardware del Echo Show (o cualquier Echo)
+      const echoDevice = devRes.devices.find(d => d.name && d.name.toLowerCase().includes('echo show'))
+                      || devRes.devices.find(d => d.name && d.name.toLowerCase().includes('echo'));
+      
+      // 2. Si no hay Echo, usar el dispositivo activo o el primero
+      const active = echoDevice || devRes.devices.find(d => d.is_active) || devRes.devices[0];
       if (active && active.id) {
         spotifyAuth.activeDeviceId = active.id;
+        console.log('[Spotify Target Device]', active.name, `(${active.id})`);
         return `?device_id=${active.id}`;
       }
     }
