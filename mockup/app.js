@@ -1191,9 +1191,96 @@
     else titleEl.textContent = 'Good evening';
   }
 
+  // Fallback Demo Catalog Loader (used when not logged in or offline)
+  function loadDemoCatalog() {
+    updateGreeting();
+    Object.keys(ALBUMS).forEach(id => {
+      liveCatalog.entities[id] = ALBUMS[id];
+    });
+    Object.keys(DEMO_ARTISTS).forEach(id => {
+      liveCatalog.entities[id] = DEMO_ARTISTS[id];
+      liveCatalog.entities['art_' + id] = DEMO_ARTISTS[id];
+    });
+
+    const demoJumpCards = [
+      { entityId: 'deeper_well', title: 'Deeper Well', subtitle: 'Kacey Musgraves', cover: 'assets/deeper_well.jpg' },
+      { entityId: 'lahai', title: 'Lahai', subtitle: 'Sampha', cover: 'assets/lahai.jpg' },
+      { entityId: 'bb_uvst2', title: 'Un Verano Sin Ti', subtitle: 'Bad Bunny', cover: 'assets/album_bb_uvst2.jpg' },
+      { entityId: 'bb_yhlqmdlg', title: 'YHLQMDLG', subtitle: 'Bad Bunny', cover: 'assets/album_bb_yhlqmdlg.jpg' },
+      { entityId: 'bb_eutdm', title: 'El Último Tour', subtitle: 'Bad Bunny', cover: 'assets/album_bb_eutdm.jpg' },
+      { entityId: 'bb_uvst1', title: 'nadie sabe lo que va...', subtitle: 'Bad Bunny', cover: 'assets/album_bb_uvst1.jpg' }
+    ];
+
+    const demoRecentCards = [
+      { entityId: 'deeper_well', title: 'Deeper Well', subtitle: 'Kacey Musgraves', cover: 'assets/deeper_well.jpg' },
+      { entityId: 'lahai', title: 'Spirit 2.0', subtitle: 'Sampha', cover: 'assets/lahai.jpg' },
+      { entityId: 'bb_uvst2', title: 'Moscow Mule', subtitle: 'Bad Bunny', cover: 'assets/album_bb_uvst2.jpg' },
+      { entityId: 'bb_yhlqmdlg', title: 'Safaera', subtitle: 'Bad Bunny', cover: 'assets/album_bb_yhlqmdlg.jpg' },
+      { entityId: 'bb_eutdm', title: 'Dákiti', subtitle: 'Bad Bunny', cover: 'assets/album_bb_eutdm.jpg' }
+    ];
+
+    const demoBanners = [
+      { entityId: 'deeper_well', title: 'Discover Weekly', subtitle: 'Kacey Musgraves y más', tag: 'Made for you', cover: 'assets/deeper_well.jpg' },
+      { entityId: 'bb_uvst2', title: 'Release Radar', subtitle: 'Nuevos lanzamientos para ti', tag: 'Made for you', cover: 'assets/album_bb_uvst2.jpg' }
+    ];
+
+    const demoTopArtists = [
+      { entityId: 'bad_bunny', name: 'Bad Bunny', meta: 'Artist', cover: 'assets/avatar_badbunny.jpg' },
+      { entityId: 'bad_bunny', name: 'Frank Ocean', meta: 'Artist', cover: 'assets/avatar_frank.jpg' },
+      { entityId: 'bad_bunny', name: 'SZA', meta: 'Artist', cover: 'assets/avatar_sza.jpg' },
+      { entityId: 'bad_bunny', name: 'Tyler, The Creator', meta: 'Artist', cover: 'assets/avatar_tyler.jpg' },
+      { entityId: 'bad_bunny', name: 'Sampha', meta: 'Artist', cover: 'assets/avatar_sampha.jpg' }
+    ];
+
+    const demoSavedAlbums = [
+      { entityId: 'deeper_well', title: 'Deeper Well', subtitle: 'Kacey Musgraves', cover: 'assets/deeper_well.jpg' },
+      { entityId: 'lahai', title: 'Lahai', subtitle: 'Sampha', cover: 'assets/lahai.jpg' },
+      { entityId: 'bb_uvst2', title: 'Un Verano Sin Ti', subtitle: 'Bad Bunny', cover: 'assets/album_bb_uvst2.jpg' },
+      { entityId: 'bb_yhlqmdlg', title: 'YHLQMDLG', subtitle: 'Bad Bunny', cover: 'assets/album_bb_yhlqmdlg.jpg' },
+      { entityId: 'bb_eutdm', title: 'El Último Tour Del Mundo', subtitle: 'Bad Bunny', cover: 'assets/album_bb_eutdm.jpg' },
+      { entityId: 'bb_uvst1', title: 'nadie sabe lo que va a pasar mañana', subtitle: 'Bad Bunny', cover: 'assets/album_bb_uvst1.jpg' }
+    ];
+
+    liveCatalog.albums = demoSavedAlbums.map(a => {
+      const alb = ALBUMS[a.entityId];
+      return {
+        id: a.entityId,
+        title: a.title,
+        artist: alb ? alb.artist : a.subtitle,
+        meta: alb ? alb.meta : 'Album',
+        cover: a.cover
+      };
+    });
+
+    liveCatalog.playlists = [
+      { id: 'deeper_well', title: 'Acoustic Morning', meta: 'Playlist • 50 canciones', cover: 'assets/deeper_well.jpg' },
+      { id: 'bb_uvst2', title: 'Verano Latino', meta: 'Playlist • 80 canciones', cover: 'assets/album_bb_uvst2.jpg' }
+    ];
+
+    liveCatalog.artists = [DEMO_ARTISTS.bad_bunny];
+
+    renderHome(demoJumpCards, demoRecentCards, demoBanners, demoTopArtists, demoSavedAlbums);
+    renderSearch(demoRecentCards);
+    renderLibrary('all');
+
+    const defaultTrack = {
+      title: ALBUMS.deeper_well.tracks[1].title,
+      artist: ALBUMS.deeper_well.artist,
+      album: ALBUMS.deeper_well.title,
+      cover: ALBUMS.deeper_well.cover,
+      duration: ALBUMS.deeper_well.tracks[1].duration
+    };
+    applyTrackToUI(defaultTrack, 0, false);
+    const miniEl = document.getElementById('miniPlayer');
+    if (miniEl) miniEl.style.display = 'flex';
+  }
+
   async function loadAllRealSpotifyData() {
     updateGreeting();
-    if (!spotifyAuth.accessToken) return;
+    if (!spotifyAuth.accessToken) {
+      loadDemoCatalog();
+      return;
+    }
 
     // Fetch all endpoints in parallel for <400ms startup
     const [me, likedRes, plsRes, albRes, artRes, topTracksRes, recentRes] = await Promise.all([
