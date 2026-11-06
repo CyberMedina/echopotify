@@ -4338,19 +4338,22 @@
   // Initialize theme on load
   applyTheme(currentThemeMode, true);
 
-  document.getElementById('transferPlaybackHereBtn').addEventListener('click', async () => {
-    const devRes = await spotifyFetch('/me/player/devices');
-    if (devRes && Array.isArray(devRes.devices) && devRes.devices.length > 0) {
-      const echoId = await findEngineDeviceId();
-      const target = echoId || devRes.devices[0].id;
-      spotifyAuth.activeDeviceId = target;
-      await spotifyFetch('/me/player', {
-        method: 'PUT',
-        body: JSON.stringify({ device_ids: [target], play: true })
-      });
-      spotifyStatusText.textContent = `Reproduciendo en: ${echoId ? 'Echo Show 8 (Nativo)' : devRes.devices[0].name}`;
-    }
-  });
+  const transferPlaybackBtn = document.getElementById('transferPlaybackHereBtn');
+  if (transferPlaybackBtn) {
+    transferPlaybackBtn.addEventListener('click', async () => {
+      const devRes = await spotifyFetch('/me/player/devices');
+      if (devRes && Array.isArray(devRes.devices) && devRes.devices.length > 0) {
+        const echoId = await findEngineDeviceId();
+        const target = echoId || devRes.devices[0].id;
+        spotifyAuth.activeDeviceId = target;
+        await spotifyFetch('/me/player', {
+          method: 'PUT',
+          body: JSON.stringify({ device_ids: [target], play: true })
+        });
+        spotifyStatusText.textContent = `Reproduciendo en: ${echoId ? 'Echo Show 8 (Nativo)' : devRes.devices[0].name}`;
+      }
+    });
+  }
 
   // Responsive Viewport Scaling (1:1 zero-transform fast path on 1280x800 Echo Show 8)
   function fitViewport() {
