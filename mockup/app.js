@@ -758,17 +758,34 @@
   let webPlayer = null;
   let webPlayerDeviceId = null;
 
+  function showPlayerStatus(text, isError = false) {
+    let el = document.getElementById('debugWebPlayerPill');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'debugWebPlayerPill';
+      el.style.cssText = 'position:fixed;bottom:12px;left:12px;background:rgba(0,0,0,0.85);color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;font-family:sans-serif;z-index:99999;pointer-events:none;border:1px solid rgba(255,255,255,0.2);backdrop-filter:blur(8px);transition:all 0.3s ease;';
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.style.borderColor = isError ? '#ff453a' : '#30d158';
+    el.style.color = isError ? '#ff6961' : '#30d158';
+  }
+
   window.onSpotifyWebPlaybackSDKReady = () => {
-    console.log('[Spotify Web SDK] SDK listo, inicializando reproductor web...');
+    console.log('[Spotify Web SDK] SDK listo en window');
     if (!spotifyAuth.accessToken) return;
     initWebPlayer();
   };
 
   function initWebPlayer() {
-    if (!window.Spotify || !spotifyAuth.accessToken || webPlayer) return;
+    if (!window.Spotify || !spotifyAuth.accessToken || webPlayer) {
+      if (!window.Spotify) showPlayerStatus('Cargando Spotify SDK...', false);
+      return;
+    }
+    showPlayerStatus('Iniciando Web Player...', false);
     try {
       webPlayer = new window.Spotify.Player({
-        name: 'Echo Show 8 (Silk Browser)',
+        name: 'SpotiEcho Web Player',
         getOAuthToken: async cb => {
           if (spotifyAuth.refreshToken) await refreshSpotifyAccessToken();
           cb(spotifyAuth.accessToken);
@@ -780,7 +797,7 @@
         console.log('[Spotify Web SDK] Conectado exitosamente con Device ID:', device_id);
         webPlayerDeviceId = device_id;
         spotifyAuth.activeDeviceId = device_id;
-        // Transferir reproducción automáticamente al navegador
+        showPlayerStatus(`🟢 Web Player Activo (${device_id.slice(0, 5)})`, false);
         fetch('https://api.spotify.com/v1/me/player', {
           method: 'PUT',
           headers: {
@@ -794,27 +811,33 @@
       webPlayer.addListener('not_ready', ({ device_id }) => {
         console.warn('[Spotify Web SDK] Device ID desconectado:', device_id);
         if (webPlayerDeviceId === device_id) webPlayerDeviceId = null;
+        showPlayerStatus('🟡 Web Player Desconectado', true);
       });
 
       webPlayer.addListener('player_state_changed', state => {
         if (!state) return;
-        // Sincronizar estado cuando el Web Player cambie de track
         pollSpotifyCurrentPlayback();
       });
 
       webPlayer.addListener('initialization_error', ({ message }) => {
         console.error('[Spotify Web SDK] Error de inicialización:', message);
+        showPlayerStatus(`🔴 Skill WebView sin DRM: ${message}`, true);
       });
       webPlayer.addListener('authentication_error', ({ message }) => {
         console.error('[Spotify Web SDK] Error de autenticación:', message);
+        showPlayerStatus(`🔴 Error Auth: ${message}`, true);
       });
       webPlayer.addListener('account_error', ({ message }) => {
         console.error('[Spotify Web SDK] Error de cuenta (requiere Premium):', message);
+        showPlayerStatus(`🔴 Error Cuenta: ${message}`, true);
       });
 
-      webPlayer.connect();
+      webPlayer.connect().then(ok => {
+        if (!ok) showPlayerStatus('🔴 Falló conexión Web Player', true);
+      });
     } catch (e) {
       console.warn('[Spotify Web SDK] No soportado en este entorno:', e);
+      showPlayerStatus(`🔴 Excepción: ${e.message}`, true);
     }
   }
 
@@ -834,27 +857,33 @@
   }
 
   async function getTargetDeviceQuery() {
+    // 1. Si el Web Player del navegador está listo, usarlo SIEMPRE
     if (webPlayerDeviceId) {
       return `?device_id=${webPlayerDeviceId}`;
     }
-    if (spotifyAuth.activeDeviceId) return `?device_id=${spotifyAuth.activeDeviceId}`;
 
     const devRes = await spotifyFetch('/me/player/devices');
     if (devRes && Array.isArray(devRes.devices) && devRes.devices.length > 0) {
       spotifyAuth.availableDevices = devRes.devices;
 
-      // 1. Priorizar si existe el hardware del Echo Show (o cualquier Echo)
-      const echoDevice = devRes.devices.find(d => d.name && d.name.toLowerCase().includes('echo show'))
-                      || devRes.devices.find(d => d.name && d.name.toLowerCase().includes('echo'));
-      
-      // 2. Si no hay Echo, usar el dispositivo activo o el primero
-      const active = echoDevice || devRes.devices.find(d => d.is_active) || devRes.devices[0];
-      if (active && active.id) {
-        spotifyAuth.activeDeviceId = active.id;
-        console.log('[Spotify Target Device]', active.name, `(${active.id})`);
-        return `?device_id=${active.id}`;
+      // 2. Buscar si hay algún Web Player (tipo Computer)
+      const webDev = devRes.devices.find(d => d.type === 'Computer' && (d.name.includes('SpotiEcho') || d.name.includes('Silk') || d.name.includes('Echo Show')));
+      if (webDev && webDev.id) {
+        webPlayerDeviceId = webDev.id;
+        spotifyAuth.activeDeviceId = webDev.id;
+        return `?device_id=${webDev.id}`;
+      }
+
+      // 3. JAMÁS enviar a dispositivos tipo 'Speaker' (como 'Echo Show de Jhonatan') porque Alexa OS interrumpe la skill y la cierra!
+      const safeDev = devRes.devices.find(d => d.type !== 'Speaker' && d.is_active)
+                   || devRes.devices.find(d => d.type !== 'Speaker');
+      if (safeDev && safeDev.id) {
+        spotifyAuth.activeDeviceId = safeDev.id;
+        return `?device_id=${safeDev.id}`;
       }
     }
+
+    if (spotifyAuth.activeDeviceId) return `?device_id=${spotifyAuth.activeDeviceId}`;
     return '';
   }
 
@@ -4557,6 +4586,8 @@
     }
 
     initWebPlayer();
+    setTimeout(initWebPlayer, 600);
+    setTimeout(initWebPlayer, 1800);
     await loadAllRealSpotifyData();
     await pollSpotifyCurrentPlayback();
   })();
