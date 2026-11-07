@@ -581,7 +581,7 @@ body.theme-dark.album-light-active .ambient-bg {
   background: transparent;
   overflow-y: auto;
   scrollbar-width: none;
-  padding: 38px 54px 200px 54px;
+  padding: 38px 54px 88px 54px;
 }
 
 #view-album::-webkit-scrollbar {
@@ -663,6 +663,20 @@ body.theme-dark.album-light-active .ambient-bg {
   text-overflow: ellipsis;
 }
 
+.album-artist-link {
+  display: inline;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.album-artist-link:active {
+  opacity: 0.55;
+  color: #ffffff;
+}
+
 .album-hero-meta {
   font-size: 13.5px;
   font-weight: 500;
@@ -733,7 +747,7 @@ body.theme-dark.album-light-active .ambient-bg {
   display: flex;
   flex-direction: column;
   padding-top: 6px;
-  padding-bottom: 200px;
+  padding-bottom: 0;
 }
 
 .track-row {
@@ -2181,6 +2195,28 @@ body.np-fully-open .ambient-bg {
   transform: translate3d(0, 0, 0);
 }
 
+/* Register custom color properties so radial/linear gradients interpolate smoothly */
+@property --np-c1 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #2d4239;
+}
+@property --np-c2 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #1c2a24;
+}
+@property --np-c3 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #3a5246;
+}
+@property --np-c4 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #141e1a;
+}
+
 /* Dynamic Multi-Point Apple Music Liquid Lava Mesh Gradient (Zero-Re-Rasterization GPU Blobs) */
 .np-mesh-bg {
   position: absolute;
@@ -2194,7 +2230,11 @@ body.np-fully-open .ambient-bg {
     radial-gradient(ellipse 82% 75% at 84% 82%, var(--np-c2) 0%, transparent 66%),
     radial-gradient(ellipse 72% 70% at 34% 84%, var(--np-c3) 0%, transparent 64%),
     linear-gradient(135deg, var(--np-c4) 0%, var(--np-c2) 55%, var(--np-c1) 100%);
-  transition: background 1.2s ease;
+  transition: --np-c1 1.1s cubic-bezier(0.22, 1, 0.36, 1),
+              --np-c2 1.1s cubic-bezier(0.22, 1, 0.36, 1),
+              --np-c3 1.1s cubic-bezier(0.22, 1, 0.36, 1),
+              --np-c4 1.1s cubic-bezier(0.22, 1, 0.36, 1),
+              background 1.1s ease;
 }
 
 .np-lava-blob {
@@ -2411,24 +2451,89 @@ body.np-fully-open .ambient-bg {
   will-change: transform;
 }
 
-.np-cover-art {
+.np-cover-stage {
+  position: relative;
   width: 330px;
   height: 330px;
-  border-radius: 14px;
-  object-fit: cover;
-  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.44);
   margin: 0 auto 28px auto;
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
-  transform: scale(1);
-  transform-origin: center bottom;
-  transition: transform 0.52s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.52s cubic-bezier(0.16, 1, 0.3, 1),
-              border-radius 0.52s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scale(1) translateZ(0);
+  transform-origin: center center;
+  box-shadow:
+    0 22px 48px -8px rgba(0, 0, 0, 0.42),
+    0 8px 20px -4px rgba(0, 0, 0, 0.24);
+  transition:
+    transform 0.54s cubic-bezier(0.22, 1.18, 0.36, 1),
+    box-shadow 0.52s cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 0.52s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform, box-shadow;
+  backface-visibility: hidden;
 }
 
-.np-cover-art:active {
-  transform: scale(0.975);
+/* Specular 1px Apple Music glass rim around the album sleeve */
+.np-cover-stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* Apple Music Paused State: symmetrical centered recession + tight resting shadow */
+.np-cover-stage.is-paused {
+  transform: scale(0.84) translateZ(0);
+  box-shadow:
+    0 10px 24px -6px rgba(0, 0, 0, 0.26),
+    0 3px 8px -2px rgba(0, 0, 0, 0.16);
+  transition:
+    transform 0.46s cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 0.46s cubic-bezier(0.32, 0.72, 0, 1),
+    border-radius 0.46s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Subtle tactile press feedback on the stage */
+.np-cover-stage:active {
+  transform: scale(0.965) translateZ(0);
+  transition: transform 0.16s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.np-cover-stage.is-paused:active {
+  transform: scale(0.81) translateZ(0);
+}
+
+.np-cover-art {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  object-fit: cover;
+  box-shadow: none;
+  margin: 0;
+  display: block;
+  position: relative;
+  z-index: 1;
+  transform: translateZ(0);
+  opacity: 1;
+  backface-visibility: hidden;
+}
+
+.np-cover-art.np-cover-ghost {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: none;
+  transform: translateZ(0);
+  transition: opacity 0.36s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.np-cover-art.np-cover-ghost.ghost-fading {
+  opacity: 0 !important;
 }
 
 /* Right Column: Lyrics or Queue Container (GPU Composited) */
@@ -2453,7 +2558,12 @@ body.np-fully-open .ambient-bg {
   inset: 0;
   width: 100%;
   height: 100%;
-  transition: opacity 0.26s ease, transform 0.26s ease;
+  opacity: 1;
+  visibility: visible;
+  transform: translate3d(0, 0, 0);
+  transition: opacity 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+              visibility 0s linear 0s;
 }
 
 .np-right-lyrics.hidden,
@@ -2461,6 +2571,10 @@ body.np-fully-open .ambient-bg {
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
+  transform: translate3d(0, 12px, 0);
+  transition: opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              visibility 0s linear 0.28s;
 }
 
 /* --------------------------------------------------------------------------
@@ -2471,10 +2585,19 @@ body.np-fully-open .ambient-bg {
   transform: translate3d(0, 0, 0);
 }
 
-.np-main-grid.centered-layout .np-cover-art {
-  transform: scale(1.18);
-  border-radius: 22px;
-  box-shadow: 0 34px 80px rgba(0, 0, 0, 0.65), 0 10px 24px rgba(0, 0, 0, 0.30);
+.np-main-grid.centered-layout .np-cover-stage {
+  transform: scale(1.15) translateZ(0);
+  border-radius: 18px;
+  box-shadow:
+    0 26px 56px -10px rgba(0, 0, 0, 0.46),
+    0 10px 24px -4px rgba(0, 0, 0, 0.26);
+}
+
+.np-main-grid.centered-layout .np-cover-stage.is-paused {
+  transform: scale(0.96) translateZ(0);
+  box-shadow:
+    0 12px 28px -6px rgba(0, 0, 0, 0.28),
+    0 4px 10px -2px rgba(0, 0, 0, 0.18);
 }
 
 .np-main-grid.centered-layout .np-right-column {
@@ -2491,9 +2614,33 @@ body.np-fully-open .ambient-bg {
   gap: 16px;
 }
 
-.np-meta-row>div:first-child {
+.np-meta-row>div:first-child,
+.np-meta-text-col {
   min-width: 0;
   flex: 1;
+  transition: opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.np-meta-text-col.track-meta-out,
+.mini-player-left.track-meta-out {
+  opacity: 0;
+  transform: translate3d(0, -6px, 0);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.np-meta-text-col.track-meta-in-prep,
+.mini-player-left.track-meta-in-prep {
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  transition: none !important;
+}
+
+.mini-player-left {
+  transition: opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
 }
 
 .np-track-title {
@@ -2505,6 +2652,7 @@ body.np-fully-open .ambient-bg {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  user-select: none;
 }
 
 .np-track-artist {
@@ -2516,6 +2664,26 @@ body.np-fully-open .ambient-bg {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  user-select: none;
+}
+
+.np-artist-link {
+  color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  display: inline;
+  transition: opacity 0.15s ease, color 0.15s ease;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.np-artist-link:active {
+  opacity: 0.55;
+  color: #ffffff;
+}
+
+.artist-sep {
+  color: rgba(255, 255, 255, 0.45);
+  pointer-events: none;
 }
 
 .np-meta-actions {
@@ -2576,6 +2744,10 @@ body.np-fully-open .ambient-bg {
   transform-origin: left center;
   transform: scaleX(0);
   will-change: transform;
+}
+
+.np-slider-fill.scrubber-resetting {
+  transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .np-slider-thumb {
@@ -2646,7 +2818,8 @@ body.np-fully-open .ambient-bg {
    Right Column: Apple Music Synced Lyrics with Letter-by-Letter Wave + Lift
    ========================================================================== */
 .np-right-lyrics {
-  position: relative;
+  position: absolute;
+  inset: 0;
   height: 700px;
   overflow: hidden;
   padding-left: 38px;
@@ -2659,9 +2832,16 @@ body.np-fully-open .ambient-bg {
   gap: 30px;
   padding: 210px 24px 320px 0;
   transform: translate3d(0, 0, 0);
+  opacity: 1;
   backface-visibility: hidden;
-  transition: transform 0.52s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
+  transition: transform 0.52s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, opacity;
+}
+
+.lyrics-scroll-track.lyrics-fade-out {
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.52s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .lyric-line {
@@ -2738,16 +2918,12 @@ body.np-fully-open .ambient-bg {
   color: rgba(255, 255, 255, 0.36);
 }
 
-.np-right-lyrics.hidden,
-.np-right-queue.hidden {
-  display: none !important;
-}
-
 /* ==========================================================================
    Right Column Mode B: Queue ("A continuación") + Empty State + Discovery
    ========================================================================== */
 .np-right-queue {
-  position: relative;
+  position: absolute;
+  inset: 0;
   height: 620px;
   display: flex;
   flex-direction: column;
@@ -3717,15 +3893,15 @@ body.theme-dark .banner-play-btn:hover {
 }
 
 /* ==========================================================================
-   SHIMMER SKELETON LOADERS & SMOOTH ENTRY ANIMATIONS
+   SHIMMER SKELETON LOADERS, ZERO-PRINT IMAGE REVEAL & SMOOTH ENTRY ANIMATIONS
    ========================================================================== */
 @keyframes echoShimmer {
   0% {
-    background-position: -200% 0;
+    background-position: 100% 0;
   }
 
   100% {
-    background-position: 200% 0;
+    background-position: -100% 0;
   }
 }
 
@@ -3746,13 +3922,52 @@ body.theme-dark .banner-play-btn:hover {
   animation: fadeInItem 0.24s ease both;
 }
 
+/* Zero-Print Atomic Image Reveal:
+   Images stay hidden (opacity: 0) while network packets arrive and decode on GPU,
+   then fade in as a complete frame (or appear in 0ms if already in memory cache). */
+img[data-opt-img] {
+  opacity: 0;
+  transition: opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+img[data-opt-img].img-ready {
+  opacity: 1;
+}
+
+img[data-opt-img].img-cached {
+  opacity: 1;
+  transition: none;
+}
+
+/* Ensure standalone thumbnail tags have a subtle placeholder surface while decoding */
+.chip-avatar,
+.mini-player-thumb,
+.np-queue-thumb,
+.artist-track-thumb {
+  background-color: rgba(128, 134, 142, 0.14);
+}
+
 .skeleton-shimmer {
   background: linear-gradient(110deg,
-      rgba(255, 255, 255, 0.34) 25%,
-      rgba(255, 255, 255, 0.68) 50%,
-      rgba(255, 255, 255, 0.34) 75%);
-  background-size: 200% 100%;
-  animation: echoShimmer 1.35s infinite linear;
+      rgba(255, 255, 255, 0.30) 28%,
+      rgba(255, 255, 255, 0.62) 50%,
+      rgba(255, 255, 255, 0.30) 72%);
+  background-size: 240% 100%;
+  animation: echoShimmer 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+body.theme-dark .skeleton-shimmer,
+body.artist-view-active .skeleton-shimmer,
+body.album-dark-active .skeleton-shimmer {
+  background: linear-gradient(110deg,
+      rgba(255, 255, 255, 0.06) 28%,
+      rgba(255, 255, 255, 0.15) 50%,
+      rgba(255, 255, 255, 0.06) 72%);
+  background-size: 240% 100%;
+  animation: echoShimmer 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 .skeleton-card {
@@ -3841,7 +4056,9 @@ body.theme-dark .banner-play-btn:hover {
 }
 
 body.login-view-active .bottom-dock,
-body.login-view-active #miniPlayer {
+body.login-view-active #miniPlayer,
+body.album-view-active .bottom-dock,
+body.artist-view-active .bottom-dock {
   display: none !important;
 }
 
