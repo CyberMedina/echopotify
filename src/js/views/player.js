@@ -551,19 +551,6 @@ const FAST_CONNECTOR_WORDS = new Set([
   'as', 'be', 'my', 'you', 'we', 'he', 'she', 'im', 'its'
 ]);
 
-function estimateWordSyllables(cleanWord) {
-  if (!cleanWord) return 1;
-  const lower = cleanWord.toLowerCase();
-  const vowelGroups = lower.match(/[aeiouáéíóúü]+/g);
-  if (!vowelGroups) return Math.max(1, cleanWord.length * 0.45);
-  let count = vowelGroups.length;
-  // Silent trailing 'e' in common English words (e.g. "love", "time", "make")
-  if (count > 1 && /[b-df-hj-np-tv-z]e$/.test(lower) && !/(le|re)$/.test(lower)) {
-    count -= 0.35;
-  }
-  return Math.max(1, count);
-}
-
 function cacheLyricLineOffsets() {
   const cache = state.lyricDOMCache;
   if (!cache || cache.length === 0) return;
@@ -581,40 +568,43 @@ function buildLyricsDOM(lyricsArray) {
 
   lyricsScrollTrack.innerHTML = introHtml + lyricsArray.map((line, lineIdx) => {
     const words = line.text.trim().split(/\s+/);
-    const lineDuration = Math.max(0.75, (line.end || line.start + 3.6) - line.start);
+    const lineDuration = Math.max(0.40, (line.end || line.start + 3.6) - line.start);
 
-    // 1. Detect intra-line breath pauses after commas/semicolons/periods
+    // 1. Detect intra-line breath pauses after punctuation
     const rawPauses = words.map((w, idx) => {
       if (idx === words.length - 1) return 0;
-      if (/[.;:!?\u2026—-]$/.test(w)) return 0.20;
-      if (/[,]$/.test(w)) return 0.13;
+      if (/[.;:!?\u2026—-]$/.test(w)) return 0.16;
+      if (/[,]$/.test(w)) return 0.10;
       return 0;
     });
     const totalRawPause = rawPauses.reduce((a, b) => a + b, 0);
-    const maxAllowedPause = lineDuration * 0.24;
+    const maxAllowedPause = lineDuration * 0.18;
     const pauseScale = totalRawPause > maxAllowedPause ? (maxAllowedPause / totalRawPause) : 1;
     const pauses = rawPauses.map(p => p * pauseScale);
-    const singingBudget = Math.max(0.5, lineDuration - pauses.reduce((a, b) => a + b, 0));
+    const singingBudget = Math.max(0.3, lineDuration - pauses.reduce((a, b) => a + b, 0));
 
-    // 2. Weight each word's singing duration by phonetic syllables, connector speed & phrase sustain
+    // 2. Weight each word's singing duration by syllables & phonetic articulation
     const weights = words.map((w, idx) => {
       const cleanWord = w.replace(/[^a-zA-ZáéíóúñüÁÉÍÓÚÑÜ']/g, '');
       const lowerClean = cleanWord.replace(/'/g, '').toLowerCase();
       const syllables = estimateWordSyllables(cleanWord);
-      const charFactor = Math.max(1.8, cleanWord.length) * 0.38;
-      let baseWeight = syllables * 0.72 + charFactor;
+      
+      // Base articulation budget + duration per vowel syllable
+      let weight = 0.60 + syllables * 0.85;
 
       const isLastWord = idx === words.length - 1;
       const hasPausePunct = /[,.;:!?\u2026~-]$/.test(w);
       const hasRepeatedVowel = /([aeiouáéíóú])\1/i.test(cleanWord);
 
+      // Fast functional connectors (articles, short pronouns, prepositions)
       if (FAST_CONNECTOR_WORDS.has(lowerClean) && !isLastWord && !hasPausePunct) {
-        baseWeight *= 0.64; // Singers glide quickly through short articles/prepositions
+        weight *= 0.68;
       }
-      if (isLastWord) baseWeight *= 1.58;      // Phrase-ending vocal sustain
-      if (hasPausePunct) baseWeight *= 1.28;   // Held slightly before breath
-      if (hasRepeatedVowel) baseWeight *= 1.38; // Melisma / stretched vowel
-      return baseWeight;
+      // Gentle balanced phrase-ending sustain (1.18x instead of 1.58x so earlier words aren't squished)
+      if (isLastWord) weight *= 1.18;
+      if (hasPausePunct) weight *= 1.15;
+      if (hasRepeatedVowel) weight *= 1.30;
+      return weight;
     });
 
     const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
@@ -626,8 +616,11 @@ function buildLyricsDOM(lyricsArray) {
       const wEnd = cursorSec + dur;
       cursorSec = wEnd + pauses[wIdx];
       const isLast = wIdx === words.length - 1;
-      const isHeld = dur >= 0.52 || (isLast && dur >= 0.38);
-      return `<span class="lyric-word pending" data-wstart="${wStart.toFixed(3)}" data-wend="${wEnd.toFixed(3)}" data-held="${isHeld ? '1' : '0'}" data-last="${isLast ? '1' : '0'}">${w}</span>`;
+      const cleanWord = w.replace(/[^a-zA-ZáéíóúñüÁÉÍÓÚÑÜ']/g, '');
+      const syllables = estimateWordSyllables(cleanWord);
+      const isPunchy = cleanWord.length <= 3 && syllables <= 1.1;
+      const isHeld = dur >= 0.48 || (isLast && dur >= 0.32);
+      return `<span class="lyric-word pending" data-wstart="${wStart.toFixed(3)}" data-wend="${wEnd.toFixed(3)}" data-punchy="${isPunchy ? '1' : '0'}" data-held="${isHeld ? '1' : '0'}" data-last="${isLast ? '1' : '0'}">${w}</span>`;
     }).join('');
 
     const gapAfter = (line.lineEnd || line.end) - line.end;
@@ -677,6 +670,7 @@ function buildLyricsDOM(lyricsArray) {
           wStart,
           wEnd,
           wDur: Math.max(0.08, wEnd - wStart),
+          isPunchy: wEl.getAttribute('data-punchy') === '1',
           isHeld: wEl.getAttribute('data-held') === '1',
           isLast: wEl.getAttribute('data-last') === '1',
           state: 'pending',
@@ -810,13 +804,18 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
           wObj.state = 'singing';
           wObj.el.className = wObj.isHeld ? 'lyric-word singing held' : 'lyric-word singing';
         }
-        // AMLL Soft Gradient Wipe on the single active singing word
-        const prog = Math.min(1, Math.max(0, (lyricTime - wObj.wStart) / wObj.wDur));
-        const wipeLeft = Math.round(prog * 116 - 16);
+        // Real Human Vocal Curve (Attack-Sustain):
+        // Articulation sweeps the word across the first ~72%, and the sustained vowel
+        // holds 100% lit through the final 28% of the duration so it never cuts out early!
+        const rawProg = Math.min(1, Math.max(0, (lyricTime - wObj.wStart) / wObj.wDur));
+        const attackThreshold = wObj.isPunchy ? 0.28 : 0.72;
+        const wipeProg = rawProg < attackThreshold ? (rawProg / attackThreshold) : 1.0;
+
+        const wipeLeft = Math.round(wipeProg * 114 - 14);
         if (wipeLeft !== wObj.lastWipe) {
           wObj.lastWipe = wipeLeft;
           wObj.el.style.setProperty('--wipe-left', `${wipeLeft}%`);
-          wObj.el.style.setProperty('--wipe-right', `${wipeLeft + 24}%`);
+          wObj.el.style.setProperty('--wipe-right', `${wipeLeft + 22}%`);
         }
       } else {
         if (wObj.state !== 'pending') {

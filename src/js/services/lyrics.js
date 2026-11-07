@@ -6,6 +6,21 @@
 // --------------------------------------------------------------------------
 // 5. LRCLIB SYNCED LYRICS ENGINE (APPLE MUSIC WORD-BY-WORD KARAOKE)
 // --------------------------------------------------------------------------
+const ADLIB_REGEX = /^(ey|eh|yeah|yea|uh|oh|yah|hey|mmm|mm|ok|okay|wuh|wow|ha|no|yes|baby|yo|ya|ah|ajá|aja|dile|tra|brr|prr|pa|shh|uy|ay|olé|ole|uh-huh|uh-oh)$/i;
+
+function estimateWordSyllables(cleanWord) {
+  if (!cleanWord) return 1;
+  const lower = cleanWord.toLowerCase();
+  const vowelGroups = lower.match(/[aeiouáéíóúü]+/g);
+  if (!vowelGroups) return Math.max(1, cleanWord.length * 0.45);
+  let count = vowelGroups.length;
+  // Silent trailing 'e' in common English words (e.g. "love", "time", "make")
+  if (count > 1 && /[b-df-hj-np-tv-z]e$/.test(lower) && !/(le|re)$/.test(lower)) {
+    count -= 0.35;
+  }
+  return Math.max(1, count);
+}
+
 function parseLrcToWordSync(lrcString, totalDuration) {
   const lines = lrcString.split('\n');
   const parsed = [];
@@ -39,15 +54,47 @@ function parseLrcToWordSync(lrcString, totalDuration) {
   if (parsed.length === 0) return null;
 
   for (let i = 0; i < parsed.length; i++) {
-    const nextStart = i < parsed.length - 1 ? parsed[i + 1].start : (totalDuration || parsed[i].start + 5);
-    const wordCount = parsed[i].text.split(/\s+/).filter(Boolean).length;
-    // Scale natural max singing duration to phrase length so short lines ("Oh yeah") don't drag for 6.5s
-    const naturalMaxDur = Math.min(6.4, Math.max(1.35, wordCount * 0.56 + 0.65));
-    const rawEnd = parsed[i].explicitEnd !== null
-      ? Math.min(nextStart, parsed[i].explicitEnd)
-      : Math.min(Math.max(parsed[i].start + 0.4, nextStart - 0.08), parsed[i].start + naturalMaxDur);
-    parsed[i].end = Math.max(parsed[i].start + 0.35, rawEnd);
-    parsed[i].lineEnd = nextStart;
+    const item = parsed[i];
+    const nextStart = i < parsed.length - 1 ? parsed[i + 1].start : (totalDuration || item.start + 5);
+    const gap = Math.max(0.2, nextStart - item.start);
+
+    // Clean text to analyze whether this line is an ad-lib or an ongoing verse
+    const cleanOnlyLetters = item.text.replace(/[\(\)\[\]¡!¿?.,;:]/g, '').trim();
+    const words = cleanOnlyLetters.split(/\s+/).filter(Boolean);
+    const isParenthesized = /^\(.*\)$/.test(item.text.trim());
+    const isSingleShortWord = words.length === 1 && (words[0].length <= 4 || ADLIB_REGEX.test(words[0]));
+    const isAdlibLine = isSingleShortWord || (words.length <= 2 && ADLIB_REGEX.test(words[0])) || (isParenthesized && words.length <= 3);
+
+    let naturalDur;
+    if (isAdlibLine) {
+      // Short ad-libs and interjections (e.g. "Ey", "Yeah", "Uh", "(Dile)"):
+      // Keep snappy (0.30s - 0.52s) so they never crawl in slow motion across 3s of silence
+      naturalDur = Math.min(gap - 0.08, words.length === 1 ? 0.36 : 0.54);
+      naturalDur = Math.max(0.26, naturalDur);
+    } else {
+      // Normal singing lines:
+      // In vocal tracks, lines with gap <= 4.2s flow directly into each other.
+      // Fill the vocal bridge leaving only a gentle 0.12s breath before nextStart,
+      // preventing lines from ending prematurely while the singer is still holding notes!
+      if (gap <= 4.2) {
+        naturalDur = Math.max(0.6, gap - 0.12);
+      } else {
+        // True instrumental interlude / solo gap (> 4.2s):
+        // Calculate singing phrase from syllables and phrase-ending hold, then cut cleanly
+        // so the remaining time triggers the Apple Music 3-dot interlude (• • •)
+        const totalSyllables = words.reduce((acc, w) => acc + estimateWordSyllables(w), 0);
+        const estimatedSingingTime = totalSyllables * 0.30 + words.length * 0.16 + 0.70;
+        naturalDur = Math.min(gap - 0.30, Math.min(5.8, Math.max(1.5, estimatedSingingTime)));
+      }
+    }
+
+    const rawEnd = item.explicitEnd !== null
+      ? Math.min(nextStart, item.explicitEnd)
+      : (item.start + naturalDur);
+
+    item.end = Math.max(item.start + 0.25, Math.min(nextStart - 0.06, rawEnd));
+    item.lineEnd = nextStart;
+    item.isAdlib = isAdlibLine;
   }
   return parsed;
 }
