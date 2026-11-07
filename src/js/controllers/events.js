@@ -443,10 +443,34 @@ if (artistTracklistEl) {
   });
 }
 
+// Safe Touch/Click Binder for Echo Show Silk Browser (prevents "Mostrar barra de URL" system gesture)
+function bindTouchButton(btn, callback) {
+  if (!btn) return;
+  let touchedAt = 0;
+  btn.addEventListener('touchstart', (e) => {
+    e.stopPropagation();
+    touchedAt = Date.now();
+  }, { passive: true });
+
+  btn.addEventListener('touchend', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (Date.now() - touchedAt < 650) {
+      callback(e);
+    }
+  });
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (Date.now() - touchedAt > 650) {
+      callback(e);
+    }
+  });
+}
+
 // Dedicated Lyrics Button Click Handler (Apple Music style)
 if (npToggleLyricsBtn) {
-  npToggleLyricsBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
+  bindTouchButton(npToggleLyricsBtn, (e) => {
     const hasLyrics = Boolean(state.hasValidLyrics || state.lyricsLoading);
     if (!hasLyrics) return;
 
@@ -463,8 +487,7 @@ if (npToggleLyricsBtn) {
 
 // Dedicated Queue Button Click Handler (Apple Music style)
 if (npToggleQueueBtn) {
-  npToggleQueueBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
+  bindTouchButton(npToggleQueueBtn, (e) => {
     if (state.nowPlayingMode === 'queue') {
       state.nowPlayingMode = 'centered';
       state.userForcedCentered = true;

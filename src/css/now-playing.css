@@ -100,7 +100,7 @@
 .bottom-dock {
   position: absolute;
   left: 50%;
-  bottom: 18px;
+  bottom: 26px;
   transform: translateX(-50%);
   z-index: 25;
   width: 460px;
@@ -1237,27 +1237,30 @@ body.np-fully-open .ambient-bg {
 /* Bottom-Right Apple Music Dual Pill (Letras / Cola) */
 .np-dock-controls {
   position: absolute;
-  right: 34px;
-  bottom: 26px;
+  right: 38px;
+  bottom: 60px;
   z-index: 10;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 5px 6px;
   border-radius: 99px;
-  background: rgba(0, 0, 0, 0.32);
+  background: rgba(0, 0, 0, 0.38);
   backdrop-filter: blur(24px) saturate(160%);
   -webkit-backdrop-filter: blur(24px) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 .np-dock-btn {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 8px 16px;
-  height: 42px;
+  padding: 8px 18px;
+  height: 44px;
   border-radius: 99px;
   border: 1px solid transparent;
   background: transparent;
@@ -1268,7 +1271,9 @@ body.np-fully-open .ambient-bg {
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
+  -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
   outline: none;
 }
 
