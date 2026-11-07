@@ -273,16 +273,14 @@ if (logoutBtn) {
   });
 }
 
-// Doble toque en cualquier espacio libre del fondo para entrar/salir de pantalla completa
-let lastTouchTime = 0;
-document.addEventListener('touchend', (e) => {
-  // Solo si no fue sobre un botón interactivo, input o barra de progreso
-  if (e.target.closest('button, input, .track-row, .media-card, #npScrubberTrack')) return;
-  const now = Date.now();
-  if (now - lastTouchTime < 350) {
-    toggleFullscreen();
-    lastTouchTime = 0;
-  } else {
-    lastTouchTime = now;
+// Salir de pantalla completa si el navegador quedó atrapado en dicho modo
+// (En Silk Browser / Fire OS, el modo fullscreen HTML5 es el causante del mensaje del sistema "Mostrar barra de URL" al tocar la pantalla)
+if (isFullscreenActive()) {
+  const doc = document;
+  const exitFs = doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen;
+  if (exitFs) {
+    try {
+      exitFs.call(doc).catch(() => {});
+    } catch (e) {}
   }
-});
+}

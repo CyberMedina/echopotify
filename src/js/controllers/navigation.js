@@ -10,11 +10,30 @@ function switchScreen(screenName, opts = {}) {
   const isBack = Boolean(opts.isBack);
   if (!isBack) {
     if (screenName === 'home' || screenName === 'library' || screenName === 'search' || screenName === 'login') {
-      state.navStack = [screenName];
+      state.navStack = [{ screen: screenName }];
     } else {
-      if (!Array.isArray(state.navStack)) state.navStack = ['home'];
-      if (state.navStack.length === 0 || state.navStack[state.navStack.length - 1] !== screenName) {
-        state.navStack.push(screenName);
+      if (!Array.isArray(state.navStack)) state.navStack = [{ screen: 'home' }];
+      const currentEntry = {
+        screen: screenName,
+        entityId: state.selectedEntityId,
+        artistId: state.selectedArtistId
+      };
+
+      // Si la pantalla a la que navegamos ya existe previamente en la pila (ej. Album A -> Artista -> Album A),
+      // recortar la pila hasta esa entrada para erradicar cualquier ciclo o bucle infinito de "atrás".
+      const existingIdx = state.navStack.findIndex(entry => {
+        if (!entry) return false;
+        const eScreen = typeof entry === 'string' ? entry : entry.screen;
+        if (eScreen !== screenName) return false;
+        if (screenName === 'album' && typeof entry === 'object') return entry.entityId === currentEntry.entityId;
+        if (screenName === 'artist' && typeof entry === 'object') return entry.artistId === currentEntry.artistId;
+        return true;
+      });
+
+      if (existingIdx >= 0) {
+        state.navStack = state.navStack.slice(0, existingIdx + 1);
+      } else {
+        state.navStack.push(currentEntry);
       }
     }
   }
@@ -39,7 +58,8 @@ function switchScreen(screenName, opts = {}) {
   }
 
   if (screenName === 'album') {
-    document.body.classList.add('album-view-active');
+    // Activar inmediatamente las clases del tinte para evitar parpadeos o fondo negro
+    document.body.classList.add('album-view-active', 'album-dark-active');
     document.body.classList.remove('artist-view-active');
     const currentEntity = liveCatalog.entities[state.selectedEntityId];
     if (currentEntity) {
@@ -74,11 +94,32 @@ function goBack() {
   }
 
   if (Array.isArray(state.navStack) && state.navStack.length > 1) {
-    state.navStack.pop(); // Remove current screen
-    const prevScreen = state.navStack[state.navStack.length - 1] || 'home';
+    state.navStack.pop(); // Remover la pantalla actual
+    const prev = state.navStack[state.navStack.length - 1];
+    const prevScreen = (prev && typeof prev === 'object') ? (prev.screen || 'home') : (prev || 'home');
+
+    // Restaurar los IDs de entidad/artista asociados a la pantalla anterior
+    if (prev && typeof prev === 'object') {
+      if (prevScreen === 'album' && prev.entityId) {
+        state.selectedEntityId = prev.entityId;
+        const entity = liveCatalog.entities[prev.entityId];
+        if (entity) {
+          const detailCoverEl = document.getElementById('albumDetailCover');
+          if (detailCoverEl) swapHeroImageAtomically(detailCoverEl, entity.coverLarge || entity.cover, entity.cover);
+          const titleEl = document.getElementById('albumDetailTitle');
+          if (titleEl) titleEl.textContent = entity.title || 'Álbum';
+          renderAlbumDetailArtist(entity);
+          const metaEl = document.getElementById('albumDetailMeta');
+          if (metaEl) metaEl.textContent = entity.meta || '';
+        }
+      } else if (prevScreen === 'artist' && prev.artistId) {
+        state.selectedArtistId = prev.artistId;
+      }
+    }
+
     switchScreen(prevScreen, { isBack: true });
   } else {
-    state.navStack = ['home'];
+    state.navStack = [{ screen: 'home' }];
     switchScreen('home', { isBack: true });
   }
 }

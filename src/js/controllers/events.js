@@ -176,11 +176,35 @@ document.addEventListener('click', async (e) => {
   }
 });
 
+// Safe Touch/Click Binder for Echo Show Silk Browser (prevents "Mostrar barra de URL" system gesture)
+function bindTouchButton(btn, callback) {
+  if (!btn) return;
+  let touchedAt = 0;
+  btn.addEventListener('touchstart', (e) => {
+    e.stopPropagation();
+    touchedAt = Date.now();
+  }, { passive: true });
+
+  btn.addEventListener('touchend', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (Date.now() - touchedAt < 650) {
+      callback(e);
+    }
+  });
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (Date.now() - touchedAt > 650) {
+      callback(e);
+    }
+  });
+}
+
 // Back Button in Album View
 const albumBackBtn = document.getElementById('albumBackBtn');
 if (albumBackBtn) {
-  albumBackBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
+  bindTouchButton(albumBackBtn, (e) => {
     goBack();
   });
 }
@@ -244,8 +268,7 @@ document.getElementById('albumPlayAllBtn').addEventListener('click', () => {
 // Artist View Navigation & Buttons
 const artistBackBtn = document.getElementById('artistBackBtn');
 if (artistBackBtn) {
-  artistBackBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
+  bindTouchButton(artistBackBtn, (e) => {
     goBack();
   });
 }
@@ -368,9 +391,117 @@ if (artistFollowBtn) {
   });
 }
 
-// Click on Populares track
+// Handler for selecting an artist popular track
+function handleArtistTrackSelect(item) {
+  if (!item) return;
+  const idx = parseInt(item.getAttribute('data-artist-track-index'), 10) || 0;
+  const artist = liveCatalog.entities[state.selectedArtistId] || {};
+  const tracks = (artist && Array.isArray(artist.tracks)) ? artist.tracks : [];
+
+  const trackId = item.getAttribute('data-track-id') || (tracks[idx] ? tracks[idx].id : '');
+  const trackUri = item.getAttribute('data-track-uri') || (tracks[idx] ? tracks[idx].uri : '') || (trackId ? `spotify:track:${trackId}` : '');
+  const trackTitle = item.getAttribute('data-track-title') || (tracks[idx] ? tracks[idx].title : '');
+  const trackArtist = item.getAttribute('data-track-artist') || (tracks[idx] ? tracks[idx].artist : '') || artist.name || artist.title || 'Artista';
+  const trackThumb = item.getAttribute('data-track-thumb') || (tracks[idx] ? tracks[idx].thumb : '') || artist.cover || '';
+  const trackCover = item.getAttribute('data-track-cover') || (tracks[idx] ? tracks[idx].coverLarge || tracks[idx].cover : '') || trackThumb;
+  const trackDuration = parseInt(item.getAttribute('data-track-duration'), 10) || (tracks[idx] ? tracks[idx].duration : 210);
+
+  if (!trackTitle && !trackUri) return;
+
+  document.querySelectorAll('.artist-track-item').forEach((el, i) => {
+    el.classList.toggle('playing', i === idx);
+  });
+
+  const upcoming = tracks.slice(idx + 1).map(t => ({
+    id: t.id || t.uri,
+    uri: t.uri,
+    name: t.title,
+    artist: t.artist || artist.name || artist.title,
+    album: t.album || 'Top Tracks',
+    thumb: t.thumb || t.cover || artist.cover,
+    cover: t.cover || artist.cover,
+    coverLarge: t.coverLarge || t.cover || artist.cover,
+    duration: t.duration || 210
+  }));
+
+  state.singleTrackPlayback = false;
+  state.contextUpcomingTracks = upcoming;
+  const cleanId = cleanTrackId(trackId || trackUri);
+
+  lockUserPlaybackIntent('track_switch', {
+    targetId: cleanId || trackId,
+    targetTitle: trackTitle,
+    targetIsPlaying: true
+  });
+
+  applyTrackToUI({
+    id: cleanId || trackId || trackUri || trackTitle,
+    uri: trackUri,
+    name: trackTitle,
+    artist: trackArtist,
+    album: (tracks[idx] && tracks[idx].album) ? tracks[idx].album : 'Top Tracks',
+    thumb: trackThumb,
+    cover: trackCover,
+    coverLarge: trackCover,
+    duration: trackDuration
+  }, 0, true);
+
+  openNowPlaying();
+
+  // Reproducción nativa de Spotify: Usar contexto de artista con offset de URI (evita error 403 Restriction Violated)
+  const spotifyArtistId = artist.spotifyId || (typeof state.selectedArtistId === 'string' && /^[0-9A-Za-z]{22}$/.test(state.selectedArtistId) ? state.selectedArtistId : null);
+  if (spotifyArtistId && trackUri) {
+    playSpotifyContext(`spotify:artist:${spotifyArtistId}`, { uri: trackUri }, upcoming).then(res => {
+      if (res && res.error) {
+        const uris = tracks.slice(idx).map(t => t.uri).filter(Boolean);
+        if (uris.length > 0) {
+          playSpotifyUris(uris, upcoming);
+        } else if (trackUri) {
+          playSpotifyUris([trackUri], upcoming);
+        }
+      }
+    });
+  } else {
+    const uris = tracks.slice(idx).map(t => t.uri).filter(Boolean);
+    if (uris.length > 0) {
+      playSpotifyUris(uris, upcoming);
+    } else if (trackUri) {
+      playSpotifyUris([trackUri], upcoming);
+    }
+  }
+}
+
+// Click & Touch on Populares track
 const artistTracklistEl = document.getElementById('artistTracklist');
 if (artistTracklistEl) {
+  let touchStartT = 0;
+  let touchStartY = 0;
+  let touchMoved = false;
+
+  artistTracklistEl.addEventListener('touchstart', (e) => {
+    if (e.touches && e.touches.length === 1) {
+      touchStartT = Date.now();
+      touchStartY = e.touches[0].clientY;
+      touchMoved = false;
+    }
+  }, { passive: true });
+
+  artistTracklistEl.addEventListener('touchmove', (e) => {
+    if (e.touches && e.touches.length === 1 && Math.abs(e.touches[0].clientY - touchStartY) > 12) {
+      touchMoved = true;
+    }
+  }, { passive: true });
+
+  artistTracklistEl.addEventListener('touchend', (e) => {
+    if (touchMoved || Date.now() - touchStartT > 650) return;
+    const item = e.target.closest('.artist-track-item');
+    if (item && !e.target.closest('.artist-track-like-btn, .artist-track-more-btn')) {
+      e.stopPropagation();
+      e.preventDefault();
+      handleArtistTrackSelect(item);
+    }
+  });
+
   artistTracklistEl.addEventListener('click', (e) => {
     const likeBtn = e.target.closest('.artist-track-like-btn');
     if (likeBtn) {
@@ -385,86 +516,7 @@ if (artistTracklistEl) {
 
     const item = e.target.closest('.artist-track-item');
     if (!item) return;
-    if (e.target.closest('.artist-track-more-btn')) return;
-
-    const idx = parseInt(item.getAttribute('data-artist-track-index'), 10) || 0;
-    const artist = liveCatalog.entities[state.selectedArtistId] || {};
-    const tracks = (artist && Array.isArray(artist.tracks)) ? artist.tracks : [];
-
-    const trackId = item.getAttribute('data-track-id') || (tracks[idx] ? tracks[idx].id : '');
-    const trackUri = item.getAttribute('data-track-uri') || (tracks[idx] ? tracks[idx].uri : '') || (trackId ? `spotify:track:${trackId}` : '');
-    const trackTitle = item.getAttribute('data-track-title') || (tracks[idx] ? tracks[idx].title : '');
-    const trackArtist = item.getAttribute('data-track-artist') || (tracks[idx] ? tracks[idx].artist : '') || artist.name || artist.title || 'Artista';
-    const trackThumb = item.getAttribute('data-track-thumb') || (tracks[idx] ? tracks[idx].thumb : '') || artist.cover || '';
-    const trackCover = item.getAttribute('data-track-cover') || (tracks[idx] ? tracks[idx].coverLarge || tracks[idx].cover : '') || trackThumb;
-    const trackDuration = parseInt(item.getAttribute('data-track-duration'), 10) || (tracks[idx] ? tracks[idx].duration : 210);
-
-    if (!trackTitle && !trackUri) return;
-
-    document.querySelectorAll('.artist-track-item').forEach((el, i) => {
-      el.classList.toggle('playing', i === idx);
-    });
-
-    const upcoming = tracks.slice(idx + 1).map(t => ({
-      id: t.id || t.uri,
-      uri: t.uri,
-      name: t.title,
-      artist: t.artist || artist.name || artist.title,
-      album: t.album || 'Top Tracks',
-      thumb: t.thumb || t.cover || artist.cover,
-      cover: t.cover || artist.cover,
-      coverLarge: t.coverLarge || t.cover || artist.cover,
-      duration: t.duration || 210
-    }));
-
-    state.singleTrackPlayback = false;
-    state.contextUpcomingTracks = upcoming;
-    const cleanId = cleanTrackId(trackId || trackUri);
-    applyTrackToUI({
-      id: cleanId || trackId || trackUri || trackTitle,
-      uri: trackUri,
-      name: trackTitle,
-      artist: trackArtist,
-      album: (tracks[idx] && tracks[idx].album) ? tracks[idx].album : 'Top Tracks',
-      thumb: trackThumb,
-      cover: trackCover,
-      coverLarge: trackCover,
-      duration: trackDuration
-    }, 0, true);
-
-    openNowPlaying();
-
-    const uris = tracks.slice(idx).map(t => t.uri).filter(Boolean);
-    if (uris.length > 0) {
-      playSpotifyUris(uris, upcoming);
-    } else if (trackUri) {
-      playSpotifyUris([trackUri], upcoming);
-    }
-  });
-}
-
-// Safe Touch/Click Binder for Echo Show Silk Browser (prevents "Mostrar barra de URL" system gesture)
-function bindTouchButton(btn, callback) {
-  if (!btn) return;
-  let touchedAt = 0;
-  btn.addEventListener('touchstart', (e) => {
-    e.stopPropagation();
-    touchedAt = Date.now();
-  }, { passive: true });
-
-  btn.addEventListener('touchend', (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (Date.now() - touchedAt < 650) {
-      callback(e);
-    }
-  });
-
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (Date.now() - touchedAt > 650) {
-      callback(e);
-    }
+    handleArtistTrackSelect(item);
   });
 }
 

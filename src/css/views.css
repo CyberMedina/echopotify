@@ -624,20 +624,11 @@ body.artist-view-active .ambient-bg {
     linear-gradient(180deg, var(--album-bg-top) 0%, var(--album-bg-mid) 38%, #0d1210 80%, #070a08 100%) !important;
 }
 
-body.artist-view-active .bottom-dock,
 body.artist-view-active .mini-player-v1 {
   background: rgba(14, 18, 16, 0.74);
   border-color: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  color: #ffffff;
-}
-
-body.artist-view-active .dock-tab {
-  color: rgba(255, 255, 255, 0.55);
-}
-
-body.artist-view-active .dock-tab.active {
   color: #ffffff;
 }
 

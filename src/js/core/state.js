@@ -70,7 +70,7 @@ const liveCatalog = {
 
 const state = {
   activeScreen: 'home',
-  navStack: ['home'],
+  navStack: [{ screen: 'home' }],
   selectedEntityId: null,
   selectedArtistId: null,
   artistShowingAllTracks: false,

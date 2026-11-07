@@ -265,13 +265,19 @@ async function playSpotifyContext(contextUri, offsetPosition = 0, upcomingSlice 
   const devQ = await getTargetDeviceQuery();
   if (cmdSeq !== playbackActionSeq) return null;
   const body = { context_uri: contextUri };
-  if (offsetPosition > 0) {
+  if (offsetPosition && typeof offsetPosition === 'object') {
+    body.offset = offsetPosition;
+  } else if (typeof offsetPosition === 'number' && offsetPosition > 0) {
     body.offset = { position: offsetPosition };
   }
   const playRes = await spotifyFetch(`/me/player/play${devQ}`, {
     method: 'PUT',
     body: JSON.stringify(body)
   });
+  if (playRes && playRes.error) {
+    console.warn('[Spotify Play Context Error]', playRes.error);
+    return playRes;
+  }
   setTimeout(pollSpotifyCurrentPlayback, 900);
   return playRes;
 }
@@ -286,11 +292,26 @@ async function playSpotifyUris(urisArray, upcomingSlice = []) {
     state.currentTimeSec = 0;
   }
   const devQ = await getTargetDeviceQuery();
-  if (cmdSeq !== playbackActionSeq) return;
-  await spotifyFetch(`/me/player/play${devQ}`, {
+  if (cmdSeq !== playbackActionSeq) return null;
+  const playRes = await spotifyFetch(`/me/player/play${devQ}`, {
     method: 'PUT',
     body: JSON.stringify({ uris: urisArray })
   });
+
+  // Si Spotify rechaza la lista masiva con error 403 (Restriction Violated), reintentar inmediatamente con el URI individual de la pista
+  if (playRes && playRes.error && Array.isArray(urisArray) && urisArray.length > 1 && urisArray[0]) {
+    console.warn('[Spotify Play Uris Error, retrying single URI]', playRes.error);
+    await spotifyFetch(`/me/player/play${devQ}`, {
+      method: 'PUT',
+      body: JSON.stringify({ uris: [urisArray[0]] })
+    });
+  }
+
   setTimeout(pollSpotifyCurrentPlayback, 900);
+  return playRes;
+}
+
+async function playSpotifyTrackUri(trackUri, upcomingSlice = []) {
+  return playSpotifyUris([trackUri], upcomingSlice);
 }
 
