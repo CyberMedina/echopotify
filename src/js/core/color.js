@@ -55,7 +55,7 @@ function applyExtractedPaletteData(palette, applyToLightBg = false) {
   }
 
   // Aplicar a la vista de detalle de Álbum / Artista
-  if (state.selectedEntityId === 'liked_songs' || (liveCatalog.entities[state.selectedEntityId] && liveCatalog.entities[state.selectedEntityId].type === 'liked')) {
+  if (state.activeScreen === 'album' && (state.selectedEntityId === 'liked_songs' || (liveCatalog.entities[state.selectedEntityId] && liveCatalog.entities[state.selectedEntityId].type === 'liked'))) {
     applyNeutralLikedTheme();
     return;
   }
@@ -96,6 +96,9 @@ function applyExtractedPaletteData(palette, applyToLightBg = false) {
     if (state.activeScreen === 'album') {
       document.body.classList.add('album-dark-active');
       document.body.classList.remove('album-light-active');
+    }
+    if (typeof uiLog === 'function') {
+      uiLog('TINT', `Applied dark palette top=rgb(${topRgb.join(',')}) screen=${state.activeScreen}`);
     }
   } else {
     const isLightAlbum = avgLum >= 148;
@@ -147,115 +150,170 @@ function applyExtractedPaletteData(palette, applyToLightBg = false) {
       document.body.classList.toggle('album-dark-active', !isLightAlbum);
       document.body.classList.toggle('album-light-active', isLightAlbum);
     }
+    if (typeof uiLog === 'function') {
+      uiLog('TINT', `Applied ${isLightAlbum ? 'light' : 'dark'} palette dom=rgb(${dom.join(',')}) screen=${state.activeScreen}`);
+    }
   }
 }
 
-function extractDynamicPaletteFromCover(imgUrl, applyToLightBg = false) {
-  if (!imgUrl) return;
+function computePaletteFromImageElement(img) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 16;
+  canvas.height = 16;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, 16, 16);
+  const d = ctx.getImageData(0, 0, 16, 16).data;
 
-  // Optimización: si ya tenemos esta carátula procesada en caché, aplicar inmediatamente (0ms)
-  if (applyToLightBg) {
-    if (lastAlbumPaletteCoverUrl === imgUrl && paletteCache.has(imgUrl)) {
-      applyExtractedPaletteData(paletteCache.get(imgUrl), true);
-      return;
+  function sampleArea(x0, y0, w, h) {
+    let r = 0, g = 0, b = 0, count = 0;
+    for (let y = y0; y < y0 + h; y++) {
+      for (let x = x0; x < x0 + w; x++) {
+        const i = (y * 16 + x) * 4;
+        r += d[i];
+        g += d[i + 1];
+        b += d[i + 2];
+        count++;
+      }
     }
+    return [Math.round(r / count), Math.round(g / count), Math.round(b / count)];
+  }
+
+  const q1 = sampleArea(1, 1, 6, 6);
+  const q2 = sampleArea(8, 1, 6, 6);
+  const q3 = sampleArea(1, 8, 6, 6);
+  const q4 = sampleArea(8, 8, 6, 6);
+
+  function toLavaRgbTuple(rgb, scale, sat = 1.85) {
+    const avg = (rgb[0] + rgb[1] + rgb[2]) / 3;
+    let r = (avg + (rgb[0] - avg) * sat) * scale;
+    let g = (avg + (rgb[1] - avg) * sat) * scale;
+    let b = (avg + (rgb[2] - avg) * sat) * scale;
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    if (lum < 34 && scale > 0.35) {
+      const lift = 34 - lum;
+      r += lift * 0.8;
+      g += lift * 0.8;
+      b += lift * 0.8;
+    }
+    r = Math.min(245, Math.max(14, Math.round(r)));
+    g = Math.min(245, Math.max(14, Math.round(g)));
+    b = Math.min(245, Math.max(14, Math.round(b)));
+    return [r, g, b];
+  }
+
+  const lavaQuad = [
+    toLavaRgbTuple(q1, 0.78, 1.95),
+    toLavaRgbTuple(q2, 0.56, 1.80),
+    toLavaRgbTuple(q3, 0.72, 1.90),
+    toLavaRgbTuple(q4, 0.30, 1.65)
+  ];
+
+  const quads = [q1, q2, q3, q4];
+  quads.sort((a, b) => {
+    const satA = Math.max(a[0], a[1], a[2]) - Math.min(a[0], a[1], a[2]);
+    const satB = Math.max(b[0], b[1], b[2]) - Math.min(b[0], b[1], b[2]);
+    return satB - satA;
+  });
+  const dom = quads[0];
+  const sec = quads[1] || quads[0];
+  const avgLum = (
+    (0.299 * q1[0] + 0.587 * q1[1] + 0.114 * q1[2]) +
+    (0.299 * q2[0] + 0.587 * q2[1] + 0.114 * q2[2]) +
+    (0.299 * q3[0] + 0.587 * q3[1] + 0.114 * q3[2]) +
+    (0.299 * q4[0] + 0.587 * q4[1] + 0.114 * q4[2])
+  ) / 4;
+
+  return { lavaQuad, dom, sec, avgLum };
+}
+
+function storePaletteInCache(primaryUrl, altUrls, paletteData) {
+  if (!paletteData) return;
+  if (primaryUrl) paletteCache.set(primaryUrl, paletteData);
+  if (Array.isArray(altUrls)) {
+    altUrls.forEach(u => {
+      if (u && typeof u === 'string') paletteCache.set(u, paletteData);
+    });
+  }
+}
+
+function extractDynamicPaletteFromCover(imgUrl, applyToLightBg = false, altUrls = []) {
+  if (!imgUrl || imgUrl.startsWith('data:image')) return false;
+
+  if (applyToLightBg) {
     lastAlbumPaletteCoverUrl = imgUrl;
   } else {
-    if (lastTrackPaletteCoverUrl === imgUrl && paletteCache.has(imgUrl)) {
-      applyExtractedPaletteData(paletteCache.get(imgUrl), false);
-      return;
-    }
     lastTrackPaletteCoverUrl = imgUrl;
   }
 
-  if (paletteCache.has(imgUrl)) {
-    applyExtractedPaletteData(paletteCache.get(imgUrl), applyToLightBg);
-    return;
+  // 1. Caché en memoria (0ms instantáneo)
+  const candidates = [imgUrl, ...(Array.isArray(altUrls) ? altUrls : [])].filter(Boolean);
+  for (const cand of candidates) {
+    if (paletteCache.has(cand)) {
+      const cached = paletteCache.get(cand);
+      storePaletteInCache(imgUrl, altUrls, cached);
+      if (typeof uiLog === 'function') uiLog('TINT', `Cache HIT 0ms (${cand.slice(-12)})`);
+      applyExtractedPaletteData(cached, applyToLightBg);
+      return true;
+    }
   }
 
-  const img = new Image();
-  img.crossOrigin = 'Anonymous';
-  img.onload = function () {
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = 16;
-      canvas.height = 16;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, 16, 16);
-      const d = ctx.getImageData(0, 0, 16, 16).data;
-
-      function sampleArea(x0, y0, w, h) {
-        let r = 0, g = 0, b = 0, count = 0;
-        for (let y = y0; y < y0 + h; y++) {
-          for (let x = x0; x < x0 + w; x++) {
-            const i = (y * 16 + x) * 4;
-            r += d[i];
-            g += d[i + 1];
-            b += d[i + 2];
-            count++;
-          }
+  // 2. Extracción síncrona en 0ms desde cualquier <img> ya decodificado en el DOM
+  if (document.images) {
+    for (let i = 0; i < document.images.length; i++) {
+      const domImg = document.images[i];
+      if (domImg && domImg.complete && domImg.naturalWidth > 0 && candidates.includes(domImg.src)) {
+        try {
+          const paletteData = computePaletteFromImageElement(domImg);
+          storePaletteInCache(imgUrl, altUrls, paletteData);
+          if (typeof uiLog === 'function') uiLog('TINT', `DOM SYNC 0ms (${domImg.src.slice(-12)})`);
+          applyExtractedPaletteData(paletteData, applyToLightBg);
+          return true;
+        } catch (err) {
+          // Si el <img> fue cacheado sin CORS previamente, continuará al paso 3 con ?cors=1
         }
-        return [Math.round(r / count), Math.round(g / count), Math.round(b / count)];
       }
+    }
+  }
 
-      // Extract genuine 4-quadrant photo tint directly from the album artwork
-      const q1 = sampleArea(1, 1, 6, 6);
-      const q2 = sampleArea(8, 1, 6, 6);
-      const q3 = sampleArea(1, 8, 6, 6);
-      const q4 = sampleArea(8, 8, 6, 6);
-
-      // Boost saturation & maintain luminous depth for Apple Music Liquid Lava Blobs
-      function toLavaRgbTuple(rgb, scale, sat = 1.85) {
-        const avg = (rgb[0] + rgb[1] + rgb[2]) / 3;
-        let r = (avg + (rgb[0] - avg) * sat) * scale;
-        let g = (avg + (rgb[1] - avg) * sat) * scale;
-        let b = (avg + (rgb[2] - avg) * sat) * scale;
-        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        if (lum < 34 && scale > 0.35) {
-          const lift = 34 - lum;
-          r += lift * 0.8;
-          g += lift * 0.8;
-          b += lift * 0.8;
+  // 3. Carga asíncrona con protección contra condición de carrera y bypass de caché sin CORS
+  const startMs = performance.now();
+  function loadWithCors(targetSrc, isRetry) {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function () {
+      try {
+        const paletteData = computePaletteFromImageElement(img);
+        storePaletteInCache(imgUrl, altUrls, paletteData);
+        const dt = Math.round(performance.now() - startMs);
+        // Solo aplicar si sigue siendo la portada activa solicitada
+        const isStillCurrent = applyToLightBg
+          ? (lastAlbumPaletteCoverUrl === imgUrl || candidates.includes(lastAlbumPaletteCoverUrl))
+          : (lastTrackPaletteCoverUrl === imgUrl || candidates.includes(lastTrackPaletteCoverUrl));
+        if (typeof uiLog === 'function') {
+          uiLog('TINT', `Async load +${dt}ms (${imgUrl.slice(-12)}) active=${isStillCurrent}`);
         }
-        r = Math.min(245, Math.max(14, Math.round(r)));
-        g = Math.min(245, Math.max(14, Math.round(g)));
-        b = Math.min(245, Math.max(14, Math.round(b)));
-        return [r, g, b];
+        if (isStillCurrent) {
+          applyExtractedPaletteData(paletteData, applyToLightBg);
+        }
+      } catch (e) {
+        if (!isRetry) {
+          const sep = imgUrl.includes('?') ? '&' : '?';
+          loadWithCors(`${imgUrl}${sep}cors=1`, true);
+        }
       }
+    };
+    img.onerror = function () {
+      if (!isRetry) {
+        const sep = imgUrl.includes('?') ? '&' : '?';
+        loadWithCors(`${imgUrl}${sep}cors=1`, true);
+      } else if (typeof uiLog === 'function') {
+        uiLog('ERR', `Tint image load failed: ${imgUrl.slice(-16)}`);
+      }
+    };
+    img.src = targetSrc;
+  }
 
-      const lavaQuad = [
-        toLavaRgbTuple(q1, 0.78, 1.95),
-        toLavaRgbTuple(q2, 0.56, 1.80),
-        toLavaRgbTuple(q3, 0.72, 1.90),
-        toLavaRgbTuple(q4, 0.30, 1.65)
-      ];
-
-      const quads = [q1, q2, q3, q4];
-      quads.sort((a, b) => {
-        const satA = Math.max(a[0], a[1], a[2]) - Math.min(a[0], a[1], a[2]);
-        const satB = Math.max(b[0], b[1], b[2]) - Math.min(b[0], b[1], b[2]);
-        return satB - satA;
-      });
-      const dom = quads[0];
-      const sec = quads[1] || quads[0];
-      const avgLum = (
-        (0.299 * q1[0] + 0.587 * q1[1] + 0.114 * q1[2]) +
-        (0.299 * q2[0] + 0.587 * q2[1] + 0.114 * q2[2]) +
-        (0.299 * q3[0] + 0.587 * q3[1] + 0.114 * q3[2]) +
-        (0.299 * q4[0] + 0.587 * q4[1] + 0.114 * q4[2])
-      ) / 4;
-
-      const paletteData = {
-        lavaQuad,
-        dom,
-        sec,
-        avgLum
-      };
-
-      paletteCache.set(imgUrl, paletteData);
-      applyExtractedPaletteData(paletteData, applyToLightBg);
-    } catch (e) { }
-  };
-  img.src = imgUrl;
+  loadWithCors(imgUrl, false);
+  return false;
 }
 

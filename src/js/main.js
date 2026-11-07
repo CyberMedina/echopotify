@@ -167,6 +167,9 @@ function syncFullscreenSwitchUI() {
     sw.classList.toggle('active', isFs);
     sw.setAttribute('aria-checked', isFs ? 'true' : 'false');
   }
+  if (typeof uiLog === 'function') {
+    uiLog('FS', `fullscreenchange -> active=${isFs} (${window.innerWidth}x${window.innerHeight})`);
+  }
 }
 
 function toggleFullscreen() {
@@ -176,18 +179,27 @@ function toggleFullscreen() {
   const exitFs = doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen;
 
   const isFs = isFullscreenActive();
+  if (typeof uiLog === 'function') {
+    uiLog('FS', `toggleFullscreen() solicitado (actual=${isFs})`);
+  }
 
   if (!isFs) {
     if (requestFs) {
       requestFs.call(docEl)
         .then(() => syncFullscreenSwitchUI())
-        .catch(err => console.warn('Error fullscreen:', err));
+        .catch(err => {
+          console.warn('Error fullscreen:', err);
+          if (typeof uiLog === 'function') uiLog('FS', `Error entrar FS: ${err.message || err}`);
+        });
     }
   } else {
     if (exitFs) {
       exitFs.call(doc)
         .then(() => syncFullscreenSwitchUI())
-        .catch(err => console.warn('Error exit fullscreen:', err));
+        .catch(err => {
+          console.warn('Error exit fullscreen:', err);
+          if (typeof uiLog === 'function') uiLog('FS', `Error salir FS: ${err.message || err}`);
+        });
     }
   }
 }
@@ -273,14 +285,61 @@ if (logoutBtn) {
   });
 }
 
-// Salir de pantalla completa si el navegador quedó atrapado en dicho modo
-// (En Silk Browser / Fire OS, el modo fullscreen HTML5 es el causante del mensaje del sistema "Mostrar barra de URL" al tocar la pantalla)
-if (isFullscreenActive()) {
-  const doc = document;
-  const exitFs = doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen;
-  if (exitFs) {
-    try {
-      exitFs.call(doc).catch(() => {});
-    } catch (e) {}
+// --------------------------------------------------------------------------
+// ON-SCREEN DIAGNOSTIC LOGGER WIRING (Echo Show 8 / Silk Browser)
+// --------------------------------------------------------------------------
+(function initOnScreenDiagnosticLogger() {
+  const toggleBtn = document.getElementById('debugLogToggleBtn');
+  const panel = document.getElementById('debugLogPanel');
+  const pauseBtn = document.getElementById('debugLogPauseBtn');
+  const clearBtn = document.getElementById('debugLogClearBtn');
+  const closeBtn = document.getElementById('debugLogCloseBtn');
+
+  if (toggleBtn && panel) {
+    toggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      panel.classList.toggle('open');
+      if (panel.classList.contains('open') && typeof renderDebugLogEntries === 'function') {
+        renderDebugLogEntries();
+      }
+    });
   }
-}
+  if (closeBtn && panel) {
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      panel.classList.remove('open');
+    });
+  }
+  if (clearBtn) {
+    clearBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (Array.isArray(window._echoLogs)) window._echoLogs.length = 0;
+      if (typeof renderDebugLogEntries === 'function') renderDebugLogEntries();
+    });
+  }
+  if (pauseBtn) {
+    pauseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window._echoLogsPaused = !window._echoLogsPaused;
+      pauseBtn.classList.toggle('active', window._echoLogsPaused);
+      pauseBtn.textContent = window._echoLogsPaused ? 'Reanudar' : 'Pausar';
+      if (!window._echoLogsPaused && typeof renderDebugLogEntries === 'function') {
+        renderDebugLogEntries();
+      }
+    });
+  }
+
+  // Registrar toques/clics globales en botones/tarjetas para diagnosticar eventos en el Echo Show
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.closest && e.target.closest('#debugLogPanel, #debugLogToggleBtn')) return;
+    const btn = e.target && e.target.closest ? e.target.closest('button, [data-open-entity], [data-nav], .artist-track-item, .track-row, .album-artist-link') : null;
+    if (btn && typeof uiLog === 'function') {
+      const id = btn.id ? `#${btn.id}` : (btn.getAttribute('data-open-entity') || btn.getAttribute('data-nav') || btn.className.split(' ')[0] || btn.tagName);
+      uiLog('TOUCH', `click en ${id} (y=${Math.round(e.clientY)}, fs=${isFullscreenActive()})`);
+    }
+  }, true);
+
+  if (typeof uiLog === 'function') {
+    uiLog('BOOT', `App v3.6 lista | viewport=${window.innerWidth}x${window.innerHeight} | fs=${isFullscreenActive()}`);
+  }
+})();

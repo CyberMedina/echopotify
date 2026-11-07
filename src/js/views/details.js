@@ -302,17 +302,12 @@ async function openArtistDetail(entityId, artistHint = null) {
   const listenersEl = document.getElementById('artistHeroListeners');
   if (listenersEl) listenersEl.textContent = artist.listeners || 'Oyentes mensuales en Spotify';
 
-  // Dynamic tint extraction from photo if available
-  if (artist.cover && !artist.cover.startsWith('data:image')) {
-    extractDynamicPaletteFromCover(artist.cover, true);
-  }
-
   // Default tab: Inicio
   switchArtistTab('inicio');
   state.artistShowingAllTracks = false;
   updateArtistSeeMoreButton(false);
 
-  // Switch view to artist
+  // Switch view to artist (extracts palette synchronously from cover/coverLarge or preserves previous tint until API loads)
   switchScreen('artist');
 
   // Populate Information Tab
@@ -413,7 +408,7 @@ async function openArtistDetail(entityId, artistHint = null) {
               swapHeroImageAtomically(avatarEl, freshLarge, freshMed);
               avatarEl.style.opacity = '1';
             }
-            extractDynamicPaletteFromCover(freshMed, true);
+            extractDynamicPaletteFromCover(freshMed, true, [freshMed, freshLarge]);
           }
         }
         if (profileRes.followers && typeof profileRes.followers.total === 'number') {
@@ -573,11 +568,7 @@ async function openEntityDetail(entityId) {
   renderAlbumDetailArtist(entity);
   document.getElementById('albumDetailMeta').textContent = entity.meta || '';
 
-  if (entityId === 'liked_songs' || entity.type === 'liked') {
-    applyNeutralLikedTheme();
-  } else {
-    extractDynamicPaletteFromCover(entity.cover, true);
-  }
+  // switchScreen('album') sets state.activeScreen='album' and extracts palette synchronously (0ms) from cached DOM <img> or paletteCache
   switchScreen('album');
 
   const tracklistEl = document.getElementById('albumTracklistContainer');
@@ -596,7 +587,7 @@ async function openEntityDetail(entityId) {
             entity.cover = freshMed;
             entity.coverLarge = freshLarge;
             if (detailCoverEl) swapHeroImageAtomically(detailCoverEl, freshLarge, freshMed);
-            extractDynamicPaletteFromCover(freshMed, true);
+            extractDynamicPaletteFromCover(freshMed, true, [freshMed, freshLarge]);
             document.querySelectorAll(`[data-open-entity="${entity.id}"] img, [data-entity-id="${entity.id}"] img`).forEach(img => {
               swapHeroImageAtomically(img, freshMed, freshMed);
             });
@@ -636,7 +627,7 @@ async function openEntityDetail(entityId) {
               entity.cover = firstWithCover.cover;
               entity.coverLarge = firstWithCover.coverLarge || firstWithCover.cover;
               if (detailCoverEl) swapHeroImageAtomically(detailCoverEl, entity.coverLarge, entity.cover);
-              extractDynamicPaletteFromCover(entity.cover, true);
+              extractDynamicPaletteFromCover(entity.cover, true, [entity.cover, entity.coverLarge]);
               document.querySelectorAll(`[data-open-entity="${entity.id}"] img, [data-entity-id="${entity.id}"] img`).forEach(img => {
                 swapHeroImageAtomically(img, entity.cover, entity.cover);
               });

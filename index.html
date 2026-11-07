@@ -12,10 +12,10 @@
   <link rel="preconnect" href="https://api.spotify.com" crossorigin />
   <link rel="dns-prefetch" href="https://i.scdn.co" />
   <link rel="dns-prefetch" href="https://mosaic.scdn.co" />
-  <link rel="stylesheet" href="src/css/base.css?v=3.4" />
-  <link rel="stylesheet" href="src/css/views.css?v=3.4" />
-  <link rel="stylesheet" href="src/css/now-playing.css?v=3.4" />
-  <link rel="stylesheet" href="src/css/theme-modals.css?v=3.4" />
+  <link rel="stylesheet" href="src/css/base.css?v=3.6" />
+  <link rel="stylesheet" href="src/css/views.css?v=3.6" />
+  <link rel="stylesheet" href="src/css/now-playing.css?v=3.6" />
+  <link rel="stylesheet" href="src/css/theme-modals.css?v=3.6" />
   <script src="https://cdn.html.games.alexa.a2z.com/alexa-html/latest/alexa-html.js"></script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 </head>
@@ -136,7 +136,7 @@
                 <polyline points="15 18 9 12 15 6"></polyline>
               </svg>
             </button>
-            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'/>" alt="Album Cover" class="album-hero-cover" id="albumDetailCover" decoding="async" />
+            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'/>" alt="Album Cover" class="album-hero-cover" id="albumDetailCover" crossorigin="anonymous" decoding="async" />
             <h1 class="album-hero-title" id="albumDetailTitle">Album</h1>
             <div class="album-hero-artist" id="albumDetailArtist">Artist</div>
             <div class="album-hero-meta" id="albumDetailMeta"></div>
@@ -191,7 +191,7 @@
 
         <!-- Artist Hero Section -->
         <div class="artist-hero-row">
-          <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'/>" alt="Artist Avatar" class="artist-hero-avatar" id="artistHeroAvatar" decoding="async" />
+          <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'/>" alt="Artist Avatar" class="artist-hero-avatar" id="artistHeroAvatar" crossorigin="anonymous" decoding="async" />
           <div class="artist-hero-info">
             <div class="artist-verified-pill" id="artistVerifiedBadge">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="#3d91f4">
@@ -419,7 +419,7 @@
          ================================================================== -->
     <div class="mini-player-v1" id="miniPlayer" title="Tap to open Apple Music Now Playing & Lyrics" style="display:none;">
       <div class="mini-player-left">
-        <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'/>" alt="Now Playing" class="mini-player-thumb" id="miniPlayerThumb" decoding="async" />
+        <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'/>" alt="Now Playing" class="mini-player-thumb" id="miniPlayerThumb" crossorigin="anonymous" decoding="async" />
         <div class="mini-player-meta">
           <div class="mini-player-title" id="miniPlayerTitle">Ready to play</div>
           <div class="mini-player-artist" id="miniPlayerArtist">Spotify Echo</div>
@@ -496,8 +496,8 @@
         <!-- LEFT COLUMN: Cover Art + Song Info + Scrubber + Transport -->
         <div class="np-left-player" id="npLeftPlayer">
           <div class="np-cover-stage" id="npCoverStage">
-            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='500' height='500'/>" alt="" class="np-cover-art np-cover-ghost" id="npCoverGhost" decoding="async" aria-hidden="true" />
-            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='500' height='500'/>" alt="Now Playing" class="np-cover-art" id="npCoverArt" decoding="async" />
+            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='500' height='500'/>" alt="" class="np-cover-art np-cover-ghost" id="npCoverGhost" crossorigin="anonymous" decoding="async" aria-hidden="true" />
+            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='500' height='500'/>" alt="Now Playing" class="np-cover-art" id="npCoverArt" crossorigin="anonymous" decoding="async" />
           </div>
 
           <!-- Title, Artist — Album, Favorite Star & More Menu -->
@@ -610,7 +610,7 @@
 
             <!-- Active Now Playing Card in Queue (hidden to avoid duplicating Now Playing from left column) -->
             <div class="np-queue-current-card" id="npQueueCurrentCard" style="display: none;">
-              <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'/>" alt="Now Playing" class="np-queue-thumb" id="npQueueCurrentThumb" decoding="async" />
+              <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'/>" alt="Now Playing" class="np-queue-thumb" id="npQueueCurrentThumb" crossorigin="anonymous" decoding="async" />
               <div class="np-queue-meta">
                 <div class="np-queue-title" id="npQueueCurrentTitle">Spotify Echo</div>
                 <div class="np-queue-artist" id="npQueueCurrentArtist">Ready to play</div>
@@ -659,7 +659,7 @@
         <div class="modal-header">
           <div class="modal-user-profile">
             <div class="modal-user-avatar-wrap">
-              <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23888'><path d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/></svg>" alt="User" id="modalUserAvatar" />
+              <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23888'><path d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/></svg>" alt="User" id="modalUserAvatar" crossorigin="anonymous" />
             </div>
             <h2 class="modal-user-name" id="modalUserName">Spotify Echo</h2>
             <span id="modalUserProduct" style="display:none">Conectado a Spotify Premium</span>
@@ -741,27 +741,43 @@
       <span id="spotifyToastText">Guardado en Tus me gusta</span>
     </div>
 
+    <!-- On-Screen Live Diagnostic Logger for Echo Show 8 (Silk Browser) -->
+    <button type="button" class="debug-log-toggle-btn" id="debugLogToggleBtn" title="Ver panel de diagnóstico en vivo">
+      <span>🐞 Logs</span>
+    </button>
+    <div class="debug-log-panel" id="debugLogPanel">
+      <div class="debug-log-header">
+        <span>Diagnóstico en Vivo (Echo Show 8)</span>
+        <div class="debug-log-actions">
+          <button type="button" class="debug-log-btn" id="debugLogPauseBtn">Pausar</button>
+          <button type="button" class="debug-log-btn" id="debugLogClearBtn">Limpiar</button>
+          <button type="button" class="debug-log-btn" id="debugLogCloseBtn">✕</button>
+        </div>
+      </div>
+      <div class="debug-log-body" id="debugLogBody"></div>
+    </div>
+
   </div>
 
   <!-- Core Architecture -->
-  <script src="src/js/core/state.js?v=3.5"></script>
-  <script src="src/js/core/dom.js?v=3.5"></script>
-  <script src="src/js/core/color.js?v=3.5"></script>
+  <script src="src/js/core/state.js?v=3.6"></script>
+  <script src="src/js/core/dom.js?v=3.6"></script>
+  <script src="src/js/core/color.js?v=3.6"></script>
 
   <!-- External Services (OAuth 2.0 PKCE, Spotify API & Web Playback SDK, LRCLIB) -->
-  <script src="src/js/services/auth.js?v=3.5"></script>
-  <script src="src/js/services/spotify.js?v=3.5"></script>
-  <script src="src/js/services/lyrics.js?v=3.5"></script>
+  <script src="src/js/services/auth.js?v=3.6"></script>
+  <script src="src/js/services/spotify.js?v=3.6"></script>
+  <script src="src/js/services/lyrics.js?v=3.6"></script>
 
   <!-- UI Views & Renderers -->
-  <script src="src/js/views/catalog.js?v=3.5"></script>
-  <script src="src/js/views/details.js?v=3.5"></script>
-  <script src="src/js/views/player.js?v=3.5"></script>
+  <script src="src/js/views/catalog.js?v=3.6"></script>
+  <script src="src/js/views/details.js?v=3.6"></script>
+  <script src="src/js/views/player.js?v=3.6"></script>
 
   <!-- Controllers & Bootstrap -->
-  <script src="src/js/controllers/navigation.js?v=3.5"></script>
-  <script src="src/js/controllers/events.js?v=3.5"></script>
-  <script src="src/js/main.js?v=3.5"></script>
+  <script src="src/js/controllers/navigation.js?v=3.6"></script>
+  <script src="src/js/controllers/events.js?v=3.6"></script>
+  <script src="src/js/main.js?v=3.6"></script>
 </body>
 </html>
 

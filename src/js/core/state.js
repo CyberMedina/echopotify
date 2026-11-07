@@ -192,6 +192,9 @@ function decodeImageInBackground(url) {
   }
   const p = new Promise(resolve => {
     const img = new Image();
+    if (!url.startsWith('data:')) {
+      img.crossOrigin = 'anonymous';
+    }
     img.decoding = 'async';
     let settled = false;
     const done = (ok) => {
@@ -225,7 +228,8 @@ function renderOptImg(src, alt = '', className = '', extraAttrs = '') {
   const safeAlt = String(alt || '').replace(/"/g, '&quot;');
   const isAlreadyDecoded = safeSrc.startsWith('data:') || decodedImageUrls.has(safeSrc);
   const stateCls = isAlreadyDecoded ? 'img-cached' : '';
-  return `<img src="${safeSrc}" alt="${safeAlt}" class="${className} ${stateCls}" data-opt-img="1" decoding="async" ${extraAttrs} />`;
+  const corsAttr = safeSrc.startsWith('data:') ? '' : 'crossorigin="anonymous"';
+  return `<img src="${safeSrc}" alt="${safeAlt}" class="${className} ${stateCls}" ${corsAttr} data-opt-img="1" decoding="async" ${extraAttrs} />`;
 }
 
 function hydrateImages(container = document) {
@@ -389,4 +393,40 @@ function loadHomeCache() {
     return null;
   }
 }
+
+// --------------------------------------------------------------------------
+// ON-SCREEN DIAGNOSTIC LOGGER FOR ECHO SHOW (SILK BROWSER)
+// --------------------------------------------------------------------------
+const uiLogEntries = [];
+let uiLogPaused = false;
+const bootTimeMs = performance.now();
+
+function uiLog(tag, msg) {
+  if (uiLogPaused) return;
+  const elapsed = ((performance.now() - bootTimeMs) / 1000).toFixed(2);
+  const entry = { time: `${elapsed}s`, tag, msg };
+  uiLogEntries.push(entry);
+  if (uiLogEntries.length > 80) uiLogEntries.shift();
+
+  const bodyEl = document.getElementById('debugLogBody');
+  if (bodyEl && bodyEl.offsetParent !== null) {
+    renderDebugLogEntries();
+  }
+}
+
+function renderDebugLogEntries() {
+  const bodyEl = document.getElementById('debugLogBody');
+  if (!bodyEl) return;
+  bodyEl.innerHTML = uiLogEntries.map(e => {
+    let color = '#94a3b8';
+    if (e.tag === 'TINT') color = '#38bdf8';
+    else if (e.tag === 'NAV') color = '#4ade80';
+    else if (e.tag === 'TOUCH') color = '#facc15';
+    else if (e.tag === 'ERR') color = '#f87171';
+    else if (e.tag === 'FS') color = '#c084fc';
+    return `<div class="dbg-row"><span class="dbg-time">${e.time}</span> <span class="dbg-tag" style="color:${color}">[${e.tag}]</span> <span class="dbg-msg">${e.msg}</span></div>`;
+  }).join('');
+  bodyEl.scrollTop = bodyEl.scrollHeight;
+}
+
 

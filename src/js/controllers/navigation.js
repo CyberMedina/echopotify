@@ -58,17 +58,19 @@ function switchScreen(screenName, opts = {}) {
   }
 
   if (screenName === 'album') {
-    // Activar inmediatamente las clases del tinte para evitar parpadeos o fondo negro
-    document.body.classList.add('album-view-active', 'album-dark-active');
+    document.body.classList.add('album-view-active');
     document.body.classList.remove('artist-view-active');
+    if (!document.body.classList.contains('album-dark-active') && !document.body.classList.contains('album-light-active')) {
+      document.body.classList.add('album-dark-active');
+    }
     const currentEntity = liveCatalog.entities[state.selectedEntityId];
     if (currentEntity) {
       if (state.selectedEntityId === 'liked_songs' || currentEntity.type === 'liked') {
         applyNeutralLikedTheme();
       } else {
-        const cover = currentEntity.coverLarge || currentEntity.cover;
-        if (cover && !cover.startsWith('data:image')) {
-          extractDynamicPaletteFromCover(cover, true);
+        const primaryCover = currentEntity.cover || currentEntity.coverLarge;
+        if (primaryCover && !primaryCover.startsWith('data:image')) {
+          extractDynamicPaletteFromCover(primaryCover, true, [currentEntity.cover, currentEntity.coverLarge]);
         }
       }
     }
@@ -77,13 +79,20 @@ function switchScreen(screenName, opts = {}) {
     document.body.classList.remove('album-view-active', 'album-dark-active', 'album-light-active');
     const currentArtist = liveCatalog.entities[state.selectedArtistId];
     if (currentArtist) {
-      const cover = currentArtist.coverLarge || currentArtist.cover;
-      if (cover && !cover.startsWith('data:image')) {
-        extractDynamicPaletteFromCover(cover, true);
+      const primaryCover = currentArtist.cover || currentArtist.coverLarge;
+      if (primaryCover && !primaryCover.startsWith('data:image')) {
+        extractDynamicPaletteFromCover(primaryCover, true, [currentArtist.cover, currentArtist.coverLarge]);
+      } else if (typeof uiLog === 'function') {
+        uiLog('TINT', `Artista sin cover aún (${currentArtist.name || state.selectedArtistId}) -> conservando tinte previo`);
       }
     }
   } else {
     document.body.classList.remove('album-view-active', 'artist-view-active', 'album-dark-active', 'album-light-active');
+  }
+
+  if (typeof uiLog === 'function') {
+    const stackStr = (state.navStack || []).map(s => typeof s === 'object' ? `${s.screen}:${s.entityId || s.artistId || ''}` : s).join(' > ');
+    uiLog('NAV', `switchScreen(${screenName})${isBack ? ' [BACK]' : ''} | stack: ${stackStr}`);
   }
 }
 

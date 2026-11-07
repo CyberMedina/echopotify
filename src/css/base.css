@@ -124,11 +124,12 @@ body {
     radial-gradient(ellipse 60% 60% at 15% 22%, var(--bg-accent) 0%, transparent 70%),
     radial-gradient(ellipse 85% 75% at 78% 82%, var(--bg-warm) 0%, transparent 80%),
     linear-gradient(165deg, #cedbe2 0%, #e7dfd0 48%, #e4d8c5 100%);
-  transition: background 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+body.album-view-active .ambient-bg,
 body.album-dark-active .ambient-bg,
 body.album-light-active .ambient-bg,
+body.theme-dark.album-view-active .ambient-bg,
 body.theme-dark.album-dark-active .ambient-bg,
 body.theme-dark.album-light-active .ambient-bg {
   background:
