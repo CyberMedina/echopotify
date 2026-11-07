@@ -567,61 +567,77 @@ function buildLyricsDOM(lyricsArray) {
     : '';
 
   lyricsScrollTrack.innerHTML = introHtml + lyricsArray.map((line, lineIdx) => {
-    const words = line.text.trim().split(/\s+/);
-    const lineDuration = Math.max(0.40, (line.end || line.start + 3.6) - line.start);
+    let wordsHtml = '';
 
-    // 1. Detect intra-line breath pauses after punctuation
-    const rawPauses = words.map((w, idx) => {
-      if (idx === words.length - 1) return 0;
-      if (/[.;:!?\u2026—-]$/.test(w)) return 0.16;
-      if (/[,]$/.test(w)) return 0.10;
-      return 0;
-    });
-    const totalRawPause = rawPauses.reduce((a, b) => a + b, 0);
-    const maxAllowedPause = lineDuration * 0.18;
-    const pauseScale = totalRawPause > maxAllowedPause ? (maxAllowedPause / totalRawPause) : 1;
-    const pauses = rawPauses.map(p => p * pauseScale);
-    const singingBudget = Math.max(0.3, lineDuration - pauses.reduce((a, b) => a + b, 0));
+    if (Array.isArray(line.words) && line.words.length > 0) {
+      // 100% REAL APPLE MUSIC TIMESTAMPS (Truth Source from LyricsPlus)
+      wordsHtml = line.words.map((wObj, wIdx) => {
+        const isLast = wIdx === line.words.length - 1;
+        const dur = Math.max(0.08, wObj.end - wObj.start);
+        const cleanWord = wObj.text.replace(/[^a-zA-ZáéíóúñüÁÉÍÓÚÑÜ']/g, '');
+        const syllables = estimateWordSyllables(cleanWord);
+        const isPunchy = cleanWord.length <= 3 && syllables <= 1.1;
+        const isHeld = dur >= 0.48 || (isLast && dur >= 0.32);
+        return `<span class="lyric-word pending" data-wstart="${wObj.start.toFixed(3)}" data-wend="${wObj.end.toFixed(3)}" data-punchy="${isPunchy ? '1' : '0'}" data-held="${isHeld ? '1' : '0'}" data-last="${isLast ? '1' : '0'}">${wObj.text}</span>`;
+      }).join('');
+    } else {
+      // FALLBACK TO REFINED ALGORITHMIC PHONETIC ENGINE (for LRCLIB plain line lyrics)
+      const words = line.text.trim().split(/\s+/);
+      const lineDuration = Math.max(0.40, (line.end || line.start + 3.6) - line.start);
 
-    // 2. Weight each word's singing duration by syllables & phonetic articulation
-    const weights = words.map((w, idx) => {
-      const cleanWord = w.replace(/[^a-zA-ZáéíóúñüÁÉÍÓÚÑÜ']/g, '');
-      const lowerClean = cleanWord.replace(/'/g, '').toLowerCase();
-      const syllables = estimateWordSyllables(cleanWord);
-      
-      // Base articulation budget + duration per vowel syllable
-      let weight = 0.60 + syllables * 0.85;
+      // 1. Detect intra-line breath pauses after punctuation
+      const rawPauses = words.map((w, idx) => {
+        if (idx === words.length - 1) return 0;
+        if (/[.;:!?\u2026—-]$/.test(w)) return 0.16;
+        if (/[,]$/.test(w)) return 0.10;
+        return 0;
+      });
+      const totalRawPause = rawPauses.reduce((a, b) => a + b, 0);
+      const maxAllowedPause = lineDuration * 0.18;
+      const pauseScale = totalRawPause > maxAllowedPause ? (maxAllowedPause / totalRawPause) : 1;
+      const pauses = rawPauses.map(p => p * pauseScale);
+      const singingBudget = Math.max(0.3, lineDuration - pauses.reduce((a, b) => a + b, 0));
 
-      const isLastWord = idx === words.length - 1;
-      const hasPausePunct = /[,.;:!?\u2026~-]$/.test(w);
-      const hasRepeatedVowel = /([aeiouáéíóú])\1/i.test(cleanWord);
+      // 2. Weight each word's singing duration by syllables & phonetic articulation
+      const weights = words.map((w, idx) => {
+        const cleanWord = w.replace(/[^a-zA-ZáéíóúñüÁÉÍÓÚÑÜ']/g, '');
+        const lowerClean = cleanWord.replace(/'/g, '').toLowerCase();
+        const syllables = estimateWordSyllables(cleanWord);
+        
+        // Base articulation budget + duration per vowel syllable
+        let weight = 0.60 + syllables * 0.85;
 
-      // Fast functional connectors (articles, short pronouns, prepositions)
-      if (FAST_CONNECTOR_WORDS.has(lowerClean) && !isLastWord && !hasPausePunct) {
-        weight *= 0.68;
-      }
-      // Gentle balanced phrase-ending sustain (1.18x instead of 1.58x so earlier words aren't squished)
-      if (isLastWord) weight *= 1.18;
-      if (hasPausePunct) weight *= 1.15;
-      if (hasRepeatedVowel) weight *= 1.30;
-      return weight;
-    });
+        const isLastWord = idx === words.length - 1;
+        const hasPausePunct = /[,.;:!?\u2026~-]$/.test(w);
+        const hasRepeatedVowel = /([aeiouáéíóú])\1/i.test(cleanWord);
 
-    const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
-    let cursorSec = line.start;
+        // Fast functional connectors (articles, short pronouns, prepositions)
+        if (FAST_CONNECTOR_WORDS.has(lowerClean) && !isLastWord && !hasPausePunct) {
+          weight *= 0.68;
+        }
+        // Gentle balanced phrase-ending sustain (1.18x instead of 1.58x so earlier words aren't squished)
+        if (isLastWord) weight *= 1.18;
+        if (hasPausePunct) weight *= 1.15;
+        if (hasRepeatedVowel) weight *= 1.30;
+        return weight;
+      });
 
-    const wordsHtml = words.map((w, wIdx) => {
-      const dur = (weights[wIdx] / totalWeight) * singingBudget;
-      const wStart = cursorSec;
-      const wEnd = cursorSec + dur;
-      cursorSec = wEnd + pauses[wIdx];
-      const isLast = wIdx === words.length - 1;
-      const cleanWord = w.replace(/[^a-zA-ZáéíóúñüÁÉÍÓÚÑÜ']/g, '');
-      const syllables = estimateWordSyllables(cleanWord);
-      const isPunchy = cleanWord.length <= 3 && syllables <= 1.1;
-      const isHeld = dur >= 0.48 || (isLast && dur >= 0.32);
-      return `<span class="lyric-word pending" data-wstart="${wStart.toFixed(3)}" data-wend="${wEnd.toFixed(3)}" data-punchy="${isPunchy ? '1' : '0'}" data-held="${isHeld ? '1' : '0'}" data-last="${isLast ? '1' : '0'}">${w}</span>`;
-    }).join('');
+      const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
+      let cursorSec = line.start;
+
+      wordsHtml = words.map((w, wIdx) => {
+        const dur = (weights[wIdx] / totalWeight) * singingBudget;
+        const wStart = cursorSec;
+        const wEnd = cursorSec + dur;
+        cursorSec = wEnd + pauses[wIdx];
+        const isLast = wIdx === words.length - 1;
+        const cleanWord = w.replace(/[^a-zA-ZáéíóúñüÁÉÍÓÚÑÜ']/g, '');
+        const syllables = estimateWordSyllables(cleanWord);
+        const isPunchy = cleanWord.length <= 3 && syllables <= 1.1;
+        const isHeld = dur >= 0.48 || (isLast && dur >= 0.32);
+        return `<span class="lyric-word pending" data-wstart="${wStart.toFixed(3)}" data-wend="${wEnd.toFixed(3)}" data-punchy="${isPunchy ? '1' : '0'}" data-held="${isHeld ? '1' : '0'}" data-last="${isLast ? '1' : '0'}">${w}</span>`;
+      }).join('');
+    }
 
     const gapAfter = (line.lineEnd || line.end) - line.end;
     const interludeAfterHtml = gapAfter >= 4.2

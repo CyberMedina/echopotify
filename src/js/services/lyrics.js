@@ -99,6 +99,80 @@ function parseLrcToWordSync(lrcString, totalDuration) {
   return parsed;
 }
 
+function parseLyricsPlusWordSync(lyricsData, totalDuration) {
+  if (!lyricsData || !Array.isArray(lyricsData.lyrics) || lyricsData.lyrics.length === 0) {
+    return null;
+  }
+
+  const lines = lyricsData.lyrics;
+  const hasWordSync = lines.some(l => Array.isArray(l.syllabus) && l.syllabus.length > 0);
+  if (!hasWordSync) {
+    return null;
+  }
+
+  const parsed = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const lineStartSec = (rawLine.time || 0) / 1000;
+    const lineDurSec = (rawLine.duration || 0) / 1000;
+    const lineEndSec = lineStartSec + lineDurSec;
+    const nextStartSec = i < lines.length - 1 ? (lines[i + 1].time || 0) / 1000 : (totalDuration || lineEndSec + 4);
+
+    let words = [];
+
+    if (Array.isArray(rawLine.syllabus) && rawLine.syllabus.length > 0) {
+      let currentWordText = '';
+      let currentWordStart = null;
+      let currentWordEnd = null;
+
+      for (let s = 0; s < rawLine.syllabus.length; s++) {
+        const syl = rawLine.syllabus[s];
+        const sylStart = (syl.time || 0) / 1000;
+        const sylDur = (syl.duration || 0) / 1000;
+        const sylEnd = sylStart + sylDur;
+        const sylText = syl.text || '';
+
+        if (currentWordStart === null) {
+          currentWordStart = sylStart;
+        }
+        currentWordText += sylText;
+        currentWordEnd = sylEnd;
+
+        const endsWithSpace = /\s+$/.test(sylText);
+        const isLastSyl = s === rawLine.syllabus.length - 1;
+
+        if (endsWithSpace || isLastSyl) {
+          const trimmed = currentWordText.trim();
+          if (trimmed) {
+            words.push({
+              text: trimmed,
+              start: currentWordStart,
+              end: Math.max(currentWordStart + 0.08, currentWordEnd)
+            });
+          }
+          currentWordText = '';
+          currentWordStart = null;
+          currentWordEnd = null;
+        }
+      }
+    }
+
+    if (words.length > 0) {
+      parsed.push({
+        text: rawLine.text || words.map(w => w.text).join(' '),
+        start: lineStartSec,
+        end: lineEndSec > lineStartSec ? lineEndSec : words[words.length - 1].end,
+        lineEnd: nextStartSec,
+        words: words,
+        isRealWordSync: true
+      });
+    }
+  }
+
+  return parsed.length > 0 ? parsed : null;
+}
+
 function parsePlainLyricsToFallbackSync(plainString, totalDuration) {
   const lines = plainString.split('\n').map(l => l.trim()).filter(Boolean);
   if (lines.length === 0) return null;
@@ -203,6 +277,37 @@ async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durat
     lyricsScrollTrack.classList.add('lyrics-fade-out');
   }
   updateNowPlayingRightPanelMode();
+
+  // STEP 0: High-fidelity Apple Music TTML Word-Sync via LyricsPlus (Truth Source)
+  try {
+    const durParam = durationSec && durationSec > 0 ? `&duration=${Math.round(durationSec)}` : '';
+    const lpUrl = `https://lyricsplus.binimum.org/v2/lyrics/get?title=${encodeURIComponent(cleanTrack)}&artist=${encodeURIComponent(cleanArtist)}${durParam}`;
+    const lpRes = await timedLyricsFetch('lyricsplus-wordsync', fetchId, lpUrl, 3800);
+    if (fetchId !== lyricFetchSeq) { lyrLog(`#${fetchId} stale after lyricsplus, dropped`); return; }
+
+    if (lpRes && lpRes.ok) {
+      try {
+        const lpData = await lpRes.json();
+        const wordParsed = parseLyricsPlusWordSync(lpData, durationSec);
+        if (wordParsed && wordParsed.length > 0) {
+          lyrLog(`#${fetchId} OK REAL APPLE MUSIC WORD-SYNC ${wordParsed.length} lines in ${Date.now() - tStart}ms`);
+          lyricsMemoryCache.set(cacheKey, wordParsed);
+          state.hasValidLyrics = true;
+          state.loadedLyricsKey = cacheKey;
+          state.activeLyrics = wordParsed;
+          state.activeLineIndex = -1;
+          buildLyricsDOM(wordParsed);
+          updateNowPlayingRightPanelMode();
+          updateScrubberAndLyricsUI(true);
+          return;
+        }
+      } catch (jsonErr) {
+        lyrLog(`#${fetchId} lyricsplus parse error: ${jsonErr && jsonErr.message}`);
+      }
+    }
+  } catch (e) {
+    lyrLog(`#${fetchId} lyricsplus fetch error: ${e && e.message}`);
+  }
 
   let rawSyncedLrc = null;
 
