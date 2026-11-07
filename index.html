@@ -5,7 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="robots" content="noindex, nofollow" />
   <title>Spotify Echo Show 8 — Apple Music Edition (1280x800)</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://i.scdn.co" crossorigin />
+  <link rel="preconnect" href="https://mosaic.scdn.co" crossorigin />
+  <link rel="preconnect" href="https://image-cdn-ak.spotifycdn.com" crossorigin />
+  <link rel="preconnect" href="https://image-cdn-fa.spotifycdn.com" crossorigin />
+  <link rel="preconnect" href="https://api.spotify.com" crossorigin />
+  <link rel="dns-prefetch" href="https://i.scdn.co" />
+  <link rel="dns-prefetch" href="https://mosaic.scdn.co" />
+  <link rel="stylesheet" href="src/css/base.css?v=3.0" />
+  <link rel="stylesheet" href="src/css/views.css?v=3.0" />
+  <link rel="stylesheet" href="src/css/now-playing.css?v=3.0" />
+  <link rel="stylesheet" href="src/css/theme-modals.css?v=3.0" />
   <script src="https://cdn.html.games.alexa.a2z.com/alexa-html/latest/alexa-html.js"></script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 </head>
@@ -126,7 +136,7 @@
                 <polyline points="15 18 9 12 15 6"></polyline>
               </svg>
             </button>
-            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'/>" alt="Album Cover" class="album-hero-cover" id="albumDetailCover" />
+            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'/>" alt="Album Cover" class="album-hero-cover" id="albumDetailCover" decoding="async" />
             <h1 class="album-hero-title" id="albumDetailTitle">Album</h1>
             <div class="album-hero-artist" id="albumDetailArtist">Artist</div>
             <div class="album-hero-meta" id="albumDetailMeta"></div>
@@ -181,7 +191,7 @@
 
         <!-- Artist Hero Section -->
         <div class="artist-hero-row">
-          <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'/>" alt="Artist Avatar" class="artist-hero-avatar" id="artistHeroAvatar" />
+          <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'/>" alt="Artist Avatar" class="artist-hero-avatar" id="artistHeroAvatar" decoding="async" />
           <div class="artist-hero-info">
             <div class="artist-verified-pill" id="artistVerifiedBadge">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="#3d91f4">
@@ -189,8 +199,8 @@
               </svg>
               <span>Artista verificado</span>
             </div>
-            <h1 class="artist-hero-title" id="artistHeroTitle">Bad Bunny</h1>
-            <div class="artist-hero-listeners" id="artistHeroListeners">64.9 M oyentes mensuales</div>
+            <h1 class="artist-hero-title" id="artistHeroTitle">Artista</h1>
+            <div class="artist-hero-listeners" id="artistHeroListeners">Oyentes mensuales en Spotify</div>
             
             <div class="artist-hero-actions">
               <button class="btn-artist-play" id="artistPlayBtn">
@@ -247,9 +257,9 @@
         <div class="artist-tab-panel" id="artistTabInfo">
           <div class="artist-info-grid">
             <div class="artist-info-card artist-listeners-card">
-              <div class="artist-big-number" id="artistInfoMonthlyNum">64,923,412</div>
+              <div class="artist-big-number" id="artistInfoMonthlyNum">—</div>
               <div class="artist-big-label">oyentes mensuales</div>
-              <div class="artist-info-subtext" id="artistInfoFollowers">Más de 90.5 M seguidores en Spotify</div>
+              <div class="artist-info-subtext" id="artistInfoFollowers">Artista verificado en Spotify</div>
             </div>
             <div class="artist-info-card artist-bio-card">
               <h3 class="artist-bio-heading">Acerca del artista</h3>
@@ -313,7 +323,7 @@
               </div>
             </div>
 
-            <div class="category-card cat-albums" data-open-album="lahai">
+            <div class="category-card cat-albums" data-nav="library" data-filter="albums">
               <div class="cat-icon-circle">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" class="vinyl-hole" fill="#f0dfd1"/></svg>
               </div>
@@ -333,7 +343,7 @@
               </div>
             </div>
 
-            <div class="category-card cat-madeforyou" data-open-album="deeper_well">
+            <div class="category-card cat-madeforyou" data-nav="library" data-filter="liked">
               <div class="cat-icon-circle">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
               </div>
@@ -409,7 +419,7 @@
          ================================================================== -->
     <div class="mini-player-v1" id="miniPlayer" title="Tap to open Apple Music Now Playing & Lyrics" style="display:none;">
       <div class="mini-player-left">
-        <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'/>" alt="Now Playing" class="mini-player-thumb" id="miniPlayerThumb" />
+        <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'/>" alt="Now Playing" class="mini-player-thumb" id="miniPlayerThumb" decoding="async" />
         <div class="mini-player-meta">
           <div class="mini-player-title" id="miniPlayerTitle">Ready to play</div>
           <div class="mini-player-artist" id="miniPlayerArtist">Spotify Echo</div>
@@ -485,11 +495,14 @@
       <div class="np-main-grid">
         <!-- LEFT COLUMN: Cover Art + Song Info + Scrubber + Transport -->
         <div class="np-left-player" id="npLeftPlayer">
-          <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='500' height='500'/>" alt="Now Playing" class="np-cover-art" id="npCoverArt" />
+          <div class="np-cover-stage" id="npCoverStage">
+            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='500' height='500'/>" alt="" class="np-cover-art np-cover-ghost" id="npCoverGhost" decoding="async" aria-hidden="true" />
+            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='500' height='500'/>" alt="Now Playing" class="np-cover-art" id="npCoverArt" decoding="async" />
+          </div>
 
           <!-- Title, Artist — Album, Favorite Star & More Menu -->
           <div class="np-meta-row">
-            <div>
+            <div class="np-meta-text-col" id="npMetaTextCol">
               <div class="np-track-title" id="npTrackTitle">Spotify Echo</div>
               <div class="np-track-artist" id="npTrackArtist">Ready to play</div>
             </div>
@@ -597,7 +610,7 @@
 
             <!-- Active Now Playing Card in Queue (hidden to avoid duplicating Now Playing from left column) -->
             <div class="np-queue-current-card" id="npQueueCurrentCard" style="display: none;">
-              <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'/>" alt="Now Playing" class="np-queue-thumb" id="npQueueCurrentThumb" />
+              <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'/>" alt="Now Playing" class="np-queue-thumb" id="npQueueCurrentThumb" decoding="async" />
               <div class="np-queue-meta">
                 <div class="np-queue-title" id="npQueueCurrentTitle">Spotify Echo</div>
                 <div class="np-queue-artist" id="npQueueCurrentArtist">Ready to play</div>
@@ -730,7 +743,25 @@
 
   </div>
 
-  <script src="app.js"></script>
+  <!-- Core Architecture -->
+  <script src="src/js/core/state.js?v=3.0"></script>
+  <script src="src/js/core/dom.js?v=3.0"></script>
+  <script src="src/js/core/color.js?v=3.0"></script>
+
+  <!-- External Services (OAuth 2.0 PKCE, Spotify API & Web Playback SDK, LRCLIB) -->
+  <script src="src/js/services/auth.js?v=3.0"></script>
+  <script src="src/js/services/spotify.js?v=3.0"></script>
+  <script src="src/js/services/lyrics.js?v=3.0"></script>
+
+  <!-- UI Views & Renderers -->
+  <script src="src/js/views/catalog.js?v=3.0"></script>
+  <script src="src/js/views/details.js?v=3.0"></script>
+  <script src="src/js/views/player.js?v=3.0"></script>
+
+  <!-- Controllers & Bootstrap -->
+  <script src="src/js/controllers/navigation.js?v=3.0"></script>
+  <script src="src/js/controllers/events.js?v=3.0"></script>
+  <script src="src/js/main.js?v=3.0"></script>
 </body>
 </html>
 

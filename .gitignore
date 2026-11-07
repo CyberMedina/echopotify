@@ -21,5 +21,13 @@ librespot_build.ps1
 mockup_server.py
 scratch/
 spotify_oauth_catcher.py
+generate_spotify_session.py
+.spotify_stored_session
 *.png
+*.zip
+lambda-streamer/
+lambda-streamer-clean/
+credentials.json
+test_audio_sources.py
+mockup/
 
