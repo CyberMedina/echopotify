@@ -74,6 +74,8 @@ const state = {
   selectedEntityId: null,
   selectedArtistId: null,
   artistShowingAllTracks: false,
+  isNowPlayingOpen: false,
+  isSwipingNowPlaying: false,
   playingTrackId: null,
   playingTrackUri: null,
   playingAlbumId: null,

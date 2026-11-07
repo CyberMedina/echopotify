@@ -133,11 +133,26 @@ function goBack() {
   }
 }
 
+let npCloseAnimationTimer = null;
+
 function openNowPlaying() {
   state.isNowPlayingOpen = true;
   clearTimeout(npFullyOpenTimer);
-  nowPlayingOverlay.style.transform = '';
+  clearTimeout(npCloseAnimationTimer);
+
+  // Asegurar que las vistas subyacentes se rendericen durante la transición
+  document.body.classList.remove('np-fully-open');
+
+  // Si no estaba abierto, arrancar limpiamente desde abajo (100%)
+  if (!nowPlayingOverlay.classList.contains('open')) {
+    nowPlayingOverlay.style.transition = 'none';
+    nowPlayingOverlay.style.transform = 'translate3d(0, 100%, 0)';
+    void nowPlayingOverlay.offsetHeight; // Forzar reflow para registrar posición inicial
+  }
+
   nowPlayingOverlay.classList.add('open');
+  nowPlayingOverlay.style.transition = 'transform 0.44s cubic-bezier(0.16, 1, 0.3, 1)';
+  nowPlayingOverlay.style.transform = 'translate3d(0, 0, 0)';
 
   // Al abrir Now Playing, garantizar que el fondo lava refleje fielmente la canción actual
   if (state.playingCover) {
@@ -146,61 +161,224 @@ function openNowPlaying() {
 
   cacheLyricLineOffsets();
   updateScrubberAndLyricsUI(true);
+
   npFullyOpenTimer = setTimeout(() => {
     if (state.isNowPlayingOpen) {
       document.body.classList.add('np-fully-open');
+      nowPlayingOverlay.style.transition = '';
+      nowPlayingOverlay.style.transform = '';
     }
-  }, 390);
+  }, 460);
 }
 
-function closeNowPlaying() {
+function closeNowPlaying(opts = {}) {
+  if (!state.isNowPlayingOpen && !nowPlayingOverlay.classList.contains('open')) return;
+
   state.isNowPlayingOpen = false;
   clearTimeout(npFullyOpenTimer);
+  clearTimeout(npCloseAnimationTimer);
+
+  // Revelar de inmediato las vistas subyacentes, miniplayer y dock para ver el fondo al bajar
   document.body.classList.remove('np-fully-open');
-  nowPlayingOverlay.style.transform = '';
-  nowPlayingOverlay.classList.remove('open');
+
+  const skipTransition = Boolean(opts && opts.skipTransition);
+  if (skipTransition) {
+    nowPlayingOverlay.classList.remove('open');
+    nowPlayingOverlay.style.transition = '';
+    nowPlayingOverlay.style.transform = '';
+    return;
+  }
+
+  // Animación de salida idéntica y simétrica en fluidez (deslizamiento hacia abajo a 60fps)
+  const duration = (opts && typeof opts.duration === 'number') ? opts.duration : 0.38;
+  nowPlayingOverlay.style.transition = `transform ${duration}s cubic-bezier(0.22, 1, 0.36, 1)`;
+  nowPlayingOverlay.style.transform = 'translate3d(0, 100%, 0)';
+
+  let finished = false;
+  const finishClose = () => {
+    if (finished) return;
+    finished = true;
+    nowPlayingOverlay.classList.remove('open');
+    nowPlayingOverlay.style.transition = '';
+    nowPlayingOverlay.style.transform = '';
+  };
+
+  const onTransEnd = (e) => {
+    if (e.target === nowPlayingOverlay && e.propertyName === 'transform') {
+      nowPlayingOverlay.removeEventListener('transitionend', onTransEnd);
+      finishClose();
+    }
+  };
+  nowPlayingOverlay.addEventListener('transitionend', onTransEnd);
+  npCloseAnimationTimer = setTimeout(finishClose, Math.round(duration * 1000) + 50);
 }
 
-// Apple Music Swipe-Down Gesture on Left Player / Grabber Tab to Dismiss Now Playing
+// Apple Music / Native Gesture: Swipe-Down on Now Playing overlay to Dismiss
 (function initNowPlayingSwipeDown() {
-  const leftArea = document.getElementById('npLeftPlayer') || nowPlayingOverlay;
-  let startY = null;
+  const overlay = nowPlayingOverlay;
+  if (!overlay) return;
+
+  const grabberPill = document.getElementById('npGrabberPill');
+  let startX = 0;
+  let startY = 0;
+  let startTime = 0;
+  let isTracking = false;
+  let isDragging = false;
   let currentDy = 0;
 
-  leftArea.addEventListener('touchstart', (e) => {
-    if (e.target.closest('#npScrubberTrack') || e.target.closest('.np-transport-btn')) return;
-    if (e.touches && e.touches.length === 1) {
-      startY = e.touches[0].clientY;
-      currentDy = 0;
-      document.body.classList.remove('np-fully-open');
-      nowPlayingOverlay.style.transition = 'none';
-    }
-  }, { passive: true });
+  function shouldIgnoreEvent(target) {
+    if (!target) return false;
+    // 1. Scrubber track & volume track (interacción precisa de seek)
+    if (target.closest('#npScrubberTrack') || target.closest('#npVolumeTrack')) return true;
+    // 2. Botones de transporte (play, pause, next, prev, shuffle, repeat)
+    if (target.closest('.np-transport-btn')) return true;
+    // 3. Botones dock inferiores (Letra / Cola) & botón cerrar & botones favoritos / opciones
+    if (target.closest('.np-dock-btn') || target.closest('.np-circle-btn') || target.closest('#npCloseBtn')) return true;
+    // 4. Lista de cola scrolleada hacia abajo: permitir scroll interno de la cola
+    const queueList = target.closest('#npQueueListContainer');
+    if (queueList && queueList.scrollTop > 5) return true;
+    return false;
+  }
 
-  leftArea.addEventListener('touchmove', (e) => {
-    if (startY === null || !e.touches || e.touches.length !== 1) return;
-    const dy = e.touches[0].clientY - startY;
-    if (dy > 0) {
-      currentDy = dy;
-      nowPlayingOverlay.style.transform = `translate3d(0, ${Math.round(dy * 0.85)}px, 0)`;
-    }
-  }, { passive: true });
+  function onPointerDown(e) {
+    if (!state.isNowPlayingOpen) return;
+    if (e.button !== undefined && e.button !== 0) return; // Solo click principal o touch
+    if (shouldIgnoreEvent(e.target)) return;
 
-  function endSwipe() {
-    if (startY === null) return;
-    startY = null;
-    nowPlayingOverlay.style.transition = '';
-    if (currentDy > 72) {
-      closeNowPlaying();
-    } else {
-      nowPlayingOverlay.style.transform = '';
-      if (state.isNowPlayingOpen) {
-        document.body.classList.add('np-fully-open');
-      }
-    }
+    startX = e.clientX;
+    startY = e.clientY;
+    startTime = Date.now();
+    isTracking = true;
+    isDragging = false;
     currentDy = 0;
   }
 
-  leftArea.addEventListener('touchend', endSwipe, { passive: true });
-  leftArea.addEventListener('touchcancel', endSwipe, { passive: true });
+  function onPointerMove(e) {
+    if (!isTracking) return;
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    if (!isDragging) {
+      // Reconocer intención clara de scroll/deslizamiento hacia abajo:
+      // Movimiento vertical > 8px y predominantemente hacia abajo vs horizontal
+      if (dy > 8 && dy > Math.abs(dx) * 1.05) {
+        isDragging = true;
+        state.isSwipingNowPlaying = true;
+        clearTimeout(npFullyOpenTimer);
+        clearTimeout(npCloseAnimationTimer);
+        document.body.classList.remove('np-fully-open');
+        overlay.style.transition = 'none';
+      } else if (Math.abs(dx) > 14 || dy < -12) {
+        // Gesto lateral o hacia arriba: cancelar tracking para no interferir
+        isTracking = false;
+        return;
+      }
+    }
+
+    if (isDragging) {
+      if (e.cancelable) e.preventDefault();
+      currentDy = Math.max(0, dy);
+      // Seguimiento directo 1:1 ultra-intuitivo con amortiguación suave si excede 520px
+      const visualDy = currentDy > 520 ? 520 + Math.round((currentDy - 520) * 0.38) : currentDy;
+      overlay.style.transform = `translate3d(0, ${visualDy}px, 0)`;
+
+      if (grabberPill) {
+        grabberPill.style.transform = 'scaleX(1.30)';
+        grabberPill.style.background = 'rgba(255, 255, 255, 0.90)';
+      }
+    }
+  }
+
+  function onPointerUp(e) {
+    if (!isTracking && !isDragging) return;
+    isTracking = false;
+
+    if (!isDragging) {
+      state.isSwipingNowPlaying = false;
+      return;
+    }
+
+    const elapsed = Math.max(1, Date.now() - startTime);
+    const velocityY = currentDy / elapsed; // px/ms
+
+    if (grabberPill) {
+      grabberPill.style.transform = '';
+      grabberPill.style.background = '';
+    }
+
+    // Descartar/volver si se deslizó más de 65px O con un flick rápido hacia abajo (> 0.32 px/ms y > 25px)
+    if (currentDy > 65 || (currentDy > 25 && velocityY > 0.32)) {
+      state.isNowPlayingOpen = false;
+      clearTimeout(npFullyOpenTimer);
+      clearTimeout(npCloseAnimationTimer);
+
+      const remaining = Math.max(0, 800 - currentDy);
+      const exitDuration = Math.min(0.38, Math.max(0.24, remaining / (Math.max(velocityY, 1.4) * 1000)));
+
+      overlay.style.transition = `transform ${exitDuration.toFixed(2)}s cubic-bezier(0.22, 1, 0.36, 1)`;
+      overlay.style.transform = 'translate3d(0, 100%, 0)';
+
+      let ended = false;
+      const finishDismiss = () => {
+        if (ended) return;
+        ended = true;
+        overlay.classList.remove('open');
+        overlay.style.transition = '';
+        overlay.style.transform = '';
+        setTimeout(() => {
+          state.isSwipingNowPlaying = false;
+        }, 60);
+      };
+
+      const onEnd = (evt) => {
+        if (evt.target === overlay && evt.propertyName === 'transform') {
+          overlay.removeEventListener('transitionend', onEnd);
+          finishDismiss();
+        }
+      };
+      overlay.addEventListener('transitionend', onEnd);
+      npCloseAnimationTimer = setTimeout(finishDismiss, Math.round(exitDuration * 1000) + 50);
+    } else {
+      // Rebotar suavemente a la posición abierta
+      overlay.style.transition = 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)';
+      overlay.style.transform = 'translate3d(0, 0, 0)';
+
+      setTimeout(() => {
+        if (state.isNowPlayingOpen) {
+          overlay.style.transition = '';
+          overlay.style.transform = '';
+          document.body.classList.add('np-fully-open');
+        }
+        state.isSwipingNowPlaying = false;
+      }, 300);
+    }
+  }
+
+  // Pointer Events para touch nativo en Echo Show y mouse en desktop
+  overlay.addEventListener('pointerdown', onPointerDown, { passive: true });
+  window.addEventListener('pointermove', onPointerMove, { passive: false });
+  window.addEventListener('pointerup', onPointerUp, { passive: true });
+  window.addEventListener('pointercancel', onPointerUp, { passive: true });
+
+  // Soporte de rueda de ratón (wheel scroll down) para ir atrás
+  let wheelAccumulator = 0;
+  let wheelResetTimer = null;
+  overlay.addEventListener('wheel', (e) => {
+    if (!state.isNowPlayingOpen) return;
+    const queueList = e.target.closest('#npQueueListContainer');
+    if (queueList && queueList.scrollHeight > queueList.clientHeight && queueList.scrollTop > 5) return;
+
+    if (e.deltaY > 0) {
+      wheelAccumulator += e.deltaY;
+      clearTimeout(wheelResetTimer);
+      wheelResetTimer = setTimeout(() => { wheelAccumulator = 0; }, 260);
+      if (wheelAccumulator > 75) {
+        wheelAccumulator = 0;
+        closeNowPlaying();
+      }
+    } else {
+      wheelAccumulator = 0;
+    }
+  }, { passive: true });
 })();

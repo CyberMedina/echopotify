@@ -131,7 +131,7 @@ document.addEventListener('click', async (e) => {
 
   // 5B. Click Track inside Queue ("A continuación") or API Discovery List
   const queueRow = e.target.closest('.np-queue-row');
-  if (queueRow) {
+  if (queueRow && !state.isSwipingNowPlaying) {
     const qSource = queueRow.getAttribute('data-queue-source') || 'queue';
     const qIdx = parseInt(queueRow.getAttribute('data-queue-idx'), 10) || 0;
     const trackId = queueRow.getAttribute('data-track-id');
@@ -162,7 +162,7 @@ document.addEventListener('click', async (e) => {
 
   // 6. Click Lyric Line -> Seek Spotify & Local Timer
   const lyricLine = e.target.closest('.lyric-line');
-  if (lyricLine) {
+  if (lyricLine && !state.isSwipingNowPlaying) {
     const startSec = parseFloat(lyricLine.getAttribute('data-start')) || 0;
     const seekMs = Math.round(startSec * 1000);
     state.currentTimeSec = startSec;
@@ -780,6 +780,7 @@ if (miniLikeBtn) {
 }
 
 bindTouchButton(npCloseBtn, closeNowPlaying);
+if (npGrabberBtn) bindTouchButton(npGrabberBtn, closeNowPlaying);
 bindTouchButton(npPlayPauseBtn, togglePlayPause);
 bindTouchButton(npNextBtn, skipNextTrack);
 bindTouchButton(npPrevBtn, skipPrevTrack);
