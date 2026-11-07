@@ -94,6 +94,7 @@ document.addEventListener('click', async (e) => {
   if (trackRow) {
     const entityId = trackRow.getAttribute('data-entity-id');
     const idx = parseInt(trackRow.getAttribute('data-track-index'), 10) || 0;
+    const trackId = trackRow.getAttribute('data-track-id');
     const trackUri = trackRow.getAttribute('data-track-uri');
     const title = trackRow.getAttribute('data-track-title');
     const artist = trackRow.getAttribute('data-track-artist');
@@ -107,6 +108,13 @@ document.addEventListener('click', async (e) => {
     state.singleTrackPlayback = false;
     state.contextUpcomingTracks = upcomingSlice;
     const cleanId = cleanTrackId(trackId || trackUri);
+
+    lockUserPlaybackIntent('track_switch', {
+      targetId: cleanId || trackId,
+      targetTitle: title,
+      targetIsPlaying: true
+    });
+
     applyTrackToUI({ id: cleanId || trackId || trackUri || title, uri: trackUri, name: title, artist, album, thumb, cover, coverLarge: cover, duration }, 0, true);
     openNowPlaying();
 

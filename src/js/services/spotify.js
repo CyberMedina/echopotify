@@ -267,7 +267,7 @@ async function playSpotifyContext(contextUri, offsetPosition = 0, upcomingSlice 
   const body = { context_uri: contextUri };
   if (offsetPosition && typeof offsetPosition === 'object') {
     body.offset = offsetPosition;
-  } else if (typeof offsetPosition === 'number' && offsetPosition > 0) {
+  } else if (typeof offsetPosition === 'number' && offsetPosition >= 0) {
     body.offset = { position: offsetPosition };
   }
   const playRes = await spotifyFetch(`/me/player/play${devQ}`, {
