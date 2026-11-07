@@ -96,7 +96,8 @@ const state = {
   singleTrackPlayback: false,
   contextUpcomingTracks: [],
   liveQueueTracks: [],
-  discoveryTracks: []
+  discoveryTracks: [],
+  devModeEnabled: safeStorage.getItem('sp_dev_mode') === 'true'
 };
 
 // Official Spotify Liked Songs Vector Heart Cover (Purple/Blue Radiant Gradient + White Heart)
@@ -404,7 +405,7 @@ const bootTimeMs = performance.now();
 let uiLogRenderTimer = null;
 
 function uiLog(tag, msg) {
-  if (window._echoLogsPaused) return;
+  if (!state.devModeEnabled || window._echoLogsPaused) return;
   const elapsed = ((performance.now() - bootTimeMs) / 1000).toFixed(2);
   const entry = { time: `${elapsed}s`, tag, msg };
   uiLogEntries.push(entry);

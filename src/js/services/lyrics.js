@@ -9,20 +9,29 @@
 function parseLrcToWordSync(lrcString, totalDuration) {
   const lines = lrcString.split('\n');
   const parsed = [];
-  const timeRegex = /\[(\d+):(\d+(?:\.\d+)?)\](.*)/;
+  const timeRegex = /^\s*\[(\d+):(\d+(?:\.\d+)?)\](.*)/;
+  const inlineWordRegex = /[<\[](?:\d+):(?:\d+(?:\.\d+)?)[>\]]/g;
 
   lines.forEach(raw => {
     const m = raw.match(timeRegex);
     if (m) {
       const mins = parseInt(m[1], 10);
       const secs = parseFloat(m[2]);
+      const timestamp = mins * 60 + secs;
       let text = m[3].trim();
       // Strip dual-language translation tags (e.g. "Original line ^ English translation")
       if (text.includes('^')) {
         text = text.split('^')[0].trim();
       }
+      // Clean inline enhanced-LRC tags if present
+      if (inlineWordRegex.test(text)) {
+        text = text.replace(inlineWordRegex, ' ').replace(/\s+/g, ' ').trim();
+      }
       if (text) {
-        parsed.push({ start: mins * 60 + secs, text });
+        parsed.push({ start: timestamp, text, explicitEnd: null });
+      } else if (parsed.length > 0 && parsed[parsed.length - 1].explicitEnd === null) {
+        // Blank timestamped line in LRC marks the exact end of the previous vocal line
+        parsed[parsed.length - 1].explicitEnd = timestamp;
       }
     }
   });
@@ -30,9 +39,14 @@ function parseLrcToWordSync(lrcString, totalDuration) {
   if (parsed.length === 0) return null;
 
   for (let i = 0; i < parsed.length; i++) {
-    const nextStart = i < parsed.length - 1 ? parsed[i + 1].start : (totalDuration || parsed[i].start + 6);
-    // Cap active word illumination duration to a natural singing phrase length (max 6.5s)
-    parsed[i].end = Math.min(nextStart, parsed[i].start + 6.5);
+    const nextStart = i < parsed.length - 1 ? parsed[i + 1].start : (totalDuration || parsed[i].start + 5);
+    const wordCount = parsed[i].text.split(/\s+/).filter(Boolean).length;
+    // Scale natural max singing duration to phrase length so short lines ("Oh yeah") don't drag for 6.5s
+    const naturalMaxDur = Math.min(6.4, Math.max(1.35, wordCount * 0.56 + 0.65));
+    const rawEnd = parsed[i].explicitEnd !== null
+      ? Math.min(nextStart, parsed[i].explicitEnd)
+      : Math.min(Math.max(parsed[i].start + 0.4, nextStart - 0.08), parsed[i].start + naturalMaxDur);
+    parsed[i].end = Math.max(parsed[i].start + 0.35, rawEnd);
     parsed[i].lineEnd = nextStart;
   }
   return parsed;
@@ -136,6 +150,7 @@ async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durat
   state.loadedLyricsKey = '';
   state.activeLyrics = [];
   state.lyricDOMCache = [];
+  state.interludeDOMCache = [];
   state.activeLineIndex = -1;
   if (lyricsScrollTrack) {
     lyricsScrollTrack.classList.add('lyrics-fade-out');

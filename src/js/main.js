@@ -136,7 +136,8 @@ function tick(now) {
     }
     if (state.isPlaying && state.pcmFlowing) {
       state.currentTimeSec += dt * (state.clockRate || 1.0);
-      if (state.isNowPlayingOpen && (now - lastUiSync >= 65)) {
+      const syncInterval = (state.hasValidLyrics && state.nowPlayingMode === 'lyrics') ? 28 : 65;
+      if (state.isNowPlayingOpen && (now - lastUiSync >= syncInterval)) {
         lastUiSync = now;
         updateScrubberAndLyricsUI(false);
       }
@@ -146,7 +147,8 @@ function tick(now) {
     if (state.currentTimeSec >= state.durationSec) {
       state.currentTimeSec = 0;
     }
-    if (state.isNowPlayingOpen && (now - lastUiSync >= 65)) {
+    const syncInterval = (state.hasValidLyrics && state.nowPlayingMode === 'lyrics') ? 28 : 65;
+    if (state.isNowPlayingOpen && (now - lastUiSync >= syncInterval)) {
       lastUiSync = now;
       updateScrubberAndLyricsUI(false);
     }
@@ -290,7 +292,57 @@ if (logoutBtn) {
 
 // --------------------------------------------------------------------------
 // ON-SCREEN DIAGNOSTIC LOGGER WIRING (Echo Show 8 / Silk Browser)
+// Controlled via Developer Options in Settings (zero logging overhead when disabled)
 // --------------------------------------------------------------------------
+function syncDevModeUI() {
+  const isEnabled = !!state.devModeEnabled;
+  const sw = document.getElementById('devModeToggleSwitch');
+  if (sw) {
+    sw.classList.toggle('active', isEnabled);
+    sw.setAttribute('aria-checked', isEnabled ? 'true' : 'false');
+  }
+  const toggleBtn = document.getElementById('debugLogToggleBtn');
+  if (toggleBtn) {
+    toggleBtn.classList.toggle('hidden', !isEnabled);
+  }
+  const panel = document.getElementById('debugLogPanel');
+  if (!isEnabled && panel) {
+    panel.classList.remove('open');
+  }
+}
+
+function toggleDevMode() {
+  state.devModeEnabled = !state.devModeEnabled;
+  safeStorage.setItem('sp_dev_mode', state.devModeEnabled ? 'true' : 'false');
+  syncDevModeUI();
+  if (state.devModeEnabled) {
+    if (typeof uiLog === 'function') {
+      uiLog('DEV', `Opciones de desarrollador activadas | viewport=${window.innerWidth}x${window.innerHeight} | fs=${isFullscreenActive()}`);
+    }
+  } else {
+    if (Array.isArray(window._echoLogs)) window._echoLogs.length = 0;
+  }
+}
+
+const devSwitch = document.getElementById('devModeToggleSwitch');
+if (devSwitch) {
+  devSwitch.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleDevMode();
+  });
+}
+
+const devRow = document.getElementById('devModeSettingRow');
+if (devRow) {
+  devRow.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleDevMode();
+  });
+}
+
+// Inicializar estado de opciones de desarrollador
+syncDevModeUI();
+
 (function initOnScreenDiagnosticLogger() {
   const toggleBtn = document.getElementById('debugLogToggleBtn');
   const panel = document.getElementById('debugLogPanel');
@@ -332,8 +384,9 @@ if (logoutBtn) {
     });
   }
 
-  // Registrar toques/clics globales en botones/tarjetas para diagnosticar eventos en el Echo Show
+  // Registrar toques/clics globales SOLO si las opciones de desarrollador están habilitadas
   document.addEventListener('click', (e) => {
+    if (!state.devModeEnabled) return;
     if (e.target && e.target.closest && e.target.closest('#debugLogPanel, #debugLogToggleBtn')) return;
     const btn = e.target && e.target.closest ? e.target.closest('button, [data-open-entity], [data-nav], .artist-track-item, .track-row, .album-artist-link') : null;
     if (btn && typeof uiLog === 'function') {
@@ -342,7 +395,7 @@ if (logoutBtn) {
     }
   }, true);
 
-  if (typeof uiLog === 'function') {
-    uiLog('BOOT', `App v3.6 lista | viewport=${window.innerWidth}x${window.innerHeight} | fs=${isFullscreenActive()}`);
+  if (state.devModeEnabled && typeof uiLog === 'function') {
+    uiLog('BOOT', `App v4.0 lista | viewport=${window.innerWidth}x${window.innerHeight} | fs=${isFullscreenActive()}`);
   }
 })();

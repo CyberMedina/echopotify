@@ -1222,6 +1222,10 @@ body:not(.theme-dark) .modal-action-chevron {
   -webkit-tap-highlight-color: transparent;
 }
 
+.debug-log-toggle-btn.hidden {
+  display: none !important;
+}
+
 .debug-log-toggle-btn:active {
   transform: scale(0.95);
 }

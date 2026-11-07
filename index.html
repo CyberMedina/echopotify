@@ -12,10 +12,10 @@
   <link rel="preconnect" href="https://api.spotify.com" crossorigin />
   <link rel="dns-prefetch" href="https://i.scdn.co" />
   <link rel="dns-prefetch" href="https://mosaic.scdn.co" />
-  <link rel="stylesheet" href="src/css/base.css?v=3.9" />
-  <link rel="stylesheet" href="src/css/views.css?v=3.9" />
-  <link rel="stylesheet" href="src/css/now-playing.css?v=3.9" />
-  <link rel="stylesheet" href="src/css/theme-modals.css?v=3.9" />
+  <link rel="stylesheet" href="src/css/base.css?v=4.0" />
+  <link rel="stylesheet" href="src/css/views.css?v=4.0" />
+  <link rel="stylesheet" href="src/css/now-playing.css?v=4.0" />
+  <link rel="stylesheet" href="src/css/theme-modals.css?v=4.0" />
   <script src="https://cdn.html.games.alexa.a2z.com/alexa-html/latest/alexa-html.js"></script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 </head>
@@ -709,7 +709,31 @@
           </div>
         </div>
 
-        <!-- Section 2: Cuenta -->
+        <!-- Section 2: Opciones de desarrollador -->
+        <div class="modal-section-clean modal-section-dev">
+          <div class="modal-section-title">Desarrollador</div>
+          <div class="modal-section-desc">Herramientas técnicas de diagnóstico y depuración.</div>
+
+          <div class="modal-setting-row" id="devModeSettingRow">
+            <div class="modal-setting-left">
+              <div class="modal-setting-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </div>
+              <div class="modal-setting-text">
+                <div class="modal-setting-label">Opciones para desarrolladores</div>
+                <div class="modal-setting-desc">Habilita el panel de diagnóstico (Logs) y el registro de eventos en vivo.</div>
+              </div>
+            </div>
+            <button type="button" class="apple-switch" id="devModeToggleSwitch" role="switch" aria-checked="false" aria-label="Opciones para desarrolladores">
+              <span class="apple-switch-thumb"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Section 3: Cuenta -->
         <div class="modal-section-clean modal-section-account">
           <div class="modal-section-title">Cuenta</div>
           <div class="modal-section-desc">Desconecta tu cuenta de este dispositivo.</div>
@@ -742,7 +766,7 @@
     </div>
 
     <!-- On-Screen Live Diagnostic Logger for Echo Show 8 (Silk Browser) -->
-    <button type="button" class="debug-log-toggle-btn" id="debugLogToggleBtn" title="Ver panel de diagnóstico en vivo">
+    <button type="button" class="debug-log-toggle-btn hidden" id="debugLogToggleBtn" title="Ver panel de diagnóstico en vivo">
       <span>🐞 Logs</span>
     </button>
     <div class="debug-log-panel" id="debugLogPanel">
@@ -760,24 +784,24 @@
   </div>
 
   <!-- Core Architecture -->
-  <script src="src/js/core/state.js?v=3.9"></script>
-  <script src="src/js/core/dom.js?v=3.9"></script>
-  <script src="src/js/core/color.js?v=3.9"></script>
+  <script src="src/js/core/state.js?v=4.0"></script>
+  <script src="src/js/core/dom.js?v=4.0"></script>
+  <script src="src/js/core/color.js?v=4.0"></script>
 
   <!-- External Services (OAuth 2.0 PKCE, Spotify API & Web Playback SDK, LRCLIB) -->
-  <script src="src/js/services/auth.js?v=3.9"></script>
-  <script src="src/js/services/spotify.js?v=3.9"></script>
-  <script src="src/js/services/lyrics.js?v=3.9"></script>
+  <script src="src/js/services/auth.js?v=4.0"></script>
+  <script src="src/js/services/spotify.js?v=4.0"></script>
+  <script src="src/js/services/lyrics.js?v=4.0"></script>
 
   <!-- UI Views & Renderers -->
-  <script src="src/js/views/catalog.js?v=3.9"></script>
-  <script src="src/js/views/details.js?v=3.9"></script>
-  <script src="src/js/views/player.js?v=3.9"></script>
+  <script src="src/js/views/catalog.js?v=4.0"></script>
+  <script src="src/js/views/details.js?v=4.0"></script>
+  <script src="src/js/views/player.js?v=4.0"></script>
 
   <!-- Controllers & Bootstrap -->
-  <script src="src/js/controllers/navigation.js?v=3.9"></script>
-  <script src="src/js/controllers/events.js?v=3.9"></script>
-  <script src="src/js/main.js?v=3.9"></script>
+  <script src="src/js/controllers/navigation.js?v=4.0"></script>
+  <script src="src/js/controllers/events.js?v=4.0"></script>
+  <script src="src/js/main.js?v=4.0"></script>
 </body>
 </html>
 

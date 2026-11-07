@@ -727,7 +727,11 @@ body.np-fully-open .ambient-bg {
 }
 
 /* ==========================================================================
-   Right Column: Apple Music Synced Lyrics with Letter-by-Letter Wave + Lift
+   Right Column: AMLL (Apple Music-Like Lyrics) Engine — Echo Show GPU Optimized
+   - Static container vertical fade mask (0% re-raster cost)
+   - Staggered spring cascade scroll & left-anchored scale (zero blur filter)
+   - Single-active-word soft gradient wipe + upward float + held glow
+   - Progressive 3-dot instrumental interlude indicator (• • •)
    ========================================================================== */
 .np-right-lyrics {
   position: absolute;
@@ -735,18 +739,33 @@ body.np-fully-open .ambient-bg {
   height: 700px;
   overflow: hidden;
   padding-left: 38px;
-  contain: layout paint;
+  contain: strict;
+  user-select: none;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000000 13%,
+    #000000 81%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000000 13%,
+    #000000 81%,
+    transparent 100%
+  );
 }
 
 .lyrics-scroll-track {
   display: flex;
   flex-direction: column;
-  gap: 30px;
-  padding: 210px 24px 320px 0;
+  gap: 26px;
+  padding: 210px 28px 340px 0;
   transform: translate3d(0, 0, 0);
   opacity: 1;
   backface-visibility: hidden;
-  transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+  transition: transform 0.48s cubic-bezier(0.19, 1, 0.22, 1),
               opacity 0.20s ease;
   will-change: transform, opacity;
 }
@@ -756,73 +775,188 @@ body.np-fully-open .ambient-bg {
   transition: opacity 0.12s ease;
 }
 
+/* AMLL Line Wrapper & Scale Mechanics */
 .lyric-line {
-  font-size: 32px;
+  font-size: 33px;
   font-weight: 700;
-  line-height: 1.26;
+  line-height: 1.24;
   letter-spacing: -0.022em;
-  color: rgba(255, 255, 255, 0.32);
+  color: rgba(255, 255, 255, 0.34);
   cursor: pointer;
-  opacity: 0.14;
+  opacity: 0.12;
+  padding: 6px 12px;
+  margin: -6px -12px;
+  border-radius: 12px;
+  transform-origin: 0% 50%;
+  transform: translate3d(0, 10px, 0) scale(0.91);
+  backface-visibility: hidden;
+  contain: layout style;
+  transition: transform 0.52s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+              background-color 0.2s ease;
 }
 
 .lyric-line:hover {
-  color: rgba(255, 255, 255, 0.52);
+  background-color: rgba(255, 255, 255, 0.06);
 }
 
+.lyric-line:active {
+  background-color: rgba(255, 255, 255, 0.10);
+}
+
+/* Staggered Spring Cascade by Distance (AMLL Wave Effect without CPU physics loop) */
 .lyric-line.distance-prev-far {
-  opacity: 0.16;
+  opacity: 0.14;
+  transform: translate3d(0, -6px, 0) scale(0.90);
+  transition-delay: 0ms;
 }
 
 .lyric-line.distance-prev {
-  opacity: 0.56;
-}
-
-.lyric-line.distance-1 {
-  opacity: 0.92;
-}
-
-.lyric-line.distance-2 {
-  opacity: 0.78;
-}
-
-.lyric-line.distance-3 {
-  opacity: 0.52;
-}
-
-.lyric-line.distance-4 {
-  opacity: 0.26;
-}
-
-.lyric-line.distance-far {
-  opacity: 0.10;
+  opacity: 0.42;
+  transform: translate3d(0, -2px, 0) scale(0.935);
+  transition-delay: 0ms;
 }
 
 .lyric-line.active {
-  color: rgba(255, 255, 255, 0.36);
+  color: rgba(255, 255, 255, 0.34);
   opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  transition-delay: 14ms;
 }
 
-/* Word-by-Word Karaoke Illumination (Zero Blur Re-Raster & Zero Per-Word Transition Repaint) */
+.lyric-line.distance-1 {
+  opacity: 0.80;
+  transform: translate3d(0, 3px, 0) scale(0.955);
+  transition-delay: 28ms;
+}
+
+.lyric-line.distance-2 {
+  opacity: 0.54;
+  transform: translate3d(0, 6px, 0) scale(0.935);
+  transition-delay: 52ms;
+}
+
+.lyric-line.distance-3 {
+  opacity: 0.32;
+  transform: translate3d(0, 9px, 0) scale(0.915);
+  transition-delay: 74ms;
+}
+
+.lyric-line.distance-4 {
+  opacity: 0.18;
+  transform: translate3d(0, 12px, 0) scale(0.90);
+  transition-delay: 92ms;
+}
+
+.lyric-line.distance-far {
+  opacity: 0.08;
+  transform: translate3d(0, 14px, 0) scale(0.89);
+  transition-delay: 0ms;
+}
+
+/* AMLL Word-by-Word Soft Gradient Wipe + Upward Float + Held Glow */
 .lyric-word {
-  display: inline;
+  display: inline-block;
+  vertical-align: bottom;
+  margin-right: 0.27em;
+  transform: translate3d(0, 0, 0) scale(1);
+  transform-origin: 50% 80%;
+  backface-visibility: hidden;
+  transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.lyric-word[data-last="1"] {
+  margin-right: 0;
+}
+
+/* 1. Pending word: flat color, zero gradient texture */
+.lyric-line.active .lyric-word.pending {
+  color: rgba(255, 255, 255, 0.34);
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+/* 2. Actively singing word (ONLY 1 word in DOM at a time): AMLL soft left-to-right gradient wipe + lift */
+.lyric-line.active .lyric-word.singing {
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    #ffffff 0%,
+    #ffffff var(--wipe-left, 0%),
+    rgba(255, 255, 255, 0.34) var(--wipe-right, 22%),
+    rgba(255, 255, 255, 0.34) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  transform: translate3d(0, -2.5px, 0) scale(1.015);
+}
+
+/* Emphasized / Held singing word (AMLL createEmphasizeAnimation equivalent) */
+.lyric-line.active .lyric-word.singing.held {
+  transform: translate3d(0, -3.6px, 0) scale(1.045);
+  text-shadow: 0 0 16px rgba(255, 255, 255, 0.28);
+}
+
+/* 3. Already sung word in active line: solid white (frees gradient texture) + keeps floated lift */
 .lyric-line.active .lyric-word.sung {
   color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+  background-image: none;
+  transform: translate3d(0, -2.2px, 0) scale(1);
 }
 
-.lyric-line.active .lyric-word.singing {
-  color: #ffffff;
-}
-
-.lyric-line.active .lyric-word.singing.held,
 .lyric-line.active .lyric-word.sung.last-word-hold {
   color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+  background-image: none;
+  transform: translate3d(0, -2.8px, 0) scale(1.02);
 }
 
-.lyric-line.active .lyric-word.pending {
-  color: rgba(255, 255, 255, 0.36);
+/* AMLL Interlude Dots (• • •) for Instrumental Intro & Solo Breaks */
+.amll-interlude-dots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 0;
+  opacity: 0;
+  overflow: hidden;
+  padding: 0 4px;
+  transform-origin: 0% 50%;
+  transform: translate3d(0, 4px, 0) scale(0.85);
+  transition: height 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.32s ease,
+              transform 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+              margin 0.35s ease;
+  pointer-events: none;
+}
+
+.amll-interlude-dots.active {
+  height: 34px;
+  margin-top: -6px;
+  margin-bottom: 4px;
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  animation: amllInterludeBreath 2.4s ease-in-out infinite;
+}
+
+.amll-interlude-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  opacity: 0.25;
+  transform: scale(0.88);
+  transition: opacity 0.22s ease, transform 0.25s ease;
+}
+
+.amll-interlude-dot.lit {
+  opacity: 0.96;
+  transform: scale(1.08);
+}
+
+@keyframes amllInterludeBreath {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(0.96); }
+  50% { transform: translate3d(0, -1.5px, 0) scale(1.05); }
 }
 
 /* ==========================================================================

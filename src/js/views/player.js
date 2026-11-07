@@ -544,6 +544,26 @@ function getLyricLineClass(idx, activeIdx) {
   return 'lyric-line distance-far';
 }
 
+const FAST_CONNECTOR_WORDS = new Set([
+  'el', 'la', 'los', 'las', 'un', 'una', 'de', 'del', 'al', 'a', 'en', 'con', 'por',
+  'que', 'y', 'o', 'e', 'u', 'me', 'te', 'se', 'lo', 'le', 'mi', 'tu', 'su', 'si', 'no',
+  'the', 'an', 'to', 'of', 'in', 'on', 'at', 'by', 'for', 'and', 'or', 'but', 'is', 'it',
+  'as', 'be', 'my', 'you', 'we', 'he', 'she', 'im', 'its'
+]);
+
+function estimateWordSyllables(cleanWord) {
+  if (!cleanWord) return 1;
+  const lower = cleanWord.toLowerCase();
+  const vowelGroups = lower.match(/[aeiouáéíóúü]+/g);
+  if (!vowelGroups) return Math.max(1, cleanWord.length * 0.45);
+  let count = vowelGroups.length;
+  // Silent trailing 'e' in common English words (e.g. "love", "time", "make")
+  if (count > 1 && /[b-df-hj-np-tv-z]e$/.test(lower) && !/(le|re)$/.test(lower)) {
+    count -= 0.35;
+  }
+  return Math.max(1, count);
+}
+
 function cacheLyricLineOffsets() {
   const cache = state.lyricDOMCache;
   if (!cache || cache.length === 0) return;
@@ -553,42 +573,91 @@ function cacheLyricLineOffsets() {
 }
 
 function buildLyricsDOM(lyricsArray) {
-  lyricsScrollTrack.innerHTML = lyricsArray.map((line, lineIdx) => {
-    const words = line.text.trim().split(/\s+/);
-    const lineDuration = Math.max(0.85, (line.end || line.start + 4) - line.start);
+  const firstLineStart = (lyricsArray[0] && lyricsArray[0].start) || 0;
+  const hasIntroInterlude = firstLineStart >= 4.0;
+  const introHtml = hasIntroInterlude
+    ? `<div class="amll-interlude-dots" data-istart="0" data-iend="${(firstLineStart - 0.15).toFixed(2)}"><span class="amll-interlude-dot"></span><span class="amll-interlude-dot"></span><span class="amll-interlude-dot"></span></div>`
+    : '';
 
-    // Weight each word's singing duration by syllable/character length + phrase-ending sustain
+  lyricsScrollTrack.innerHTML = introHtml + lyricsArray.map((line, lineIdx) => {
+    const words = line.text.trim().split(/\s+/);
+    const lineDuration = Math.max(0.75, (line.end || line.start + 3.6) - line.start);
+
+    // 1. Detect intra-line breath pauses after commas/semicolons/periods
+    const rawPauses = words.map((w, idx) => {
+      if (idx === words.length - 1) return 0;
+      if (/[.;:!?\u2026—-]$/.test(w)) return 0.20;
+      if (/[,]$/.test(w)) return 0.13;
+      return 0;
+    });
+    const totalRawPause = rawPauses.reduce((a, b) => a + b, 0);
+    const maxAllowedPause = lineDuration * 0.24;
+    const pauseScale = totalRawPause > maxAllowedPause ? (maxAllowedPause / totalRawPause) : 1;
+    const pauses = rawPauses.map(p => p * pauseScale);
+    const singingBudget = Math.max(0.5, lineDuration - pauses.reduce((a, b) => a + b, 0));
+
+    // 2. Weight each word's singing duration by phonetic syllables, connector speed & phrase sustain
     const weights = words.map((w, idx) => {
-      const cleanLen = Math.max(2, w.replace(/[^a-zA-ZáéíóúñÁÉÍÓÚÑ]/g, '').length);
+      const cleanWord = w.replace(/[^a-zA-ZáéíóúñüÁÉÍÓÚÑÜ']/g, '');
+      const lowerClean = cleanWord.replace(/'/g, '').toLowerCase();
+      const syllables = estimateWordSyllables(cleanWord);
+      const charFactor = Math.max(1.8, cleanWord.length) * 0.38;
+      let baseWeight = syllables * 0.72 + charFactor;
+
       const isLastWord = idx === words.length - 1;
       const hasPausePunct = /[,.;:!?\u2026~-]$/.test(w);
-      const hasRepeatedVowel = /([aeiouáéíóú])\1/i.test(w);
-      let mult = 1.0;
-      if (isLastWord) mult *= 1.65;      // Singers naturally hold the final word of a line
-      if (hasPausePunct) mult *= 1.35;   // Held before a comma/breath
-      if (hasRepeatedVowel) mult *= 1.4; // Stretched vowel
-      return cleanLen * mult;
+      const hasRepeatedVowel = /([aeiouáéíóú])\1/i.test(cleanWord);
+
+      if (FAST_CONNECTOR_WORDS.has(lowerClean) && !isLastWord && !hasPausePunct) {
+        baseWeight *= 0.64; // Singers glide quickly through short articles/prepositions
+      }
+      if (isLastWord) baseWeight *= 1.58;      // Phrase-ending vocal sustain
+      if (hasPausePunct) baseWeight *= 1.28;   // Held slightly before breath
+      if (hasRepeatedVowel) baseWeight *= 1.38; // Melisma / stretched vowel
+      return baseWeight;
     });
 
     const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
     let cursorSec = line.start;
 
     const wordsHtml = words.map((w, wIdx) => {
-      const dur = (weights[wIdx] / totalWeight) * lineDuration;
+      const dur = (weights[wIdx] / totalWeight) * singingBudget;
       const wStart = cursorSec;
       const wEnd = cursorSec + dur;
-      cursorSec = wEnd;
+      cursorSec = wEnd + pauses[wIdx];
       const isLast = wIdx === words.length - 1;
-      const isHeld = dur >= 0.50 || isLast;
-      return `<span class="lyric-word pending" data-wstart="${wStart.toFixed(3)}" data-wend="${wEnd.toFixed(3)}" data-held="${isHeld ? '1' : '0'}" data-last="${isLast ? '1' : '0'}">${w}${!isLast ? ' ' : ''}</span>`;
+      const isHeld = dur >= 0.52 || (isLast && dur >= 0.38);
+      return `<span class="lyric-word pending" data-wstart="${wStart.toFixed(3)}" data-wend="${wEnd.toFixed(3)}" data-held="${isHeld ? '1' : '0'}" data-last="${isLast ? '1' : '0'}">${w}</span>`;
     }).join('');
 
+    const gapAfter = (line.lineEnd || line.end) - line.end;
+    const interludeAfterHtml = gapAfter >= 4.2
+      ? `<div class="amll-interlude-dots" data-istart="${(line.end + 0.15).toFixed(2)}" data-iend="${(line.lineEnd - 0.15).toFixed(2)}"><span class="amll-interlude-dot"></span><span class="amll-interlude-dot"></span><span class="amll-interlude-dot"></span></div>`
+      : '';
+
     const initialCls = getLyricLineClass(lineIdx, 0);
-    return `<div class="${initialCls}" data-line-idx="${lineIdx}" data-start="${line.start}" data-end="${line.end}">${wordsHtml}</div>`;
+    return `<div class="${initialCls}" data-line-idx="${lineIdx}" data-start="${line.start}" data-end="${line.end}">${wordsHtml}</div>${interludeAfterHtml}`;
   }).join('');
 
   // Pre-cache all DOM references & timing floats so the 60fps loop does zero DOM queries or layout reads
   const lineEls = Array.from(lyricsScrollTrack.querySelectorAll('.lyric-line'));
+  const interludeEls = Array.from(lyricsScrollTrack.querySelectorAll('.amll-interlude-dots'));
+
+  state.interludeDOMCache = interludeEls.map(iEl => {
+    const dots = Array.from(iEl.querySelectorAll('.amll-interlude-dot'));
+    const iStart = parseFloat(iEl.getAttribute('data-istart')) || 0;
+    const iEnd = parseFloat(iEl.getAttribute('data-iend')) || (iStart + 4);
+    return {
+      el: iEl,
+      dots,
+      dotStates: [false, false, false],
+      iStart,
+      iEnd,
+      iDur: Math.max(0.5, iEnd - iStart),
+      active: false
+    };
+  });
+
   state.lyricDOMCache = lineEls.map((lineEl, idx) => {
     const lineData = lyricsArray[idx] || {};
     const wordEls = Array.from(lineEl.querySelectorAll('.lyric-word'));
@@ -600,14 +669,20 @@ function buildLyricsDOM(lyricsArray) {
       start: lineData.start || 0,
       end: lineData.end || ((lineData.start || 0) + 4),
       lineEnd: lineData.lineEnd || lineData.end || ((lineData.start || 0) + 5),
-      words: wordEls.map(wEl => ({
-        el: wEl,
-        wStart: parseFloat(wEl.getAttribute('data-wstart')) || 0,
-        wEnd: parseFloat(wEl.getAttribute('data-wend')) || 0.4,
-        isHeld: wEl.getAttribute('data-held') === '1',
-        isLast: wEl.getAttribute('data-last') === '1',
-        state: 'pending'
-      }))
+      words: wordEls.map(wEl => {
+        const wStart = parseFloat(wEl.getAttribute('data-wstart')) || 0;
+        const wEnd = parseFloat(wEl.getAttribute('data-wend')) || (wStart + 0.4);
+        return {
+          el: wEl,
+          wStart,
+          wEnd,
+          wDur: Math.max(0.08, wEnd - wStart),
+          isHeld: wEl.getAttribute('data-held') === '1',
+          isLast: wEl.getAttribute('data-last') === '1',
+          state: 'pending',
+          lastWipe: -999
+        };
+      })
     };
   });
   lyricsScrollTrack.classList.add('lyrics-fade-out');
@@ -627,7 +702,7 @@ function formatTime(sec) {
 }
 
 // Hardware PCM clock already accounts for AudioTrack + AudioFlinger buffer latency
-const LYRIC_SYNC_LEAD_SEC = 0.0;
+const LYRIC_SYNC_LEAD_SEC = 0.04;
 
 function updateScrubberAndLyricsUI(forceScroll = false) {
   if (!forceScroll && !state.isNowPlayingOpen) return;
@@ -653,6 +728,39 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
   if (!cache || cache.length === 0) return;
 
   const lyricTime = state.currentTimeSec + LYRIC_SYNC_LEAD_SEC;
+
+  // Update AMLL Interlude Dots (• • •) if any exist
+  const interludes = state.interludeDOMCache;
+  if (interludes && interludes.length > 0) {
+    for (let k = 0; k < interludes.length; k++) {
+      const inter = interludes[k];
+      const isNowActive = lyricTime >= inter.iStart && lyricTime < inter.iEnd;
+      if (isNowActive !== inter.active) {
+        inter.active = isNowActive;
+        inter.el.classList.toggle('active', isNowActive);
+        if (!isNowActive) {
+          for (let d = 0; d < 3; d++) {
+            if (inter.dotStates[d]) {
+              inter.dotStates[d] = false;
+              inter.dots[d].classList.remove('lit');
+            }
+          }
+        }
+      }
+      if (isNowActive) {
+        const iProg = (lyricTime - inter.iStart) / inter.iDur;
+        const thresholds = [0.06, 0.36, 0.66];
+        for (let d = 0; d < 3; d++) {
+          const shouldLight = iProg >= thresholds[d];
+          if (shouldLight !== inter.dotStates[d]) {
+            inter.dotStates[d] = shouldLight;
+            inter.dots[d].classList.toggle('lit', shouldLight);
+          }
+        }
+      }
+    }
+  }
+
   let newActiveIdx = 0;
   for (let i = 0; i < cache.length; i++) {
     if (lyricTime >= cache[i].start && lyricTime < cache[i].lineEnd) {
@@ -671,6 +779,7 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
       for (let w = 0; w < oldWords.length; w++) {
         if (oldWords[w].state !== 'pending') {
           oldWords[w].state = 'pending';
+          oldWords[w].lastWipe = -999;
           oldWords[w].el.className = 'lyric-word pending';
         }
       }
@@ -701,9 +810,18 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
           wObj.state = 'singing';
           wObj.el.className = wObj.isHeld ? 'lyric-word singing held' : 'lyric-word singing';
         }
+        // AMLL Soft Gradient Wipe on the single active singing word
+        const prog = Math.min(1, Math.max(0, (lyricTime - wObj.wStart) / wObj.wDur));
+        const wipeLeft = Math.round(prog * 116 - 16);
+        if (wipeLeft !== wObj.lastWipe) {
+          wObj.lastWipe = wipeLeft;
+          wObj.el.style.setProperty('--wipe-left', `${wipeLeft}%`);
+          wObj.el.style.setProperty('--wipe-right', `${wipeLeft + 24}%`);
+        }
       } else {
         if (wObj.state !== 'pending') {
           wObj.state = 'pending';
+          wObj.lastWipe = -999;
           wObj.el.className = 'lyric-word pending';
         }
       }
