@@ -99,14 +99,54 @@ function parseLrcToWordSync(lrcString, totalDuration) {
   return parsed;
 }
 
-function parseLyricsPlusWordSync(lyricsData, totalDuration) {
+function parseMetaDurationSec(str) {
+  if (!str) return 0;
+  const m = String(str).match(/(?:(\d+):)?(\d+(?:\.\d+)?)/);
+  if (!m) return 0;
+  if (m[1]) return parseInt(m[1], 10) * 60 + parseFloat(m[2]);
+  return parseFloat(m[2]) || 0;
+}
+
+function parseLyricsPlusWordSync(lyricsData, expectedDurationSec, cleanTrackTitle) {
   if (!lyricsData || !Array.isArray(lyricsData.lyrics) || lyricsData.lyrics.length === 0) {
     return null;
+  }
+
+  // 1. Strict Version & Mix Validation:
+  // If the playing track is NOT a mix or radio edit, reject mismatched mixes (e.g. DJ mixes where intros are cut)
+  const meta = lyricsData.metadata || {};
+  const metaTitle = (meta.title || '').toLowerCase();
+  const playingTitle = (cleanTrackTitle || '').toLowerCase();
+  
+  const isPlayingMix = playingTitle.includes('mix') || playingTitle.includes('remix') || playingTitle.includes('edit');
+  const isResultMix = metaTitle.includes('mixed') || metaTitle.includes('dj mix') || metaTitle.includes('radio edit');
+  if (!isPlayingMix && isResultMix) {
+    lyrLog(`lyricsplus dropped: track is mixed/edit ("${meta.title}") but playing studio track`);
+    return null;
+  }
+
+  // 2. Strict Duration Validation:
+  // Compare expectedDurationSec (from Spotify) with totalDuration reported by LyricsPlus
+  const metaDur = parseMetaDurationSec(meta.totalDuration);
+  if (expectedDurationSec && expectedDurationSec > 0 && metaDur > 0) {
+    const diff = Math.abs(metaDur - expectedDurationSec);
+    if (diff > 4.5) {
+      lyrLog(`lyricsplus dropped: duration mismatch (lp=${metaDur.toFixed(1)}s vs spotify=${expectedDurationSec}s, diff=${diff.toFixed(1)}s)`);
+      return null;
+    }
   }
 
   const lines = lyricsData.lyrics;
   const hasWordSync = lines.some(l => Array.isArray(l.syllabus) && l.syllabus.length > 0);
   if (!hasWordSync) {
+    return null;
+  }
+
+  // 3. Last line end validation:
+  const lastLine = lines[lines.length - 1];
+  const lastLineEnd = ((lastLine.time || 0) + (lastLine.duration || 0)) / 1000;
+  if (expectedDurationSec && expectedDurationSec > 30 && lastLineEnd < expectedDurationSec * 0.70) {
+    lyrLog(`lyricsplus dropped: lyrics end too early (${lastLineEnd.toFixed(1)}s vs track ${expectedDurationSec}s)`);
     return null;
   }
 
@@ -117,7 +157,7 @@ function parseLyricsPlusWordSync(lyricsData, totalDuration) {
     const lineStartSec = (rawLine.time || 0) / 1000;
     const lineDurSec = (rawLine.duration || 0) / 1000;
     const lineEndSec = lineStartSec + lineDurSec;
-    const nextStartSec = i < lines.length - 1 ? (lines[i + 1].time || 0) / 1000 : (totalDuration || lineEndSec + 4);
+    const nextStartSec = i < lines.length - 1 ? (lines[i + 1].time || 0) / 1000 : (expectedDurationSec || lineEndSec + 4);
 
     let words = [];
 
@@ -288,7 +328,7 @@ async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durat
     if (lpRes && lpRes.ok) {
       try {
         const lpData = await lpRes.json();
-        const wordParsed = parseLyricsPlusWordSync(lpData, durationSec);
+        const wordParsed = parseLyricsPlusWordSync(lpData, durationSec, cleanTrack);
         if (wordParsed && wordParsed.length > 0) {
           lyrLog(`#${fetchId} OK REAL APPLE MUSIC WORD-SYNC ${wordParsed.length} lines in ${Date.now() - tStart}ms`);
           lyricsMemoryCache.set(cacheKey, wordParsed);
