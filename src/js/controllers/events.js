@@ -661,10 +661,19 @@ async function skipNextTrack() {
     state.pcmFlowing = false;
     state.currentTimeSec = 0;
   }
-  if (Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > 0) {
-    const nextTrack = state.liveQueueTracks[0];
-    state.liveQueueTracks = state.liveQueueTracks.slice(1);
-    state.contextUpcomingTracks = state.liveQueueTracks;
+
+  // Usar liveQueueTracks o contextUpcomingTracks para transición optimista en 0ms sin esperar la red
+  const queueSource = (Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > 0)
+    ? state.liveQueueTracks
+    : (Array.isArray(state.contextUpcomingTracks) && state.contextUpcomingTracks.length > 0
+      ? state.contextUpcomingTracks.map(normalizeApiTrack).filter(Boolean)
+      : []);
+
+  if (queueSource.length > 0) {
+    const nextTrack = queueSource[0];
+    const remaining = queueSource.slice(1);
+    state.liveQueueTracks = remaining;
+    state.contextUpcomingTracks = remaining;
     applyTrackToUI({
       id: nextTrack.id || nextTrack.uri || nextTrack.title,
       uri: nextTrack.uri,
@@ -682,7 +691,15 @@ async function skipNextTrack() {
       targetIsPlaying: true
     });
   }
+
   const cmdSeq = playbackActionSeq;
+  if (isLocalWebPlayerActive() && typeof webPlayer.nextTrack === 'function') {
+    try {
+      await webPlayer.nextTrack();
+      return;
+    } catch (e) {}
+  }
+
   if (spotifyAuth.accessToken) {
     const devQ = await getTargetDeviceQuery();
     if (cmdSeq !== playbackActionSeq) return;
@@ -704,6 +721,12 @@ async function skipPrevTrack() {
       durationMs: 2800,
       targetIsPlaying: true
     });
+    if (isLocalWebPlayerActive() && typeof webPlayer.previousTrack === 'function') {
+      try {
+        await webPlayer.previousTrack();
+        return;
+      } catch (e) {}
+    }
     const devQ = await getTargetDeviceQuery();
     if (cmdSeq !== playbackActionSeq) return;
     await spotifyFetch(`/me/player/previous${devQ}`, { method: 'POST' });
@@ -737,19 +760,16 @@ async function skipPrevTrack() {
   }
 }
 
-miniPlayPauseBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
+bindTouchButton(miniPlayPauseBtn, () => {
   togglePlayPause();
 });
 
-miniNextBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
+bindTouchButton(miniNextBtn, () => {
   skipNextTrack();
 });
 
 if (miniLikeBtn) {
-  miniLikeBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
+  bindTouchButton(miniLikeBtn, () => {
     if (!state.playingTrackId) return;
     toggleLikeTrack(state.playingTrackId, {
       title: state.playingTrackTitle,
@@ -759,10 +779,10 @@ if (miniLikeBtn) {
   });
 }
 
-npCloseBtn.addEventListener('click', closeNowPlaying);
-npPlayPauseBtn.addEventListener('click', togglePlayPause);
-npNextBtn.addEventListener('click', skipNextTrack);
-npPrevBtn.addEventListener('click', skipPrevTrack);
+bindTouchButton(npCloseBtn, closeNowPlaying);
+bindTouchButton(npPlayPauseBtn, togglePlayPause);
+bindTouchButton(npNextBtn, skipNextTrack);
+bindTouchButton(npPrevBtn, skipPrevTrack);
 
 // Click on Artist in Now Playing -> Open specific artist screen (handles multiple artists)
 if (npTrackArtist) {

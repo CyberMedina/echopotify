@@ -317,3 +317,35 @@ function extractDynamicPaletteFromCover(imgUrl, applyToLightBg = false, altUrls 
   return false;
 }
 
+function prewarmTrackPalette(imgUrl, altUrls = []) {
+  if (!imgUrl || imgUrl.startsWith('data:image')) return;
+  const candidates = [imgUrl, ...(Array.isArray(altUrls) ? altUrls : [])].filter(Boolean);
+  for (const cand of candidates) {
+    if (paletteCache.has(cand)) {
+      storePaletteInCache(imgUrl, altUrls, paletteCache.get(cand));
+      return;
+    }
+  }
+  if (document.images) {
+    for (let i = 0; i < document.images.length; i++) {
+      const domImg = document.images[i];
+      if (domImg && domImg.complete && domImg.naturalWidth > 0 && candidates.includes(domImg.src)) {
+        try {
+          const paletteData = computePaletteFromImageElement(domImg);
+          storePaletteInCache(imgUrl, altUrls, paletteData);
+          return;
+        } catch (err) {}
+      }
+    }
+  }
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = function () {
+    try {
+      const paletteData = computePaletteFromImageElement(img);
+      storePaletteInCache(imgUrl, altUrls, paletteData);
+    } catch (e) {}
+  };
+  img.src = imgUrl;
+}
+

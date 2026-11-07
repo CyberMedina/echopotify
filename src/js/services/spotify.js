@@ -212,16 +212,21 @@ async function findEngineDeviceId() {
 }
 
 async function getTargetDeviceQuery() {
-  // 1. Si el Web Player del navegador está listo, usarlo SIEMPRE
+  // 1. Si el Web Player del navegador está listo, usarlo en 0ms
   if (webPlayerDeviceId) {
     return `?device_id=${webPlayerDeviceId}`;
+  }
+
+  // 2. Si ya conocemos el activeDeviceId por el estado de reproducción actual, devolverlo en 0ms sin bloquear con GET /devices
+  if (spotifyAuth.activeDeviceId) {
+    return `?device_id=${spotifyAuth.activeDeviceId}`;
   }
 
   const devRes = await spotifyFetch('/me/player/devices');
   if (devRes && Array.isArray(devRes.devices) && devRes.devices.length > 0) {
     spotifyAuth.availableDevices = devRes.devices;
 
-    // 2. Buscar si hay algún Web Player (tipo Computer)
+    // 3. Buscar si hay algún Web Player (tipo Computer)
     const webDev = devRes.devices.find(d => d.type === 'Computer' && (d.name.includes('SpotiEcho') || d.name.includes('Silk') || d.name.includes('Echo Show')));
     if (webDev && webDev.id) {
       webPlayerDeviceId = webDev.id;
@@ -229,7 +234,7 @@ async function getTargetDeviceQuery() {
       return `?device_id=${webDev.id}`;
     }
 
-    // 3. JAMÁS enviar a dispositivos tipo 'Speaker' (como 'Echo Show de Jhonatan') porque Alexa OS interrumpe la skill y la cierra!
+    // 4. JAMÁS enviar a dispositivos tipo 'Speaker' (como 'Echo Show de Jhonatan') porque Alexa OS interrumpe la skill y la cierra!
     const safeDev = devRes.devices.find(d => d.type !== 'Speaker' && d.is_active)
                  || devRes.devices.find(d => d.type !== 'Speaker');
     if (safeDev && safeDev.id) {
@@ -238,7 +243,6 @@ async function getTargetDeviceQuery() {
     }
   }
 
-  if (spotifyAuth.activeDeviceId) return `?device_id=${spotifyAuth.activeDeviceId}`;
   return '';
 }
 

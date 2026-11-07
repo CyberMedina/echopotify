@@ -398,19 +398,24 @@ function loadHomeCache() {
 // ON-SCREEN DIAGNOSTIC LOGGER FOR ECHO SHOW (SILK BROWSER)
 // --------------------------------------------------------------------------
 const uiLogEntries = [];
-let uiLogPaused = false;
+window._echoLogs = uiLogEntries;
+window._echoLogsPaused = false;
 const bootTimeMs = performance.now();
+let uiLogRenderTimer = null;
 
 function uiLog(tag, msg) {
-  if (uiLogPaused) return;
+  if (window._echoLogsPaused) return;
   const elapsed = ((performance.now() - bootTimeMs) / 1000).toFixed(2);
   const entry = { time: `${elapsed}s`, tag, msg };
   uiLogEntries.push(entry);
-  if (uiLogEntries.length > 80) uiLogEntries.shift();
+  if (uiLogEntries.length > 60) uiLogEntries.shift();
 
-  const bodyEl = document.getElementById('debugLogBody');
-  if (bodyEl && bodyEl.offsetParent !== null) {
-    renderDebugLogEntries();
+  const panelEl = document.getElementById('debugLogPanel');
+  if (panelEl && panelEl.classList.contains('open') && !uiLogRenderTimer) {
+    uiLogRenderTimer = setTimeout(() => {
+      uiLogRenderTimer = null;
+      renderDebugLogEntries();
+    }, 120);
   }
 }
 
@@ -424,7 +429,7 @@ function renderDebugLogEntries() {
     else if (e.tag === 'TOUCH') color = '#facc15';
     else if (e.tag === 'ERR') color = '#f87171';
     else if (e.tag === 'FS') color = '#c084fc';
-    return `<div class="dbg-row"><span class="dbg-time">${e.time}</span> <span class="dbg-tag" style="color:${color}">[${e.tag}]</span> <span class="dbg-msg">${e.msg}</span></div>`;
+    return `<div class="dbg-row"><span class="dbg-ts">${e.time}</span> <span class="dbg-tag" style="color:${color}">[${e.tag}]</span> <span class="dbg-msg">${e.msg}</span></div>`;
   }).join('');
   bodyEl.scrollTop = bodyEl.scrollHeight;
 }

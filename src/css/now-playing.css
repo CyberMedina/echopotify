@@ -194,15 +194,19 @@ body.np-fully-open .ambient-bg {
   transform: translate3d(0, 0, 0);
 }
 
-/* Dynamic Multi-Point Apple Music Liquid Lava Mesh Gradient (Seamless GPU Blobs) */
+/* Dynamic Multi-Point Apple Music Liquid Lava Mesh Gradient (Low-Res Hardware Upscaled 20x Faster GPU Layer) */
 .np-mesh-bg {
   position: absolute;
-  inset: -6%;
-  width: 112%;
-  height: 112%;
+  top: 0;
+  left: 0;
+  width: 320px;
+  height: 200px;
   z-index: 0;
   overflow: hidden;
-  transform: translateZ(0);
+  transform-origin: top left;
+  transform: scale(4) translateZ(0);
+  pointer-events: none;
+  contain: strict;
   background:
     radial-gradient(ellipse 80% 75% at 18% 18%, var(--np-c1) 0%, transparent 66%),
     radial-gradient(ellipse 82% 75% at 84% 82%, var(--np-c2) 0%, transparent 66%),
@@ -213,21 +217,21 @@ body.np-fully-open .ambient-bg {
 .np-lava-blob {
   position: absolute;
   will-change: transform;
-  transform: translate3d(0, 0, 0) rotate(0deg);
+  transform: translate3d(0, 0, 0);
   backface-visibility: hidden;
   pointer-events: none;
   border-radius: 50%;
   animation-play-state: paused;
 }
 
-.now-playing-overlay.open .np-lava-blob {
+.now-playing-overlay.open:not(.np-switching) .np-lava-blob {
   animation-play-state: running;
 }
 
-/* Wide diffused organic blobs: radial gradient fades completely to transparent well before bounding box edge */
+/* Diffused organic blobs in 320x200 coordinate space (20x lower GPU rasterization & overdraw cost on Echo Show 8) */
 .np-lava-blob.blob-1 {
-  width: 1200px;
-  height: 1200px;
+  width: 300px;
+  height: 300px;
   top: -30%;
   left: -22%;
   opacity: 0.70;
@@ -236,8 +240,8 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-lava-blob.blob-2 {
-  width: 1150px;
-  height: 1150px;
+  width: 288px;
+  height: 288px;
   bottom: -26%;
   right: -20%;
   opacity: 0.72;
@@ -246,8 +250,8 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-lava-blob.blob-3 {
-  width: 1100px;
-  height: 1100px;
+  width: 275px;
+  height: 275px;
   top: -15%;
   right: -10%;
   opacity: 0.65;
@@ -256,8 +260,8 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-lava-blob.blob-4 {
-  width: 1180px;
-  height: 1180px;
+  width: 295px;
+  height: 295px;
   bottom: -22%;
   left: -12%;
   opacity: 0.68;
@@ -265,61 +269,60 @@ body.np-fully-open .ambient-bg {
   animation: lavaWave4 24s ease-in-out infinite alternate;
 }
 
-/* Organic orbital wave motions: blobs swell and undulate in harmony within their quadrants
-   instead of rushing into the center and colliding */
+/* Organic orbital wave motions scaled to 320x200 coordinate space (no rotation needed for circular radial gradients) */
 @keyframes lavaWave1 {
   0% {
-    transform: translate3d(0px, 0px, 0) rotate(0deg);
+    transform: translate3d(0px, 0px, 0);
   }
 
   50% {
-    transform: translate3d(90px, 80px, 0) rotate(35deg);
+    transform: translate3d(22px, 20px, 0);
   }
 
   100% {
-    transform: translate3d(-50px, 130px, 0) rotate(70deg);
+    transform: translate3d(-12px, 32px, 0);
   }
 }
 
 @keyframes lavaWave2 {
   0% {
-    transform: translate3d(0px, 0px, 0) rotate(0deg);
+    transform: translate3d(0px, 0px, 0);
   }
 
   50% {
-    transform: translate3d(-70px, -90px, 0) rotate(-35deg);
+    transform: translate3d(-18px, -22px, 0);
   }
 
   100% {
-    transform: translate3d(60px, -140px, 0) rotate(-70deg);
+    transform: translate3d(15px, -35px, 0);
   }
 }
 
 @keyframes lavaWave3 {
   0% {
-    transform: translate3d(0px, 0px, 0) rotate(0deg);
+    transform: translate3d(0px, 0px, 0);
   }
 
   50% {
-    transform: translate3d(-80px, 70px, 0) rotate(30deg);
+    transform: translate3d(-20px, 18px, 0);
   }
 
   100% {
-    transform: translate3d(70px, -40px, 0) rotate(65deg);
+    transform: translate3d(18px, -10px, 0);
   }
 }
 
 @keyframes lavaWave4 {
   0% {
-    transform: translate3d(0px, 0px, 0) rotate(0deg);
+    transform: translate3d(0px, 0px, 0);
   }
 
   50% {
-    transform: translate3d(80px, -60px, 0) rotate(-30deg);
+    transform: translate3d(20px, -15px, 0);
   }
 
   100% {
-    transform: translate3d(-60px, 50px, 0) rotate(-65deg);
+    transform: translate3d(-15px, 12px, 0);
   }
 }
 

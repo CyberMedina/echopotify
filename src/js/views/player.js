@@ -41,8 +41,9 @@ let coverCrossfadeTimer = null;
 let lastCoverCrossfadeAt = 0;
 let metaSwapTimer = null;
 let scrubberResetTimer = null;
+let trackWorkDeferTimer = null;
 
-function crossfadeNowPlayingCover( rawCoverUrl, thumbUrl, animateSwap) {
+function crossfadeNowPlayingCover(rawCoverUrl, thumbUrl, animateSwap) {
   const coverUrl = ensureHighResSpotifyCover(rawCoverUrl);
   if (!npCoverArt || !coverUrl) return;
   const prevSrc = npCoverArt.getAttribute('src') || npCoverArt.dataset.currentSrc || '';
@@ -53,15 +54,20 @@ function crossfadeNowPlayingCover( rawCoverUrl, thumbUrl, animateSwap) {
   npCoverArt.dataset.currentSrc = coverUrl;
 
   if (!animateSwap || isInitialPlaceholder || !npCoverGhost || prevSrc === coverUrl || rapidUpdate) {
-    if (coverUrl.startsWith('data:') || decodedImageUrls.has(coverUrl)) {
-      if (npCoverArt.getAttribute('src') !== coverUrl) {
-        npCoverArt.src = coverUrl;
+    const immediateSrc = (coverUrl.startsWith('data:') || decodedImageUrls.has(coverUrl))
+      ? coverUrl
+      : ((thumbUrl && decodedImageUrls.has(thumbUrl)) ? thumbUrl : null);
+
+    if (immediateSrc) {
+      if (npCoverArt.getAttribute('src') !== immediateSrc) {
+        npCoverArt.src = immediateSrc;
       }
       npCoverArt.style.opacity = '1';
       if (npCoverGhost && !coverCrossfadeTimer) {
-        npCoverGhost.src = coverUrl;
+        npCoverGhost.src = immediateSrc;
       }
-    } else {
+    }
+    if (immediateSrc !== coverUrl) {
       decodeImageInBackground(coverUrl).then(() => {
         if (state.lastRenderedCover === coverUrl) {
           npCoverArt.src = coverUrl;
@@ -81,11 +87,12 @@ function crossfadeNowPlayingCover( rawCoverUrl, thumbUrl, animateSwap) {
 
   lastCoverCrossfadeAt = now;
 
-  // Cross-dissolve puro y estable en 1 solo paso (640x640 -> 640x640) sin rebote ni pop final
-  const executeAppleMusicCoverTransition = (hdUrl) => {
+  // Cross-dissolve en 0ms sin forzar reflow síncrono (sin offsetWidth) y pausando blobs durante los 360ms
+  const executeAppleMusicCoverTransition = (displayUrl) => {
     if (state.lastRenderedCover !== coverUrl) return;
     clearTimeout(coverCrossfadeTimer);
 
+    if (nowPlayingOverlay) nowPlayingOverlay.classList.add('np-switching');
     npCoverGhost.style.transition = 'none';
     npCoverGhost.classList.remove('ghost-fading');
     if (npCoverGhost.getAttribute('src') !== prevSrc) {
@@ -93,28 +100,45 @@ function crossfadeNowPlayingCover( rawCoverUrl, thumbUrl, animateSwap) {
     }
     npCoverGhost.style.opacity = '1';
 
-    npCoverArt.src = hdUrl;
+    npCoverArt.src = displayUrl;
     npCoverArt.style.opacity = '1';
 
-    void npCoverGhost.offsetWidth;
-    npCoverGhost.style.transition = '';
-
     requestAnimationFrame(() => {
-      npCoverGhost.classList.add('ghost-fading');
-      coverCrossfadeTimer = setTimeout(() => {
-        npCoverGhost.style.opacity = '0';
-        npCoverGhost.classList.remove('ghost-fading');
-        coverCrossfadeTimer = null;
-        const settledSrc = npCoverArt.getAttribute('src') || hdUrl;
-        if (npCoverGhost.getAttribute('src') !== settledSrc) {
-          npCoverGhost.src = settledSrc;
-        }
-      }, 380);
+      npCoverGhost.style.transition = '';
+      requestAnimationFrame(() => {
+        npCoverGhost.classList.add('ghost-fading');
+        coverCrossfadeTimer = setTimeout(() => {
+          npCoverGhost.style.opacity = '0';
+          npCoverGhost.classList.remove('ghost-fading');
+          if (nowPlayingOverlay) nowPlayingOverlay.classList.remove('np-switching');
+          coverCrossfadeTimer = null;
+          const settledSrc = npCoverArt.getAttribute('src') || displayUrl;
+          if (npCoverGhost.getAttribute('src') !== settledSrc) {
+            npCoverGhost.src = settledSrc;
+          }
+        }, 380);
+      });
     });
   };
 
   if (coverUrl.startsWith('data:') || decodedImageUrls.has(coverUrl)) {
     executeAppleMusicCoverTransition(coverUrl);
+    return;
+  }
+
+  // Si la miniatura (thumbUrl) o versión media ya está en caché/DOM, iniciar el crossfade en 0ms con ella
+  // para que la portada cambie al unísono con el título sin esperar 300ms de red, y actualizar a HD en silencio
+  const hasReadyThumb = thumbUrl && (decodedImageUrls.has(thumbUrl) || (document.images && Array.from(document.images).some(img => img.complete && img.naturalWidth > 0 && img.src === thumbUrl)));
+  if (hasReadyThumb) {
+    executeAppleMusicCoverTransition(thumbUrl);
+    decodeImageInBackground(coverUrl).then(() => {
+      if (state.lastRenderedCover === coverUrl) {
+        npCoverArt.src = coverUrl;
+        if (!coverCrossfadeTimer && npCoverGhost) {
+          npCoverGhost.src = coverUrl;
+        }
+      }
+    });
     return;
   }
 
@@ -352,45 +376,68 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
         npScrubberFill.classList.remove('scrubber-resetting');
       }, 360);
     }
-    extractDynamicPaletteFromCover(coverUrl, false);
-    fetchSyncedLyricsForTrack(
-      state.playingTrackTitle,
-      trackObj.artists ? trackObj.artists[0].name : artistName,
-      albumName,
-      durationSec
-    );
-    fetchAndRenderQueueForCurrentTrack(trackObj);
+
+    // Pasar todas las variantes de URL ([coverUrl, rawCoverUrl, thumbUrl]) para lograr 0ms Cache HIT / DOM SYNC
+    // desde la miniatura ya cargada en el DOM y evitar una segunda extracción asíncrona
+    extractDynamicPaletteFromCover(coverUrl, false, [coverUrl, rawCoverUrl, thumbUrl]);
+
+    // Actualizar barra de progreso e íconos de me gusta locales en 0ms
     const cleanId = cleanTrackId(trackObj.id || trackObj.uri);
     const isValidSpotifyId = Boolean(cleanId && /^[0-9A-Za-z]{22}$/.test(cleanId));
-
     if (isValidSpotifyId) {
       const isLocallyLiked = liveCatalog.likedTrackIds.has(cleanId);
       spotifyAuth.isLiked = isLocallyLiked;
       updateLikeButtonsUI(isLocallyLiked);
-      spotifyFetch(`/me/tracks/contains?ids=${cleanId}`).then(res => {
-        if (Array.isArray(res) && typeof res[0] === 'boolean') {
-          spotifyAuth.isLiked = !!res[0];
-          if (spotifyAuth.isLiked) {
-            liveCatalog.likedTrackIds.add(cleanId);
-          } else {
-            liveCatalog.likedTrackIds.delete(cleanId);
-          }
-          updateLikeButtonsUI(spotifyAuth.isLiked);
-          document.querySelectorAll(`[data-track-id="${cleanId}"]`).forEach(btn => {
-            btn.classList.toggle('liked', spotifyAuth.isLiked);
-            btn.setAttribute('title', spotifyAuth.isLiked ? 'Eliminar de Tus me gusta' : 'Guardar en Tus me gusta');
-            const svg = btn.querySelector('svg');
-            if (svg) {
-              svg.setAttribute('fill', spotifyAuth.isLiked ? '#1ed760' : 'none');
-              svg.setAttribute('stroke', spotifyAuth.isLiked ? '#1ed760' : 'currentColor');
-            }
-          });
-        }
-      }).catch(e => console.warn('[tracks/contains error]', e));
     } else {
       updateLikeButtonsUI(false);
     }
+
+    // Desvanecer letras anteriores suavemente sin reconstruir DOM pesado en mitad de la animación de 60fps
+    if (shouldAnimateTransition && lyricsScrollTrack) {
+      lyricsScrollTrack.classList.add('lyrics-fade-out');
+    }
     updateScrubberAndLyricsUI(true);
+
+    // Diferir reconstrucción de DOM de letras/cola y peticiones de red secundarias 220ms
+    // cuando hay animación activa para que el crossfade de portada y texto corra a 60fps puros en el Echo Show 8
+    clearTimeout(trackWorkDeferTimer);
+    const runSecondaryTrackWork = () => {
+      fetchSyncedLyricsForTrack(
+        state.playingTrackTitle,
+        trackObj.artists ? trackObj.artists[0].name : artistName,
+        albumName,
+        durationSec
+      );
+      fetchAndRenderQueueForCurrentTrack(trackObj);
+      if (isValidSpotifyId) {
+        spotifyFetch(`/me/tracks/contains?ids=${cleanId}`).then(res => {
+          if (Array.isArray(res) && typeof res[0] === 'boolean' && state.playingTrackId === nextId) {
+            spotifyAuth.isLiked = !!res[0];
+            if (spotifyAuth.isLiked) {
+              liveCatalog.likedTrackIds.add(cleanId);
+            } else {
+              liveCatalog.likedTrackIds.delete(cleanId);
+            }
+            updateLikeButtonsUI(spotifyAuth.isLiked);
+            document.querySelectorAll(`[data-track-id="${cleanId}"]`).forEach(btn => {
+              btn.classList.toggle('liked', spotifyAuth.isLiked);
+              btn.setAttribute('title', spotifyAuth.isLiked ? 'Eliminar de Tus me gusta' : 'Guardar en Tus me gusta');
+              const svg = btn.querySelector('svg');
+              if (svg) {
+                svg.setAttribute('fill', spotifyAuth.isLiked ? '#1ed760' : 'none');
+                svg.setAttribute('stroke', spotifyAuth.isLiked ? '#1ed760' : 'currentColor');
+              }
+            });
+          }
+        }).catch(e => console.warn('[tracks/contains error]', e));
+      }
+    };
+
+    if (shouldAnimateTransition && state.isNowPlayingOpen) {
+      trackWorkDeferTimer = setTimeout(runSecondaryTrackWork, 220);
+    } else {
+      runSecondaryTrackWork();
+    }
   } else if (!state.isPlaying) {
     updateScrubberAndLyricsUI(false);
   }
@@ -826,6 +873,20 @@ function renderQueuePanelUI() {
 }
 
 async function fetchAndRenderQueueForCurrentTrack(trackObj) {
+  // Helper ligero: pre-calentar solo las próximas 3 canciones (portada HD + miniatura + paleta de color en caché)
+  // sin saturar la red ni el decodificador de imágenes del Echo Show con 25 descargas simultáneas
+  const prewarmUpcomingSlice = (tracksList) => {
+    if (!Array.isArray(tracksList) || tracksList.length === 0) return;
+    const nextThree = tracksList.slice(0, 3);
+    prewarmImageUrls(nextThree.map(t => t.cover));
+    prewarmImageUrls(nextThree.map(t => t.thumb || t.cover));
+    if (typeof prewarmTrackPalette === 'function') {
+      nextThree.forEach(t => {
+        if (t && t.cover) prewarmTrackPalette(t.cover, [t.cover, t.thumb]);
+      });
+    }
+  };
+
   // If tracks are available from local context:
   if (Array.isArray(state.contextUpcomingTracks) && state.contextUpcomingTracks.length > 0) {
     const currentIdx = state.contextUpcomingTracks.findIndex(t => (t.id && t.id === state.playingTrackId) || (t.title && t.title === state.playingTrackTitle));
@@ -837,11 +898,11 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
   }
   state.queueLoading = Boolean(spotifyAuth.accessToken);
 
-  renderQueuePanelUI();
+  if (state.nowPlayingMode === 'queue') {
+    renderQueuePanelUI();
+  }
   if (state.liveQueueTracks.length > 0) {
-    // Pre-decodificar tanto las portadas HD (640x640) de las próximas canciones como las miniaturas de la lista
-    prewarmImageUrls(state.liveQueueTracks.slice(0, 8).map(t => t.cover));
-    prewarmImageUrls(state.liveQueueTracks.slice(0, 15).map(t => t.thumb || t.cover));
+    prewarmUpcomingSlice(state.liveQueueTracks);
   }
 
   if (!spotifyAuth.accessToken) {
@@ -868,9 +929,10 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
     if (apiQueue.length > 0) {
       state.liveQueueTracks = apiQueue;
       state.queueLoading = false;
-      renderQueuePanelUI();
-      prewarmImageUrls(apiQueue.slice(0, 8).map(t => t.cover));
-      prewarmImageUrls(apiQueue.slice(0, 15).map(t => t.thumb || t.cover));
+      if (state.nowPlayingMode === 'queue') {
+        renderQueuePanelUI();
+      }
+      prewarmUpcomingSlice(apiQueue);
       updateNowPlayingRightPanelMode();
       return;
     }
@@ -878,7 +940,9 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
 
   if (state.liveQueueTracks.length > 0) {
     state.queueLoading = false;
-    renderQueuePanelUI();
+    if (state.nowPlayingMode === 'queue') {
+      renderQueuePanelUI();
+    }
     updateNowPlayingRightPanelMode();
     return;
   }
