@@ -20,29 +20,18 @@ let lastTrackPaletteCoverUrl = '';
 let lastAlbumPaletteCoverUrl = '';
 
 function animateLavaPaletteTo(targetRgbQuad) {
-  if (lavaColorRaf) cancelAnimationFrame(lavaColorRaf);
-  const startQuad = currentLavaRgb.map(c => c.slice());
-  const startTime = performance.now();
-  const duration = 950;
-
-  function tickPalette(now) {
-    const t = Math.min(1, (now - startTime) / duration);
-    // Cubic ease-out for silky ambient color morph
-    const ease = 1 - Math.pow(1 - t, 3);
-    for (let i = 0; i < 4; i++) {
-      const r = Math.round(startQuad[i][0] + (targetRgbQuad[i][0] - startQuad[i][0]) * ease);
-      const g = Math.round(startQuad[i][1] + (targetRgbQuad[i][1] - startQuad[i][1]) * ease);
-      const b = Math.round(startQuad[i][2] + (targetRgbQuad[i][2] - startQuad[i][2]) * ease);
-      currentLavaRgb[i] = [r, g, b];
-      root.style.setProperty(`--np-c${i + 1}`, `rgb(${r}, ${g}, ${b})`);
-    }
-    if (t < 1) {
-      lavaColorRaf = requestAnimationFrame(tickPalette);
-    } else {
-      lavaColorRaf = null;
-    }
+  if (lavaColorRaf) {
+    cancelAnimationFrame(lavaColorRaf);
+    lavaColorRaf = null;
   }
-  lavaColorRaf = requestAnimationFrame(tickPalette);
+  // Aplicar una sola vez directamente sobre #npMeshBg (contain: strict) en vez de :root en un bucle de 60fps.
+  // Evita 57 recálculos de estilo de todo el DOM y 57 re-rasterizados de gradiente de 1280x800 por canción.
+  const meshEl = document.getElementById('npMeshBg') || root;
+  for (let i = 0; i < 4; i++) {
+    const c = targetRgbQuad[i];
+    currentLavaRgb[i] = [c[0], c[1], c[2]];
+    meshEl.style.setProperty(`--np-c${i + 1}`, `rgb(${c[0]}, ${c[1]}, ${c[2]})`);
+  }
 }
 
 function applyExtractedPaletteData(palette, applyToLightBg = false) {

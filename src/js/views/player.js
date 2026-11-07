@@ -596,7 +596,7 @@ function buildLyricsDOM(lyricsArray) {
     return {
       el: lineEl,
       lastClass: initialCls,
-      targetOffset: Math.max(0, lineEl.offsetTop - 210),
+      targetOffset: 0,
       start: lineData.start || 0,
       end: lineData.end || ((lineData.start || 0) + 4),
       lineEnd: lineData.lineEnd || lineData.end || ((lineData.start || 0) + 5),
