@@ -12,10 +12,10 @@
   <link rel="preconnect" href="https://api.spotify.com" crossorigin />
   <link rel="dns-prefetch" href="https://i.scdn.co" />
   <link rel="dns-prefetch" href="https://mosaic.scdn.co" />
-  <link rel="stylesheet" href="src/css/base.css?v=4.4" />
-  <link rel="stylesheet" href="src/css/views.css?v=4.4" />
-  <link rel="stylesheet" href="src/css/now-playing.css?v=4.4" />
-  <link rel="stylesheet" href="src/css/theme-modals.css?v=4.4" />
+  <link rel="stylesheet" href="src/css/base.css?v=4.5" />
+  <link rel="stylesheet" href="src/css/views.css?v=4.5" />
+  <link rel="stylesheet" href="src/css/now-playing.css?v=4.5" />
+  <link rel="stylesheet" href="src/css/theme-modals.css?v=4.5" />
   <script src="https://cdn.html.games.alexa.a2z.com/alexa-html/latest/alexa-html.js"></script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 </head>
@@ -492,10 +492,10 @@
         </svg>
       </button>
 
-      <!-- Apple Music Top Pull-Down Grabber Tab -->
-      <button class="np-grabber-btn" id="npGrabberBtn" type="button" title="Desliza hacia abajo para minimizar reproductor">
+      <!-- Apple Music Top Pull-Down Visual Tab -->
+      <div class="np-grabber-btn" id="npGrabberZone" title="Desliza hacia abajo para minimizar">
         <span class="np-grabber-pill" id="npGrabberPill"></span>
-      </button>
+      </div>
 
       <div class="np-main-grid">
         <!-- LEFT COLUMN: Cover Art + Song Info + Scrubber + Transport -->
@@ -789,24 +789,24 @@
   </div>
 
   <!-- Core Architecture -->
-  <script src="src/js/core/state.js?v=4.4"></script>
-  <script src="src/js/core/dom.js?v=4.4"></script>
-  <script src="src/js/core/color.js?v=4.4"></script>
+  <script src="src/js/core/state.js?v=4.5"></script>
+  <script src="src/js/core/dom.js?v=4.5"></script>
+  <script src="src/js/core/color.js?v=4.5"></script>
 
   <!-- External Services (OAuth 2.0 PKCE, Spotify API & Web Playback SDK, LRCLIB) -->
-  <script src="src/js/services/auth.js?v=4.4"></script>
-  <script src="src/js/services/spotify.js?v=4.4"></script>
-  <script src="src/js/services/lyrics.js?v=4.4"></script>
+  <script src="src/js/services/auth.js?v=4.5"></script>
+  <script src="src/js/services/spotify.js?v=4.5"></script>
+  <script src="src/js/services/lyrics.js?v=4.5"></script>
 
   <!-- UI Views & Renderers -->
-  <script src="src/js/views/catalog.js?v=4.4"></script>
-  <script src="src/js/views/details.js?v=4.4"></script>
-  <script src="src/js/views/player.js?v=4.4"></script>
+  <script src="src/js/views/catalog.js?v=4.5"></script>
+  <script src="src/js/views/details.js?v=4.5"></script>
+  <script src="src/js/views/player.js?v=4.5"></script>
 
   <!-- Controllers & Bootstrap -->
-  <script src="src/js/controllers/navigation.js?v=4.4"></script>
-  <script src="src/js/controllers/events.js?v=4.4"></script>
-  <script src="src/js/main.js?v=4.4"></script>
+  <script src="src/js/controllers/navigation.js?v=4.5"></script>
+  <script src="src/js/controllers/events.js?v=4.5"></script>
+  <script src="src/js/main.js?v=4.5"></script>
 </body>
 </html>
 

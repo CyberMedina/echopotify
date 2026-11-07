@@ -179,7 +179,7 @@ body.np-fully-open .ambient-bg {
   will-change: transform;
   backface-visibility: hidden;
   overflow: hidden;
-  touch-action: pan-y;
+  touch-action: none;
 }
 
 .now-playing-overlay.open {

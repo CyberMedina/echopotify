@@ -213,7 +213,7 @@ function closeNowPlaying(opts = {}) {
   npCloseAnimationTimer = setTimeout(finishClose, Math.round(duration * 1000) + 50);
 }
 
-// Apple Music / Native Gesture: Swipe-Down on Now Playing overlay to Dismiss
+// Native Touch & Mouse Swipe-Down on Now Playing overlay to Dismiss
 (function initNowPlayingSwipeDown() {
   const overlay = nowPlayingOverlay;
   if (!overlay) return;
@@ -232,7 +232,7 @@ function closeNowPlaying(opts = {}) {
     if (target.closest('#npScrubberTrack') || target.closest('#npVolumeTrack')) return true;
     // 2. Botones de transporte (play, pause, next, prev, shuffle, repeat)
     if (target.closest('.np-transport-btn')) return true;
-    // 3. Botones dock inferiores (Letra / Cola) & botón cerrar & botones favoritos / opciones
+    // 3. Botones dock inferiores (Letra / Cola) & botón cerrar esquina & favoritos
     if (target.closest('.np-dock-btn') || target.closest('.np-circle-btn') || target.closest('#npCloseBtn')) return true;
     // 4. Lista de cola scrolleada hacia abajo: permitir scroll interno de la cola
     const queueList = target.closest('#npQueueListContainer');
@@ -240,46 +240,46 @@ function closeNowPlaying(opts = {}) {
     return false;
   }
 
-  function onPointerDown(e) {
-    if (!state.isNowPlayingOpen) return;
-    if (e.button !== undefined && e.button !== 0) return; // Solo click principal o touch
-    if (shouldIgnoreEvent(e.target)) return;
+  function handleStart(clientX, clientY, target) {
+    if (!state.isNowPlayingOpen) return false;
+    if (shouldIgnoreEvent(target)) return false;
 
-    startX = e.clientX;
-    startY = e.clientY;
+    startX = clientX;
+    startY = clientY;
     startTime = Date.now();
     isTracking = true;
     isDragging = false;
     currentDy = 0;
+    return true;
   }
 
-  function onPointerMove(e) {
+  function handleMove(clientX, clientY, cancelableEvent) {
     if (!isTracking) return;
 
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
+    const dx = clientX - startX;
+    const dy = clientY - startY;
 
     if (!isDragging) {
-      // Reconocer intención clara de scroll/deslizamiento hacia abajo:
-      // Movimiento vertical > 8px y predominantemente hacia abajo vs horizontal
-      if (dy > 8 && dy > Math.abs(dx) * 1.05) {
+      // Iniciar arrastre si el movimiento es hacia abajo (> 6px) y vertical
+      if (dy > 6 && dy > Math.abs(dx) * 0.85) {
         isDragging = true;
         state.isSwipingNowPlaying = true;
         clearTimeout(npFullyOpenTimer);
         clearTimeout(npCloseAnimationTimer);
         document.body.classList.remove('np-fully-open');
         overlay.style.transition = 'none';
-      } else if (Math.abs(dx) > 14 || dy < -12) {
-        // Gesto lateral o hacia arriba: cancelar tracking para no interferir
+      } else if (Math.abs(dx) > 12 || dy < -10) {
+        // Gesto lateral o hacia arriba: cancelar tracking
         isTracking = false;
         return;
       }
     }
 
     if (isDragging) {
-      if (e.cancelable) e.preventDefault();
+      if (cancelableEvent && cancelableEvent.cancelable) {
+        cancelableEvent.preventDefault();
+      }
       currentDy = Math.max(0, dy);
-      // Seguimiento directo 1:1 ultra-intuitivo con amortiguación suave si excede 520px
       const visualDy = currentDy > 520 ? 520 + Math.round((currentDy - 520) * 0.38) : currentDy;
       overlay.style.transform = `translate3d(0, ${visualDy}px, 0)`;
 
@@ -290,7 +290,7 @@ function closeNowPlaying(opts = {}) {
     }
   }
 
-  function onPointerUp(e) {
+  function handleEnd() {
     if (!isTracking && !isDragging) return;
     isTracking = false;
 
@@ -307,14 +307,14 @@ function closeNowPlaying(opts = {}) {
       grabberPill.style.background = '';
     }
 
-    // Descartar/volver si se deslizó más de 65px O con un flick rápido hacia abajo (> 0.32 px/ms y > 25px)
-    if (currentDy > 65 || (currentDy > 25 && velocityY > 0.32)) {
+    // Umbral súper intuitivo: más de 45px O velocidad rápida hacia abajo (> 0.20 px/ms y > 18px)
+    if (currentDy > 45 || (currentDy > 18 && velocityY > 0.20)) {
       state.isNowPlayingOpen = false;
       clearTimeout(npFullyOpenTimer);
       clearTimeout(npCloseAnimationTimer);
 
       const remaining = Math.max(0, 800 - currentDy);
-      const exitDuration = Math.min(0.38, Math.max(0.24, remaining / (Math.max(velocityY, 1.4) * 1000)));
+      const exitDuration = Math.min(0.38, Math.max(0.20, remaining / (Math.max(velocityY, 1.4) * 1000)));
 
       overlay.style.transition = `transform ${exitDuration.toFixed(2)}s cubic-bezier(0.22, 1, 0.36, 1)`;
       overlay.style.transform = 'translate3d(0, 100%, 0)';
@@ -328,7 +328,7 @@ function closeNowPlaying(opts = {}) {
         overlay.style.transform = '';
         setTimeout(() => {
           state.isSwipingNowPlaying = false;
-        }, 60);
+        }, 80);
       };
 
       const onEnd = (evt) => {
@@ -355,13 +355,58 @@ function closeNowPlaying(opts = {}) {
     }
   }
 
-  // Pointer Events para touch nativo en Echo Show y mouse en desktop
-  overlay.addEventListener('pointerdown', onPointerDown, { passive: true });
-  window.addEventListener('pointermove', onPointerMove, { passive: false });
-  window.addEventListener('pointerup', onPointerUp, { passive: true });
-  window.addEventListener('pointercancel', onPointerUp, { passive: true });
+  // 1. TOUCH EVENTS (Nativo Echo Show 8 / Android)
+  overlay.addEventListener('touchstart', (e) => {
+    if (!e.touches || e.touches.length !== 1) return;
+    handleStart(e.touches[0].clientX, e.touches[0].clientY, e.target);
+  }, { passive: true });
 
-  // Soporte de rueda de ratón (wheel scroll down) para ir atrás
+  window.addEventListener('touchmove', (e) => {
+    if (!isTracking || !e.touches || e.touches.length !== 1) return;
+    handleMove(e.touches[0].clientX, e.touches[0].clientY, e);
+  }, { passive: false });
+
+  window.addEventListener('touchend', () => {
+    handleEnd();
+  }, { passive: true });
+
+  window.addEventListener('touchcancel', () => {
+    // Si ya se había desplazado significativamente (> 40px), proceder con dismiss en vez de abortar
+    if (isDragging && currentDy > 40) {
+      handleEnd();
+    } else {
+      isTracking = false;
+      if (isDragging) {
+        overlay.style.transition = 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)';
+        overlay.style.transform = 'translate3d(0, 0, 0)';
+        setTimeout(() => {
+          if (state.isNowPlayingOpen) {
+            overlay.style.transition = '';
+            overlay.style.transform = '';
+            document.body.classList.add('np-fully-open');
+          }
+          state.isSwipingNowPlaying = false;
+        }, 300);
+      }
+    }
+  }, { passive: true });
+
+  // 2. MOUSE EVENTS (Para pruebas en desktop)
+  overlay.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    handleStart(e.clientX, e.clientY, e.target);
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isTracking) return;
+    handleMove(e.clientX, e.clientY, e);
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (isTracking || isDragging) handleEnd();
+  });
+
+  // 3. WHEEL SCROLL DOWN
   let wheelAccumulator = 0;
   let wheelResetTimer = null;
   overlay.addEventListener('wheel', (e) => {
@@ -373,7 +418,7 @@ function closeNowPlaying(opts = {}) {
       wheelAccumulator += e.deltaY;
       clearTimeout(wheelResetTimer);
       wheelResetTimer = setTimeout(() => { wheelAccumulator = 0; }, 260);
-      if (wheelAccumulator > 75) {
+      if (wheelAccumulator > 70) {
         wheelAccumulator = 0;
         closeNowPlaying();
       }

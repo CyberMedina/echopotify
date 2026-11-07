@@ -780,7 +780,6 @@ if (miniLikeBtn) {
 }
 
 bindTouchButton(npCloseBtn, closeNowPlaying);
-if (npGrabberBtn) bindTouchButton(npGrabberBtn, closeNowPlaying);
 bindTouchButton(npPlayPauseBtn, togglePlayPause);
 bindTouchButton(npNextBtn, skipNextTrack);
 bindTouchButton(npPrevBtn, skipPrevTrack);
