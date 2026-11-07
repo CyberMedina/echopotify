@@ -134,6 +134,12 @@ const DEFAULT_SPOTIFY_COVER = "data:image/svg+xml;utf8," + encodeURIComponent(
 const DEFAULT_PLAYLIST_COVER = DEFAULT_SPOTIFY_COVER;
 const DEFAULT_ALBUM_COVER = DEFAULT_SPOTIFY_COVER;
 
+// Normaliza identificadores de tracks eliminando prefijos de URI de Spotify
+function cleanTrackId(id) {
+  if (!id) return '';
+  return String(id).replace(/^spotify:track:/, '').trim();
+}
+
 // Convierte cualquier URL de portada de Spotify (64x64 o 300x300) a su versión canónica HD 640x640
 function ensureHighResSpotifyCover(url) {
   if (!url || typeof url !== 'string') return '';

@@ -90,11 +90,6 @@ async function timedLyricsFetch(tag, fetchId, url, timeoutMs) {
   }
 }
 
-function cleanTrackId(id) {
-  if (!id) return '';
-  return String(id).replace(/^spotify:track:/, '').trim();
-}
-
 async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durationSec) {
   if (!trackName) return;
   const cleanTrack = (trackName || '').replace(/\s*\(.*?\)\s*/g, '').replace(/\s*-\s*.*$/, '').trim() || trackName;

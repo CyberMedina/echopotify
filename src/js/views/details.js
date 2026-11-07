@@ -41,7 +41,49 @@ function updateLikeButtonsUI(isLiked) {
   }
 }
 
-async function toggleLikeTrack(trackId, trackInfo = null) {
+async function checkAndCacheLikedTracks(tracks) {
+  if (!spotifyAuth.accessToken || !Array.isArray(tracks) || tracks.length === 0) return;
+  const ids = tracks
+    .map(t => cleanTrackId(t.id || t.uri))
+    .filter(id => id && /^[0-9A-Za-z]{22}$/.test(id));
+  if (ids.length === 0) return;
+
+  for (let i = 0; i < ids.length; i += 50) {
+    const chunk = ids.slice(i, i + 50);
+    try {
+      const res = await spotifyFetch(`/me/tracks/contains?ids=${chunk.join(',')}`);
+      if (Array.isArray(res)) {
+        chunk.forEach((id, idx) => {
+          const isLiked = Boolean(res[idx]);
+          if (isLiked) {
+            liveCatalog.likedTrackIds.add(id);
+          } else {
+            liveCatalog.likedTrackIds.delete(id);
+          }
+          document.querySelectorAll(`[data-track-id="${id}"]`).forEach(btn => {
+            btn.classList.toggle('liked', isLiked);
+            btn.setAttribute('title', isLiked ? 'Eliminar de Tus me gusta' : 'Guardar en Tus me gusta');
+            const svg = btn.querySelector('svg');
+            if (svg) {
+              svg.setAttribute('fill', isLiked ? '#1ed760' : 'none');
+              svg.setAttribute('stroke', isLiked ? '#1ed760' : 'currentColor');
+            }
+          });
+        });
+        if (state.playingTrackId && chunk.includes(state.playingTrackId)) {
+          const currentLiked = liveCatalog.likedTrackIds.has(state.playingTrackId);
+          spotifyAuth.isLiked = currentLiked;
+          updateLikeButtonsUI(currentLiked);
+        }
+      }
+    } catch (err) {
+      console.warn('[checkAndCacheLikedTracks error]', err);
+    }
+  }
+}
+
+async function toggleLikeTrack(trackIdInput, trackInfo = null) {
+  const trackId = cleanTrackId(trackIdInput);
   if (!trackId) return;
   const isCurrentlyLiked = liveCatalog.likedTrackIds.has(trackId);
   const nextLiked = !isCurrentlyLiked;
@@ -162,6 +204,7 @@ function renderArtistTracks(tracks) {
     `;
   }).join('');
   hydrateImages(tracklistEl);
+  checkAndCacheLikedTracks(visibleTracks);
 
   const seeMoreBtn = document.getElementById('artistMoreTracksBtn');
   if (seeMoreBtn) {
@@ -703,6 +746,9 @@ async function openEntityDetail(entityId) {
       </div>
     `;
   }).join('');
+  if (entity.type !== 'liked') {
+    checkAndCacheLikedTracks(tracks);
+  }
 }
 
 // Progressive Scroll / Infinite Pagination for Playlists and Liked Songs (> 50 Tracks)
@@ -809,6 +855,7 @@ async function loadMorePlaylistTracks(entity) {
       }).join('');
 
       tracklistEl.insertAdjacentHTML('beforeend', newRowsHtml);
+      checkAndCacheLikedTracks(newMappedTracks);
     } else {
       entity.hasMoreTracks = false;
     }

@@ -360,19 +360,31 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
       durationSec
     );
     fetchAndRenderQueueForCurrentTrack(trackObj);
-    if (trackObj.id) {
-      const isLocallyLiked = liveCatalog.likedTrackIds.has(trackObj.id);
+    const cleanId = cleanTrackId(trackObj.id || trackObj.uri);
+    const isValidSpotifyId = Boolean(cleanId && /^[0-9A-Za-z]{22}$/.test(cleanId));
+
+    if (isValidSpotifyId) {
+      const isLocallyLiked = liveCatalog.likedTrackIds.has(cleanId);
       spotifyAuth.isLiked = isLocallyLiked;
       updateLikeButtonsUI(isLocallyLiked);
-      spotifyFetch(`/me/tracks/contains?ids=${trackObj.id}`).then(res => {
-        if (Array.isArray(res)) {
+      spotifyFetch(`/me/tracks/contains?ids=${cleanId}`).then(res => {
+        if (Array.isArray(res) && typeof res[0] === 'boolean') {
           spotifyAuth.isLiked = !!res[0];
           if (spotifyAuth.isLiked) {
-            liveCatalog.likedTrackIds.add(trackObj.id);
+            liveCatalog.likedTrackIds.add(cleanId);
           } else {
-            liveCatalog.likedTrackIds.delete(trackObj.id);
+            liveCatalog.likedTrackIds.delete(cleanId);
           }
           updateLikeButtonsUI(spotifyAuth.isLiked);
+          document.querySelectorAll(`[data-track-id="${cleanId}"]`).forEach(btn => {
+            btn.classList.toggle('liked', spotifyAuth.isLiked);
+            btn.setAttribute('title', spotifyAuth.isLiked ? 'Eliminar de Tus me gusta' : 'Guardar en Tus me gusta');
+            const svg = btn.querySelector('svg');
+            if (svg) {
+              svg.setAttribute('fill', spotifyAuth.isLiked ? '#1ed760' : 'none');
+              svg.setAttribute('stroke', spotifyAuth.isLiked ? '#1ed760' : 'currentColor');
+            }
+          });
         }
       }).catch(e => console.warn('[tracks/contains error]', e));
     } else {
