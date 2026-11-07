@@ -156,13 +156,18 @@ function applyExtractedPaletteData(palette, applyToLightBg = false) {
   }
 }
 
+let sharedPaletteCanvas = null;
+let sharedPaletteCtx = null;
+
 function computePaletteFromImageElement(img) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 16;
-  canvas.height = 16;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0, 16, 16);
-  const d = ctx.getImageData(0, 0, 16, 16).data;
+  if (!sharedPaletteCanvas) {
+    sharedPaletteCanvas = document.createElement('canvas');
+    sharedPaletteCanvas.width = 16;
+    sharedPaletteCanvas.height = 16;
+    sharedPaletteCtx = sharedPaletteCanvas.getContext('2d', { willReadFrequently: true });
+  }
+  sharedPaletteCtx.drawImage(img, 0, 0, 16, 16);
+  const d = sharedPaletteCtx.getImageData(0, 0, 16, 16).data;
 
   function sampleArea(x0, y0, w, h) {
     let r = 0, g = 0, b = 0, count = 0;

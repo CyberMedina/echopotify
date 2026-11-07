@@ -116,26 +116,28 @@ function checkHashToken() {
   await pollSpotifyCurrentPlayback();
 })();
 
-// Poll Spotify live player state every 2.5s and auto-refresh token every 40 mins
-setInterval(pollSpotifyCurrentPlayback, 2500);
+// Poll Spotify live player state every 4s and auto-refresh token every 40 mins
+setInterval(pollSpotifyCurrentPlayback, 4000);
 setInterval(refreshSpotifyAccessToken, 40 * 60 * 1000);
 
 let lastTick = performance.now();
 let lastHwPoll = 0;
+let lastUiSync = 0;
 
 function tick(now) {
   const dt = Math.min(0.1, Math.max(0, (now - lastTick) / 1000));
   lastTick = now;
 
   if (bridge && bridge.getPlaybackClockJson) {
-    const pollInterval = state.isNowPlayingOpen ? 280 : 600;
+    const pollInterval = state.isNowPlayingOpen ? 320 : 800;
     if (now - lastHwPoll >= pollInterval) {
       lastHwPoll = now;
       syncClockWithHardware(false);
     }
     if (state.isPlaying && state.pcmFlowing) {
       state.currentTimeSec += dt * (state.clockRate || 1.0);
-      if (state.isNowPlayingOpen) {
+      if (state.isNowPlayingOpen && (now - lastUiSync >= 65)) {
+        lastUiSync = now;
         updateScrubberAndLyricsUI(false);
       }
     }
@@ -144,7 +146,8 @@ function tick(now) {
     if (state.currentTimeSec >= state.durationSec) {
       state.currentTimeSec = 0;
     }
-    if (state.isNowPlayingOpen) {
+    if (state.isNowPlayingOpen && (now - lastUiSync >= 65)) {
+      lastUiSync = now;
       updateScrubberAndLyricsUI(false);
     }
   }

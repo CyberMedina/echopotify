@@ -176,10 +176,8 @@
   cursor: pointer;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.45);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.60) 0%, rgba(255, 255, 255, 0.32) 100%);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.48) 100%);
+  transition: transform 0.18s ease;
 }
 
 .feature-banner:hover {
@@ -200,20 +198,9 @@
   background: linear-gradient(135deg, rgba(220, 242, 235, 0.82) 0%, rgba(235, 245, 240, 0.65) 100%);
 }
 
-/* Atmospheric Ambient Color Glow behind the right side of the banner */
+/* Atmospheric Ambient Color Glow behind the right side of the banner (disabled blur for Echo Show GPU speed) */
 .banner-ambient-glow {
-  position: absolute;
-  top: -30px;
-  right: -25px;
-  width: 210px;
-  height: 170px;
-  background-size: cover;
-  background-position: center;
-  filter: blur(44px);
-  opacity: 0.32;
-  pointer-events: none;
-  border-radius: 50%;
-  transform: translateZ(0);
+  display: none;
 }
 
 .banner-left {
@@ -288,18 +275,15 @@
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.07);
+  background: rgba(0, 0, 0, 0.08);
   border: 1px solid rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #171a1d;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
   cursor: pointer;
   flex-shrink: 0;
-  transition: transform 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
   outline: none;
 }
 
@@ -346,9 +330,6 @@
   cursor: pointer;
   margin-bottom: 18px;
   flex-shrink: 0;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  transition: background 0.25s ease, color 0.25s ease, transform 0.15s ease;
 }
 
 .album-back-btn:hover,
@@ -474,9 +455,6 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  transition: background 0.3s ease, color 0.3s ease, transform 0.15s ease;
 }
 
 .btn-circle-action:hover {
@@ -505,8 +483,6 @@
   border-bottom: 1px solid var(--album-hairline);
   border-radius: 10px;
   cursor: pointer;
-  transition: background 0.18s ease, transform 0.12s ease;
-  animation: fadeInItem 0.22s ease both;
 }
 
 .track-row:hover {
@@ -610,10 +586,8 @@ body.album-dark-active .dock-tab.active {
 
 body.album-light-active .mini-player-v1,
 body.album-light-active .bottom-dock {
-  background: rgba(255, 255, 255, 0.52);
-  border-color: rgba(255, 255, 255, 0.45);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.86);
+  border-color: rgba(255, 255, 255, 0.65);
 }
 
 /* Dynamic Artist Ambient Atmosphere & Dock */
@@ -625,10 +599,8 @@ body.artist-view-active .ambient-bg {
 }
 
 body.artist-view-active .mini-player-v1 {
-  background: rgba(14, 18, 16, 0.74);
-  border-color: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(14, 18, 16, 0.90);
+  border-color: rgba(255, 255, 255, 0.14);
   color: #ffffff;
 }
 
@@ -676,15 +648,12 @@ body.artist-view-active .mini-ctrl-btn {
   height: 48px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.18);
   color: #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  transition: background 0.2s ease, transform 0.15s ease;
 }
 
 .artist-nav-btn:hover {
@@ -799,15 +768,12 @@ body.artist-view-active .mini-ctrl-btn {
   height: 46px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.18);
   color: #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  transition: background 0.2s ease, transform 0.15s ease;
 }
 
 .btn-artist-circle svg {
@@ -1200,12 +1166,10 @@ body.artist-view-active .mini-ctrl-btn {
 }
 
 .artist-info-card {
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  background: rgba(255, 255, 255, 0.10);
   border-radius: 22px;
   padding: 26px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 .artist-big-number {
@@ -1375,8 +1339,6 @@ body.album-dark-active .mini-like-btn.liked {
   gap: 10px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.22s ease, transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1);

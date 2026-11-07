@@ -267,26 +267,21 @@ function transitionTrackMetadataUI(newTitle, newArtist, thumbUrl, animateSwap) {
   }
 
   clearTimeout(metaSwapTimer);
-  if (npMetaTextCol) npMetaTextCol.classList.add('track-meta-out');
-  if (miniPlayerLeft) miniPlayerLeft.classList.add('track-meta-out');
-
-  metaSwapTimer = setTimeout(() => {
-    applyValues();
-    if (npMetaTextCol) {
-      npMetaTextCol.classList.remove('track-meta-out');
-      npMetaTextCol.classList.add('track-meta-in-prep');
-    }
-    if (miniPlayerLeft) {
-      miniPlayerLeft.classList.remove('track-meta-out');
-      miniPlayerLeft.classList.add('track-meta-in-prep');
-    }
+  applyValues();
+  if (npMetaTextCol) {
+    npMetaTextCol.classList.remove('track-meta-out');
+    npMetaTextCol.classList.add('track-meta-in-prep');
+  }
+  if (miniPlayerLeft) {
+    miniPlayerLeft.classList.remove('track-meta-out');
+    miniPlayerLeft.classList.add('track-meta-in-prep');
+  }
+  requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (npMetaTextCol) npMetaTextCol.classList.remove('track-meta-in-prep');
-        if (miniPlayerLeft) miniPlayerLeft.classList.remove('track-meta-in-prep');
-      });
+      if (npMetaTextCol) npMetaTextCol.classList.remove('track-meta-in-prep');
+      if (miniPlayerLeft) miniPlayerLeft.classList.remove('track-meta-in-prep');
     });
-  }, 145);
+  });
 }
 
 function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = 'user') {
@@ -636,11 +631,13 @@ const LYRIC_SYNC_LEAD_SEC = 0.0;
 
 function updateScrubberAndLyricsUI(forceScroll = false) {
   if (!forceScroll && !state.isNowPlayingOpen) return;
+  // Si hay una transición de portada en curso, ceder el 100% del hilo principal y GPU a la animación
+  if (!forceScroll && coverCrossfadeTimer) return;
 
   const ratio = Math.min(1, Math.max(0, state.currentTimeSec / Math.max(1, state.durationSec)));
-  if (forceScroll || Math.abs(ratio - state.lastScrubberRatio) >= 0.0008) {
+  if (forceScroll || Math.abs(ratio - state.lastScrubberRatio) >= 0.0035) {
     state.lastScrubberRatio = ratio;
-    npScrubberFill.style.transform = `scaleX(${ratio.toFixed(4)})`;
+    npScrubberFill.style.transform = `scaleX(${ratio.toFixed(3)})`;
   }
 
   // Only update time text DOM once per integer second (never 60x/sec)

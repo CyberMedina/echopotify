@@ -10,19 +10,15 @@
   height: 72px;
   border-radius: 20px;
   background: var(--glass-miniplayer);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.72);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.14);
   padding: 0 18px 0 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
   box-sizing: border-box;
-  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 0.2s ease,
-    opacity 0.25s ease;
+  transform: translateZ(0);
 }
 
 .mini-player-v1:hover {
@@ -101,16 +97,14 @@
   position: absolute;
   left: 50%;
   bottom: 26px;
-  transform: translateX(-50%);
+  transform: translate3d(-50%, 0, 0);
   z-index: 25;
   width: 460px;
   height: 82px;
   border-radius: var(--radius-pill);
   background: var(--glass-dock);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.72);
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.10);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.12);
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   padding: 6px 14px;
@@ -194,79 +188,27 @@ body.np-fully-open .ambient-bg {
   transform: translate3d(0, 0, 0);
 }
 
-/* Dynamic Multi-Point Apple Music Liquid Lava Mesh Gradient (Low-Res Hardware Upscaled 20x Faster GPU Layer) */
+/* Dynamic Multi-Point Apple Music Mesh Gradient (Single Static GPU Layer — 0% Idle GPU Load on Echo Show 8) */
 .np-mesh-bg {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 320px;
-  height: 200px;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   z-index: 0;
   overflow: hidden;
-  transform-origin: top left;
-  transform: scale(4) translateZ(0);
+  transform: translateZ(0);
   pointer-events: none;
   contain: strict;
   background:
-    radial-gradient(ellipse 80% 75% at 18% 18%, var(--np-c1) 0%, transparent 66%),
-    radial-gradient(ellipse 82% 75% at 84% 82%, var(--np-c2) 0%, transparent 66%),
-    radial-gradient(ellipse 72% 70% at 34% 84%, var(--np-c3) 0%, transparent 64%),
+    radial-gradient(ellipse 85% 80% at 18% 18%, var(--np-c1) 0%, transparent 68%),
+    radial-gradient(ellipse 85% 80% at 84% 82%, var(--np-c2) 0%, transparent 68%),
+    radial-gradient(ellipse 78% 74% at 34% 84%, var(--np-c3) 0%, transparent 66%),
     linear-gradient(135deg, var(--np-c4) 0%, var(--np-c2) 55%, var(--np-c1) 100%);
 }
 
 .np-lava-blob {
-  position: absolute;
-  will-change: transform;
-  transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
-  pointer-events: none;
-  border-radius: 50%;
-  animation-play-state: paused;
-}
-
-.now-playing-overlay.open:not(.np-switching) .np-lava-blob {
-  animation-play-state: running;
-}
-
-/* Diffused organic blobs in 320x200 coordinate space (20x lower GPU rasterization & overdraw cost on Echo Show 8) */
-.np-lava-blob.blob-1 {
-  width: 300px;
-  height: 300px;
-  top: -30%;
-  left: -22%;
-  opacity: 0.70;
-  background: radial-gradient(circle closest-side at 50% 50%, var(--np-c1) 0%, transparent 72%);
-  animation: lavaWave1 15s ease-in-out infinite alternate;
-}
-
-.np-lava-blob.blob-2 {
-  width: 288px;
-  height: 288px;
-  bottom: -26%;
-  right: -20%;
-  opacity: 0.72;
-  background: radial-gradient(circle closest-side at 50% 50%, var(--np-c2) 0%, transparent 72%);
-  animation: lavaWave2 18s ease-in-out infinite alternate;
-}
-
-.np-lava-blob.blob-3 {
-  width: 275px;
-  height: 275px;
-  top: -15%;
-  right: -10%;
-  opacity: 0.65;
-  background: radial-gradient(circle closest-side at 50% 50%, var(--np-c3) 0%, transparent 70%);
-  animation: lavaWave3 21s ease-in-out infinite alternate;
-}
-
-.np-lava-blob.blob-4 {
-  width: 295px;
-  height: 295px;
-  bottom: -22%;
-  left: -12%;
-  opacity: 0.68;
-  background: radial-gradient(circle closest-side at 50% 50%, var(--np-c4) 0%, transparent 72%);
-  animation: lavaWave4 24s ease-in-out infinite alternate;
+  display: none !important;
+  animation: none !important;
 }
 
 /* Organic orbital wave motions scaled to 320x200 coordinate space (no rotation needed for circular radial gradients) */
@@ -334,18 +276,15 @@ body.np-fully-open .ambient-bg {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  border: none;
-  background: rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(20, 24, 28, 0.48);
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   z-index: 20;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.24);
-  transition: transform 0.16s ease, background 0.16s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
   -webkit-tap-highlight-color: transparent;
   outline: none;
 }
@@ -807,14 +746,14 @@ body.np-fully-open .ambient-bg {
   transform: translate3d(0, 0, 0);
   opacity: 1;
   backface-visibility: hidden;
-  transition: transform 0.52s cubic-bezier(0.22, 1, 0.36, 1),
-              opacity 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.20s ease;
   will-change: transform, opacity;
 }
 
 .lyrics-scroll-track.lyrics-fade-out {
   opacity: 0;
-  transition: opacity 0.18s ease, transform 0.52s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 0.12s ease;
 }
 
 .lyric-line {
@@ -825,7 +764,6 @@ body.np-fully-open .ambient-bg {
   color: rgba(255, 255, 255, 0.32);
   cursor: pointer;
   opacity: 0.14;
-  transition: opacity 0.32s ease;
 }
 
 .lyric-line:hover {
@@ -865,26 +803,22 @@ body.np-fully-open .ambient-bg {
   opacity: 1;
 }
 
-/* Word-by-Word Karaoke Illumination + Sustained Last-Word Glow (Zero Per-Frame Blur Re-Raster) */
+/* Word-by-Word Karaoke Illumination (Zero Blur Re-Raster & Zero Per-Word Transition Repaint) */
 .lyric-word {
   display: inline;
-  transition: color 0.16s ease;
 }
 
 .lyric-line.active .lyric-word.sung {
   color: #ffffff;
-  text-shadow: 0 0 12px rgba(255, 255, 255, 0.16);
 }
 
 .lyric-line.active .lyric-word.singing {
   color: #ffffff;
-  text-shadow: 0 0 18px rgba(255, 255, 255, 0.48);
 }
 
 .lyric-line.active .lyric-word.singing.held,
 .lyric-line.active .lyric-word.sung.last-word-hold {
   color: #ffffff;
-  text-shadow: 0 0 22px rgba(255, 255, 255, 0.78);
 }
 
 .lyric-line.active .lyric-word.pending {
@@ -1218,9 +1152,7 @@ body.np-fully-open .ambient-bg {
   gap: 6px;
   padding: 5px 6px;
   border-radius: 99px;
-  background: rgba(0, 0, 0, 0.38);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  background: rgba(14, 18, 22, 0.68);
   border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
   touch-action: none;
