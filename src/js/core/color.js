@@ -272,6 +272,11 @@ function extractDynamicPaletteFromCover(imgUrl, applyToLightBg = false, altUrls 
   // 3. Carga asíncrona con protección contra condición de carrera y bypass de caché sin CORS
   const startMs = performance.now();
   function loadWithCors(targetSrc, isRetry) {
+    if (targetSrc && targetSrc.includes('lexicon-assets.spotifycdn.com')) {
+      // CDN de Lexicon de Spotify no envía encabezados CORS Access-Control-Allow-Origin
+      applyExtractedPaletteData(FALLBACK_DARK_PALETTE, applyToLightBg);
+      return;
+    }
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = function () {

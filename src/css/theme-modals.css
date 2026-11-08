@@ -1588,3 +1588,42 @@ body:not(.theme-dark) .devices-empty-state {
   color: #1ed760;
 }
 
+.np-device-indicator-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 6px 16px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  align-self: center;
+}
+
+.np-device-indicator-row:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.np-device-indicator-row:active {
+  transform: scale(0.96);
+}
+
+.np-device-indicator-row.has-device {
+  color: #1ed760;
+  background: rgba(30, 215, 96, 0.12);
+  border-color: rgba(30, 215, 96, 0.30);
+}
+
+.np-device-indicator-row.has-device svg {
+  color: #1ed760;
+}
+

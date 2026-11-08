@@ -1267,6 +1267,15 @@ function updateActiveDeviceBadgeUI(device) {
     miniBtn.title = `Escuchando en: ${name}`;
     miniBtn.classList.toggle('active', Boolean(device.is_active));
   }
+  const npDeviceName = document.getElementById('npActiveDeviceName');
+  if (npDeviceName) {
+    npDeviceName.textContent = name;
+  }
+  const npDevRow = document.getElementById('npDeviceIndicatorRow');
+  if (npDevRow) {
+    npDevRow.classList.add('has-device');
+    npDevRow.title = `Escuchando en: ${name} (toca para cambiar)`;
+  }
 }
 
 async function openDevicesModal() {

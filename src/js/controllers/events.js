@@ -1025,6 +1025,13 @@ if (miniDeviceBtn) {
     openDevicesModal();
   });
 }
+const npDevRow = document.getElementById('npDeviceIndicatorRow');
+if (npDevRow) {
+  npDevRow.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openDevicesModal();
+  });
+}
 const closeDevBtn = document.getElementById('closeDevicesModalBtn');
 if (closeDevBtn) {
   closeDevBtn.addEventListener('click', () => {
