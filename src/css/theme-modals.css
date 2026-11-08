@@ -1358,26 +1358,27 @@ body:not(.theme-dark) .modal-action-chevron {
    SPOTIFY CONNECT: AUDIO OUTPUT FLYOUT MODAL & SELECTOR PILL
    ========================================================================== */
 
-/* Device Trigger Pill (Below Transport Controls - Glass style, No Gradient) */
+/* Device Trigger Pill (Below Transport Controls - Matches Apple Music Pill Capsule) */
 .np-device-indicator-row {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 11px;
+  gap: 9px;
   margin-top: 16px;
   margin-bottom: 0;
-  padding: 0 22px;
-  height: 52px;
+  padding: 0 18px;
+  height: 48px;
+  box-sizing: border-box;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  background: rgba(18, 24, 32, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
   color: #ffffff;
   font-family: var(--font-sans);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -1386,51 +1387,50 @@ body:not(.theme-dark) .modal-action-chevron {
 }
 
 .np-device-indicator-row:hover {
-  background: rgba(255, 255, 255, 0.28);
-  border-color: rgba(255, 255, 255, 0.38);
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
   transform: scale(1.02);
   color: #ffffff;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.30);
 }
 
 .np-device-indicator-row:active {
   transform: scale(0.96);
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.10);
 }
 
 .np-device-indicator-row .np-device-icon {
   color: #1ed760;
   stroke: #1ed760;
   flex-shrink: 0;
-  width: 21px;
-  height: 21px;
+  width: 20px;
+  height: 20px;
 }
 
 .np-device-indicator-row #npActiveDeviceName {
   color: #ffffff;
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.1px;
   white-space: nowrap;
-  max-width: 250px;
+  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .np-device-indicator-row .np-device-chevron {
-  color: rgba(255, 255, 255, 0.70);
-  stroke: rgba(255, 255, 255, 0.70);
+  color: rgba(255, 255, 255, 0.65);
+  stroke: rgba(255, 255, 255, 0.65);
   flex-shrink: 0;
   margin-left: 2px;
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   transition: transform 0.2s ease;
 }
 
 .np-device-indicator-row:hover .np-device-chevron {
   color: #ffffff;
-  transform: translateY(1.5px);
+  transform: translateY(1px);
 }
 
 /* Flyout Modal Backdrop (Anchored as Popover next to player on Echo Show 8) */
