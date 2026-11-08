@@ -1439,9 +1439,9 @@ body:not(.theme-dark) .modal-action-chevron {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: rgba(0, 0, 0, 0.40);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: flex-end;
   justify-content: flex-start;
@@ -1464,19 +1464,19 @@ body:not(.theme-dark) .modal-action-chevron {
   pointer-events: auto;
 }
 
-/* Flyout Card Window */
+/* Flyout Card Window - Apple / Spotify Frosted Glass matching the pill and dock */
 .devices-flyout-card {
   width: 390px;
   max-width: 92vw;
-  background: rgba(20, 24, 28, 0.94);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.14) 0%, rgba(20, 26, 32, 0.68) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 24px;
-  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.40), 0 0 0 1px rgba(255, 255, 255, 0.10);
   padding: 20px 22px 18px 22px;
   display: flex;
   flex-direction: column;
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
   transform: scale(0.95) translateY(10px);
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   color: #ffffff;
@@ -1561,9 +1561,9 @@ body:not(.theme-dark) .modal-action-chevron {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1572,7 +1572,8 @@ body:not(.theme-dark) .modal-action-chevron {
 }
 
 .devices-flyout-close:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.24);
+  border-color: rgba(255, 255, 255, 0.30);
   color: #ffffff;
   transform: scale(1.06);
 }
@@ -1588,11 +1589,13 @@ body:not(.theme-dark) .modal-action-chevron {
   justify-content: space-between;
   padding: 14px 16px;
   border-radius: 16px;
-  background: rgba(30, 215, 96, 0.12);
-  border: 1px solid rgba(30, 215, 96, 0.38);
-  box-shadow: 0 4px 18px rgba(30, 215, 96, 0.10);
+  background: rgba(30, 215, 96, 0.18);
+  border: 1.2px solid rgba(30, 215, 96, 0.48);
+  box-shadow: 0 4px 18px rgba(30, 215, 96, 0.14);
   margin-bottom: 8px;
   user-select: none;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .device-card-left {
