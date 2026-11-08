@@ -1012,19 +1012,7 @@ if (spotifyModal) {
   });
 }
 
-// Devices Modal Controls (Spotify Connect)
-if (npToggleDevicesBtn) {
-  npToggleDevicesBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    openDevicesModal();
-  });
-}
-if (miniDeviceBtn) {
-  miniDeviceBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    openDevicesModal();
-  });
-}
+// Devices Modal Controls (Spotify Connect - Solo debajo del reproductor)
 const npDevRow = document.getElementById('npDeviceIndicatorRow');
 if (npDevRow) {
   npDevRow.addEventListener('click', (e) => {

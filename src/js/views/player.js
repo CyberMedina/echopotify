@@ -1253,20 +1253,6 @@ function getDeviceTypeSvg(type = '') {
 function updateActiveDeviceBadgeUI(device) {
   if (!device) return;
   const name = device.name || 'Dispositivo';
-  const dockLabel = document.getElementById('npDevicesDockLabel');
-  if (dockLabel) {
-    dockLabel.textContent = name.length > 14 ? name.substring(0, 12) + '…' : name;
-  }
-  const dockBtn = document.getElementById('npToggleDevicesBtn');
-  if (dockBtn) {
-    dockBtn.classList.add('has-active-device');
-    dockBtn.title = `Escuchando en: ${name}`;
-  }
-  const miniBtn = document.getElementById('miniDeviceBtn');
-  if (miniBtn) {
-    miniBtn.title = `Escuchando en: ${name}`;
-    miniBtn.classList.toggle('active', Boolean(device.is_active));
-  }
   const npDeviceName = document.getElementById('npActiveDeviceName');
   if (npDeviceName) {
     npDeviceName.textContent = name;

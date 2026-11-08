@@ -12,10 +12,10 @@
   <link rel="preconnect" href="https://api.spotify.com" crossorigin />
   <link rel="dns-prefetch" href="https://i.scdn.co" />
   <link rel="dns-prefetch" href="https://mosaic.scdn.co" />
-  <link rel="stylesheet" href="src/css/base.css?v=4.7" />
-  <link rel="stylesheet" href="src/css/views.css?v=4.7" />
-  <link rel="stylesheet" href="src/css/now-playing.css?v=4.7" />
-  <link rel="stylesheet" href="src/css/theme-modals.css?v=4.7" />
+  <link rel="stylesheet" href="src/css/base.css?v=4.8" />
+  <link rel="stylesheet" href="src/css/views.css?v=4.8" />
+  <link rel="stylesheet" href="src/css/now-playing.css?v=4.8" />
+  <link rel="stylesheet" href="src/css/theme-modals.css?v=4.8" />
   <script src="https://cdn.html.games.alexa.a2z.com/alexa-html/latest/alexa-html.js"></script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 </head>
@@ -426,13 +426,6 @@
         </div>
       </div>
       <div class="mini-player-controls">
-        <button class="mini-ctrl-btn mini-device-btn" id="miniDeviceBtn" title="Dispositivos de reproducción (Spotify Connect)">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="3" width="20" height="14" rx="2"></rect>
-            <line x1="8" y1="21" x2="16" y2="21"></line>
-            <line x1="12" y1="17" x2="12" y2="21"></line>
-          </svg>
-        </button>
         <button class="mini-ctrl-btn mini-like-btn" id="miniLikeBtn" title="Guardar en Tus me gusta">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
@@ -663,14 +656,6 @@
           </svg>
           <span class="np-dock-label">Cola</span>
         </button>
-        <button class="np-dock-btn" id="npToggleDevicesBtn" type="button" title="Dispositivos disponibles (Spotify Connect)">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="3" width="20" height="14" rx="2"></rect>
-            <line x1="8" y1="21" x2="16" y2="21"></line>
-            <line x1="12" y1="17" x2="12" y2="21"></line>
-          </svg>
-          <span class="np-dock-label" id="npDevicesDockLabel">Dispositivos</span>
-        </button>
       </div>
     </aside>
 
@@ -836,24 +821,24 @@
   </div>
 
   <!-- Core Architecture -->
-  <script src="src/js/core/state.js?v=4.7"></script>
-  <script src="src/js/core/dom.js?v=4.7"></script>
-  <script src="src/js/core/color.js?v=4.7"></script>
+  <script src="src/js/core/state.js?v=4.8"></script>
+  <script src="src/js/core/dom.js?v=4.8"></script>
+  <script src="src/js/core/color.js?v=4.8"></script>
 
   <!-- External Services (OAuth 2.0 PKCE, Spotify API & Web Playback SDK, LRCLIB) -->
-  <script src="src/js/services/auth.js?v=4.7"></script>
-  <script src="src/js/services/spotify.js?v=4.7"></script>
-  <script src="src/js/services/lyrics.js?v=4.7"></script>
+  <script src="src/js/services/auth.js?v=4.8"></script>
+  <script src="src/js/services/spotify.js?v=4.8"></script>
+  <script src="src/js/services/lyrics.js?v=4.8"></script>
 
   <!-- UI Views & Renderers -->
-  <script src="src/js/views/catalog.js?v=4.7"></script>
-  <script src="src/js/views/details.js?v=4.7"></script>
-  <script src="src/js/views/player.js?v=4.7"></script>
+  <script src="src/js/views/catalog.js?v=4.8"></script>
+  <script src="src/js/views/details.js?v=4.8"></script>
+  <script src="src/js/views/player.js?v=4.8"></script>
 
   <!-- Controllers & Bootstrap -->
-  <script src="src/js/controllers/navigation.js?v=4.7"></script>
-  <script src="src/js/controllers/events.js?v=4.7"></script>
-  <script src="src/js/main.js?v=4.7"></script>
+  <script src="src/js/controllers/navigation.js?v=4.8"></script>
+  <script src="src/js/controllers/events.js?v=4.8"></script>
+  <script src="src/js/main.js?v=4.8"></script>
 </body>
 </html>
 
