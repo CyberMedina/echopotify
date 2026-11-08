@@ -34,12 +34,38 @@ function animateLavaPaletteTo(targetRgbQuad) {
   }
 }
 
+let lastCyncRgb = '';
+let cyncThrottleTimer = null;
+
+function syncCyncBulbColor(rgb) {
+  if (!Array.isArray(rgb) || rgb.length < 3) return;
+  const rgbKey = `${rgb[0]},${rgb[1]},${rgb[2]}`;
+  if (rgbKey === lastCyncRgb) return;
+  lastCyncRgb = rgbKey;
+
+  clearTimeout(cyncThrottleTimer);
+  cyncThrottleTimer = setTimeout(() => {
+    const bridgeUrl = safeStorage.getItem('sp_cync_bridge_url') || (
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:8088'
+        : 'http://192.168.1.17:8088'
+    );
+    fetch(`${bridgeUrl}/color`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ r: rgb[0], g: rgb[1], b: rgb[2] })
+    }).catch(() => {});
+  }, 300);
+}
+window.syncCyncBulbColor = syncCyncBulbColor;
+
 function applyExtractedPaletteData(palette, applyToLightBg = false) {
   if (!palette) return;
 
   if (!applyToLightBg) {
     // Aplicar al fondo dinámico Apple Music Now Playing (Lava Mesh)
     animateLavaPaletteTo(palette.lavaQuad);
+    syncCyncBulbColor(palette.dom);
     return;
   }
 
