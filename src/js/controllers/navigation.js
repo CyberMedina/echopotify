@@ -134,21 +134,20 @@ function goBack() {
 }
 
 let npCloseAnimationTimer = null;
+let npOpenTimer = null;
 
 function openNowPlaying() {
   state.isNowPlayingOpen = true;
-  clearTimeout(npFullyOpenTimer);
   clearTimeout(npCloseAnimationTimer);
+  clearTimeout(npOpenTimer);
 
-  // Asegurar que las vistas subyacentes se rendericen durante la transición
+  // Asegurar que las vistas subyacentes se rendericen durante la transición y no queden en negro
   document.body.classList.remove('np-fully-open');
 
-  // Si no estaba abierto, arrancar limpiamente desde abajo (100%)
-  if (!nowPlayingOverlay.classList.contains('open')) {
-    nowPlayingOverlay.style.transition = 'none';
-    nowPlayingOverlay.style.transform = 'translate3d(0, 100%, 0)';
-    void nowPlayingOverlay.offsetHeight; // Forzar reflow para registrar posición inicial
-  }
+  // Cancelar cualquier transición previa inmediatamente y arrancar desde abajo
+  nowPlayingOverlay.style.transition = 'none';
+  nowPlayingOverlay.style.transform = 'translate3d(0, 100%, 0)';
+  void nowPlayingOverlay.offsetHeight; // Forzar reflow para registrar posición inicial
 
   nowPlayingOverlay.classList.add('open');
   nowPlayingOverlay.style.transition = 'transform 0.44s cubic-bezier(0.16, 1, 0.3, 1)';
@@ -162,20 +161,19 @@ function openNowPlaying() {
   cacheLyricLineOffsets();
   updateScrubberAndLyricsUI(true);
 
-  npFullyOpenTimer = setTimeout(() => {
-    if (state.isNowPlayingOpen) {
+  npOpenTimer = setTimeout(() => {
+    if (state.isNowPlayingOpen && nowPlayingOverlay.classList.contains('open')) {
       document.body.classList.add('np-fully-open');
       nowPlayingOverlay.style.transition = '';
-      nowPlayingOverlay.style.transform = '';
     }
-  }, 460);
+  }, 480);
 }
 
 function closeNowPlaying(opts = {}) {
   if (!state.isNowPlayingOpen && !nowPlayingOverlay.classList.contains('open')) return;
 
   state.isNowPlayingOpen = false;
-  clearTimeout(npFullyOpenTimer);
+  clearTimeout(npOpenTimer);
   clearTimeout(npCloseAnimationTimer);
 
   // Revelar de inmediato las vistas subyacentes, miniplayer y dock para ver el fondo al bajar
@@ -185,7 +183,7 @@ function closeNowPlaying(opts = {}) {
   if (skipTransition) {
     nowPlayingOverlay.classList.remove('open');
     nowPlayingOverlay.style.transition = '';
-    nowPlayingOverlay.style.transform = '';
+    nowPlayingOverlay.style.transform = 'translate3d(0, 100%, 0)';
     return;
   }
 
@@ -194,23 +192,13 @@ function closeNowPlaying(opts = {}) {
   nowPlayingOverlay.style.transition = `transform ${duration}s cubic-bezier(0.22, 1, 0.36, 1)`;
   nowPlayingOverlay.style.transform = 'translate3d(0, 100%, 0)';
 
-  let finished = false;
-  const finishClose = () => {
-    if (finished) return;
-    finished = true;
-    nowPlayingOverlay.classList.remove('open');
-    nowPlayingOverlay.style.transition = '';
-    nowPlayingOverlay.style.transform = '';
-  };
-
-  const onTransEnd = (e) => {
-    if (e.target === nowPlayingOverlay && e.propertyName === 'transform') {
-      nowPlayingOverlay.removeEventListener('transitionend', onTransEnd);
-      finishClose();
+  npCloseAnimationTimer = setTimeout(() => {
+    if (!state.isNowPlayingOpen) {
+      nowPlayingOverlay.classList.remove('open');
+      nowPlayingOverlay.style.transition = '';
+      nowPlayingOverlay.style.transform = 'translate3d(0, 100%, 0)';
     }
-  };
-  nowPlayingOverlay.addEventListener('transitionend', onTransEnd);
-  npCloseAnimationTimer = setTimeout(finishClose, Math.round(duration * 1000) + 50);
+  }, Math.round(duration * 1000) + 30);
 }
 
 // Native Touch & Mouse Swipe-Down on Now Playing overlay to Dismiss
@@ -232,8 +220,8 @@ function closeNowPlaying(opts = {}) {
     if (target.closest('#npScrubberTrack') || target.closest('#npVolumeTrack')) return true;
     // 2. Botones de transporte (play, pause, next, prev, shuffle, repeat)
     if (target.closest('.np-transport-btn')) return true;
-    // 3. Botones dock inferiores (Letra / Cola) & botón cerrar esquina & favoritos
-    if (target.closest('.np-dock-btn') || target.closest('.np-circle-btn') || target.closest('#npCloseBtn')) return true;
+    // 3. Botones dock inferiores (Letra / Cola) & favoritos
+    if (target.closest('.np-dock-btn') || target.closest('.np-circle-btn')) return true;
     // 4. Lista de cola scrolleada hacia abajo: permitir scroll interno de la cola
     const queueList = target.closest('#npQueueListContainer');
     if (queueList && queueList.scrollTop > 5) return true;
@@ -264,7 +252,7 @@ function closeNowPlaying(opts = {}) {
       if (dy > 6 && dy > Math.abs(dx) * 0.85) {
         isDragging = true;
         state.isSwipingNowPlaying = true;
-        clearTimeout(npFullyOpenTimer);
+        clearTimeout(npOpenTimer);
         clearTimeout(npCloseAnimationTimer);
         document.body.classList.remove('np-fully-open');
         overlay.style.transition = 'none';
@@ -310,8 +298,9 @@ function closeNowPlaying(opts = {}) {
     // Umbral súper intuitivo: más de 45px O velocidad rápida hacia abajo (> 0.20 px/ms y > 18px)
     if (currentDy > 45 || (currentDy > 18 && velocityY > 0.20)) {
       state.isNowPlayingOpen = false;
-      clearTimeout(npFullyOpenTimer);
+      clearTimeout(npOpenTimer);
       clearTimeout(npCloseAnimationTimer);
+      document.body.classList.remove('np-fully-open');
 
       const remaining = Math.max(0, 800 - currentDy);
       const exitDuration = Math.min(0.38, Math.max(0.20, remaining / (Math.max(velocityY, 1.4) * 1000)));
@@ -319,35 +308,22 @@ function closeNowPlaying(opts = {}) {
       overlay.style.transition = `transform ${exitDuration.toFixed(2)}s cubic-bezier(0.22, 1, 0.36, 1)`;
       overlay.style.transform = 'translate3d(0, 100%, 0)';
 
-      let ended = false;
-      const finishDismiss = () => {
-        if (ended) return;
-        ended = true;
-        overlay.classList.remove('open');
-        overlay.style.transition = '';
-        overlay.style.transform = '';
-        setTimeout(() => {
-          state.isSwipingNowPlaying = false;
-        }, 80);
-      };
-
-      const onEnd = (evt) => {
-        if (evt.target === overlay && evt.propertyName === 'transform') {
-          overlay.removeEventListener('transitionend', onEnd);
-          finishDismiss();
+      npCloseAnimationTimer = setTimeout(() => {
+        if (!state.isNowPlayingOpen) {
+          overlay.classList.remove('open');
+          overlay.style.transition = '';
+          overlay.style.transform = 'translate3d(0, 100%, 0)';
         }
-      };
-      overlay.addEventListener('transitionend', onEnd);
-      npCloseAnimationTimer = setTimeout(finishDismiss, Math.round(exitDuration * 1000) + 50);
+        state.isSwipingNowPlaying = false;
+      }, Math.round(exitDuration * 1000) + 30);
     } else {
       // Rebotar suavemente a la posición abierta
       overlay.style.transition = 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)';
       overlay.style.transform = 'translate3d(0, 0, 0)';
 
       setTimeout(() => {
-        if (state.isNowPlayingOpen) {
+        if (state.isNowPlayingOpen && overlay.classList.contains('open')) {
           overlay.style.transition = '';
-          overlay.style.transform = '';
           document.body.classList.add('np-fully-open');
         }
         state.isSwipingNowPlaying = false;
@@ -380,9 +356,8 @@ function closeNowPlaying(opts = {}) {
         overlay.style.transition = 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)';
         overlay.style.transform = 'translate3d(0, 0, 0)';
         setTimeout(() => {
-          if (state.isNowPlayingOpen) {
+          if (state.isNowPlayingOpen && overlay.classList.contains('open')) {
             overlay.style.transition = '';
-            overlay.style.transform = '';
             document.body.classList.add('np-fully-open');
           }
           state.isSwipingNowPlaying = false;

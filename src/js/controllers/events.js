@@ -779,7 +779,12 @@ if (miniLikeBtn) {
   });
 }
 
-bindTouchButton(npCloseBtn, closeNowPlaying);
+if (npCloseBtn) bindTouchButton(npCloseBtn, closeNowPlaying);
+if (npGrabberZone) {
+  bindTouchButton(npGrabberZone, (e) => {
+    if (!state.isSwipingNowPlaying) closeNowPlaying();
+  });
+}
 bindTouchButton(npPlayPauseBtn, togglePlayPause);
 bindTouchButton(npNextBtn, skipNextTrack);
 bindTouchButton(npPrevBtn, skipPrevTrack);

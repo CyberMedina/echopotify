@@ -268,44 +268,9 @@ body.np-fully-open .ambient-bg {
   }
 }
 
-/* Apple Music Style Corner Minimize Button (Top-Left) */
+/* Apple Music Style Corner Minimize Button (Top-Left - Hidden per user request) */
 .np-corner-close-btn {
-  position: absolute;
-  top: 24px;
-  left: 28px;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(20, 24, 28, 0.48);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 20;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
-  -webkit-tap-highlight-color: transparent;
-  outline: none;
-}
-
-.np-corner-close-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
-  transform: scale(1.08);
-}
-
-.np-corner-close-btn:active {
-  background: rgba(255, 255, 255, 0.35);
-  transform: scale(0.92);
-}
-
-.np-corner-close-btn svg {
-  stroke: #ffffff;
-  transition: transform 0.16s ease;
-}
-
-.np-corner-close-btn:active svg {
-  transform: translateY(2px);
+  display: none !important;
 }
 
 /* Apple Music Top Pull-Down Grabber Tab (Centered at Top) */
@@ -511,7 +476,8 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-main-grid.centered-layout .np-cover-stage {
-  transform: scale(1.15) translateZ(0);
+  transform: scale(1.12) translateY(-14px) translateZ(0);
+  margin-bottom: 42px;
   border-radius: 18px;
   box-shadow:
     0 26px 56px -10px rgba(0, 0, 0, 0.46),
@@ -519,10 +485,19 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-main-grid.centered-layout .np-cover-stage.is-paused {
-  transform: scale(0.96) translateZ(0);
+  transform: scale(0.95) translateY(-8px) translateZ(0);
   box-shadow:
     0 12px 28px -6px rgba(0, 0, 0, 0.28),
     0 4px 10px -2px rgba(0, 0, 0, 0.18);
+}
+
+.np-main-grid.centered-layout .np-cover-stage:active {
+  transform: scale(1.08) translateY(-14px) translateZ(0);
+  transition: transform 0.16s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.np-main-grid.centered-layout .np-cover-stage.is-paused:active {
+  transform: scale(0.91) translateY(-8px) translateZ(0);
 }
 
 .np-main-grid.centered-layout .np-right-column {
