@@ -12,10 +12,10 @@
   <link rel="preconnect" href="https://api.spotify.com" crossorigin />
   <link rel="dns-prefetch" href="https://i.scdn.co" />
   <link rel="dns-prefetch" href="https://mosaic.scdn.co" />
-  <link rel="stylesheet" href="src/css/base.css?v=4.9" />
-  <link rel="stylesheet" href="src/css/views.css?v=4.9" />
-  <link rel="stylesheet" href="src/css/now-playing.css?v=4.9" />
-  <link rel="stylesheet" href="src/css/theme-modals.css?v=4.9" />
+  <link rel="stylesheet" href="src/css/base.css?v=5.0" />
+  <link rel="stylesheet" href="src/css/views.css?v=5.0" />
+  <link rel="stylesheet" href="src/css/now-playing.css?v=5.0" />
+  <link rel="stylesheet" href="src/css/theme-modals.css?v=5.0" />
   <script src="https://cdn.html.games.alexa.a2z.com/alexa-html/latest/alexa-html.js"></script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 </head>
@@ -575,14 +575,17 @@
             </button>
           </div>
 
-          <!-- Spotify Connect Active Device Pill Row -->
-          <div class="np-device-indicator-row" id="npDeviceIndicatorRow" role="button" tabindex="0" title="Elegir dispositivo de reproducción (Spotify Connect)">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <!-- Spotify Connect Active Device Pill Row (AirPlay / Spotify Connect Style) -->
+          <div class="np-device-indicator-row" id="npDeviceIndicatorRow" role="button" tabindex="0" title="Salida de audio: Elegir dispositivo">
+            <svg class="np-device-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="2" y="3" width="20" height="14" rx="2"></rect>
               <line x1="8" y1="21" x2="16" y2="21"></line>
               <line x1="12" y1="17" x2="12" y2="21"></line>
             </svg>
             <span id="npActiveDeviceName">Dispositivos disponibles</span>
+            <svg class="np-device-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
           </div>
 
           <!-- Hidden Volume Element kept for JS compatibility -->
@@ -660,30 +663,36 @@
     </aside>
 
     <!-- ==================================================================
-         SPOTIFY CONNECT DEVICES MODAL
+         SPOTIFY CONNECT: AUDIO OUTPUT FLYOUT MODAL
          ================================================================== -->
-    <div class="spotify-modal-backdrop" id="devicesModal">
-      <div class="spotify-modal-card devices-modal-card">
-        <div class="modal-header">
-          <div class="modal-title-wrap">
-            <div class="devices-modal-header-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="3" width="20" height="14" rx="2"></rect>
-                <line x1="8" y1="21" x2="16" y2="21"></line>
-                <line x1="12" y1="17" x2="12" y2="21"></line>
-              </svg>
+    <div class="spotify-modal-backdrop devices-backdrop" id="devicesModal">
+      <div class="devices-flyout-card" id="devicesFlyoutCard">
+        <div class="devices-flyout-header">
+          <div class="devices-header-left">
+            <div class="audio-output-eq">
+              <span class="eq-b1"></span>
+              <span class="eq-b2"></span>
+              <span class="eq-b3"></span>
             </div>
-            <div>
-              <h2 class="modal-title">Escuchar en...</h2>
-              <div class="devices-modal-subtitle" id="devicesModalSubtitle">Dispositivos Spotify Connect</div>
+            <div class="devices-header-titles">
+              <h3 class="devices-header-title">Salida de audio</h3>
+              <p class="devices-header-subtitle">Elige dónde escuchar tu música</p>
             </div>
           </div>
-          <button class="modal-close-btn" id="closeDevicesModalBtn" title="Cerrar">
+          <button class="devices-flyout-close" id="closeDevicesModalBtn" type="button" title="Cerrar">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
         </div>
-        <div class="devices-list" id="devicesListContainer">
+        <div class="devices-content-body" id="devicesListContainer">
           <!-- Generado dinámicamente -->
+        </div>
+        <div class="devices-flyout-footer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+          <span>Selecciona un dispositivo para cambiar la reproducción.</span>
         </div>
       </div>
     </div>
@@ -839,24 +848,24 @@
   </div>
 
   <!-- Core Architecture -->
-  <script src="src/js/core/state.js?v=4.9"></script>
-  <script src="src/js/core/dom.js?v=4.9"></script>
-  <script src="src/js/core/color.js?v=4.9"></script>
+  <script src="src/js/core/state.js?v=5.0"></script>
+  <script src="src/js/core/dom.js?v=5.0"></script>
+  <script src="src/js/core/color.js?v=5.0"></script>
 
   <!-- External Services (OAuth 2.0 PKCE, Spotify API & Web Playback SDK, LRCLIB) -->
-  <script src="src/js/services/auth.js?v=4.9"></script>
-  <script src="src/js/services/spotify.js?v=4.9"></script>
-  <script src="src/js/services/lyrics.js?v=4.9"></script>
+  <script src="src/js/services/auth.js?v=5.0"></script>
+  <script src="src/js/services/spotify.js?v=5.0"></script>
+  <script src="src/js/services/lyrics.js?v=5.0"></script>
 
   <!-- UI Views & Renderers -->
-  <script src="src/js/views/catalog.js?v=4.9"></script>
-  <script src="src/js/views/details.js?v=4.9"></script>
-  <script src="src/js/views/player.js?v=4.9"></script>
+  <script src="src/js/views/catalog.js?v=5.0"></script>
+  <script src="src/js/views/details.js?v=5.0"></script>
+  <script src="src/js/views/player.js?v=5.0"></script>
 
   <!-- Controllers & Bootstrap -->
-  <script src="src/js/controllers/navigation.js?v=4.9"></script>
-  <script src="src/js/controllers/events.js?v=4.9"></script>
-  <script src="src/js/main.js?v=4.9"></script>
+  <script src="src/js/controllers/navigation.js?v=5.0"></script>
+  <script src="src/js/controllers/events.js?v=5.0"></script>
+  <script src="src/js/main.js?v=5.0"></script>
 </body>
 </html>
 

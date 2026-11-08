@@ -1241,16 +1241,25 @@ function updateNowPlayingRightPanelMode() {
 // --------------------------------------------------------------------------
 function getDeviceTypeSvg(type = '') {
   const t = (type || '').toLowerCase();
-  if (t === 'smartphone' || t === 'phone') {
-    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>`;
+  if (t === 'tv' || t === 'casttv') {
+    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"></rect><polyline points="8 21 12 17 16 21"></polyline></svg>`;
   }
   if (t === 'speaker' || t === 'castaudio' || t === 'audiodongle') {
-    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"></rect><circle cx="12" cy="14" r="4"></circle><line x1="12" y1="6" x2="12.01" y2="6"></line></svg>`;
+    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"></rect><circle cx="12" cy="7" r="1.5" fill="currentColor"></circle><circle cx="12" cy="15" r="3.5"></circle><circle cx="12" cy="15" r="1.5" fill="currentColor"></circle></svg>`;
   }
-  if (t === 'computer' || t === 'casttv') {
-    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
+  if (t === 'smartphone' || t === 'phone') {
+    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"></rect><line x1="11" y1="18" x2="13" y2="18"></line></svg>`;
   }
   return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
+}
+
+function getDeviceTypeLabel(type = '') {
+  const t = (type || '').toLowerCase();
+  if (t === 'tv' || t === 'casttv') return 'Televisor';
+  if (t === 'computer') return 'Computadora';
+  if (t === 'speaker' || t === 'castaudio' || t === 'audiodongle') return 'Altavoz';
+  if (t === 'smartphone' || t === 'phone') return 'Teléfono';
+  return 'Dispositivo';
 }
 
 function updateActiveDeviceBadgeUI(device) {
@@ -1291,13 +1300,12 @@ function closeDevicesModal() {
 
 function renderDevicesList(devices = []) {
   const container = document.getElementById('devicesListContainer');
-  const subtitle = document.getElementById('devicesModalSubtitle');
   if (!container) return;
 
   if (!devices || devices.length === 0) {
     container.innerHTML = `
       <div class="devices-empty-state">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"></circle>
           <line x1="12" y1="8" x2="12" y2="12"></line>
           <line x1="12" y1="16" x2="12.01" y2="16"></line>
@@ -1309,58 +1317,79 @@ function renderDevicesList(devices = []) {
     return;
   }
 
-  const activeDev = devices.find(d => d.is_active || d.id === spotifyAuth.activeDeviceId);
-  if (subtitle && activeDev) {
-    subtitle.textContent = `Escuchando en: ${activeDev.name}`;
-  }
+  // Identify active device
+  const activeDev = devices.find(d => d.is_active || d.id === spotifyAuth.activeDeviceId) || devices[0];
+  const otherDevs = devices.filter(d => d.id !== activeDev.id);
 
-  container.innerHTML = devices.map(d => {
-    const isActive = Boolean(d.is_active || d.id === spotifyAuth.activeDeviceId);
-    const iconSvg = getDeviceTypeSvg(d.type);
-    const typeLabel = d.type === 'Computer' ? 'Computadora' : (d.type === 'Smartphone' ? 'Teléfono' : (d.type === 'Speaker' ? 'Altavoz' : 'Dispositivo Spotify'));
-    return `
-      <div class="device-item ${isActive ? 'device-active' : ''}" data-device-id="${d.id}" data-device-name="${escapeHtml(d.name)}" role="button" tabindex="0">
-        <div class="device-icon ${isActive ? 'active-green' : ''}">
-          ${iconSvg}
-        </div>
-        <div class="device-info">
-          <div class="device-name ${isActive ? 'active-text' : ''}">${escapeHtml(d.name)}</div>
-          <div class="device-type-label">
-            ${isActive ? `
-              <span class="device-playing-indicator">
-                <span class="eq-dot"></span> Reproduciendo aquí
-              </span>
-            ` : `<span>${typeLabel} • Spotify Connect</span>`}
+  let html = '';
+
+  // 1. Active Device Card
+  if (activeDev) {
+    const activeIcon = getDeviceTypeSvg(activeDev.type);
+    html += `
+      <div class="device-active-card" data-device-id="${activeDev.id}" data-device-name="${escapeHtml(activeDev.name)}">
+        <div class="device-card-left">
+          <div class="device-card-icon">
+            ${activeIcon}
+          </div>
+          <div class="device-card-meta">
+            <div class="device-card-name">${escapeHtml(activeDev.name)}</div>
+            <div class="device-card-status">
+              <span class="pulse-dot"></span>
+              <span>Reproduciendo aquí</span>
+            </div>
           </div>
         </div>
-        <div class="device-trailing">
-          ${isActive ? `
-            <div class="device-check-badge">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1ed760" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            </div>
-          ` : `
-            <button type="button" class="device-switch-btn" aria-label="Cambiar a ${escapeHtml(d.name)}">
-              Pasar audio
-            </button>
-          `}
+        <div class="device-card-check">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1ed760" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
         </div>
       </div>
     `;
-  }).join('');
+  }
 
-  container.querySelectorAll('.device-item').forEach(item => {
-    item.addEventListener('click', async () => {
-      const devId = item.getAttribute('data-device-id');
-      const devName = item.getAttribute('data-device-name');
+  // 2. Section Heading: OTROS DISPOSITIVOS
+  if (otherDevs.length > 0) {
+    html += `
+      <div class="devices-section-heading">OTROS DISPOSITIVOS</div>
+      <div class="devices-other-list">
+    `;
+    otherDevs.forEach(d => {
+      const icon = getDeviceTypeSvg(d.type);
+      const label = getDeviceTypeLabel(d.type);
+      html += `
+        <div class="device-other-row" data-device-id="${d.id}" data-device-name="${escapeHtml(d.name)}" role="button" tabindex="0">
+          <div class="device-other-left">
+            <div class="device-other-icon">
+              ${icon}
+            </div>
+            <div class="device-other-meta">
+              <div class="device-other-name">${escapeHtml(d.name)}</div>
+              <div class="device-other-sub">${label} • Spotify Connect</div>
+            </div>
+          </div>
+          <div class="device-other-right">
+            <svg class="device-other-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </div>
+        </div>
+      `;
+    });
+    html += `</div>`;
+  }
+
+  container.innerHTML = html;
+
+  // Click handler on other devices
+  container.querySelectorAll('.device-other-row').forEach(row => {
+    row.addEventListener('click', async () => {
+      const devId = row.getAttribute('data-device-id');
+      const devName = row.getAttribute('data-device-name');
       if (!devId) return;
-      if (devId === spotifyAuth.activeDeviceId) {
-        if (typeof showToast === 'function') showToast(`Ya estás escuchando en ${devName}`, true);
-        return;
-      }
 
-      item.classList.add('switching');
+      row.classList.add('switching');
       if (typeof showToast === 'function') showToast(`Cambiando audio a ${devName}...`, true);
       const ok = await transferPlaybackToDevice(devId, true);
       if (ok) {
@@ -1372,8 +1401,9 @@ function renderDevicesList(devices = []) {
           renderDevicesList(freshDevs);
           setTimeout(closeDevicesModal, 450);
         }, 500);
+      } else {
+        row.classList.remove('switching');
       }
     });
   });
 }
-
