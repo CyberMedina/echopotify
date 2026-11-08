@@ -109,11 +109,23 @@ function checkHashToken() {
     startNativeEngine();
   }
 
+  if (!spotifyAuth.accessToken) {
+    switchScreen('login');
+    return;
+  }
+
+  // Comprobar instantáneamente si hay música sonando al entrar a la aplicación:
+  // Si detecta reproducción activa, abre inmediatamente el reproductor a pantalla completa
+  const initialPlaybackPromise = pollSpotifyCurrentPlayback({ autoOpenIfPlaying: true });
+
   initWebPlayer();
   setTimeout(initWebPlayer, 600);
   setTimeout(initWebPlayer, 1800);
-  await loadAllRealSpotifyData();
-  await pollSpotifyCurrentPlayback();
+
+  await Promise.allSettled([
+    initialPlaybackPromise,
+    loadAllRealSpotifyData()
+  ]);
 })();
 
 // Poll Spotify live player state every 4s and auto-refresh token every 40 mins

@@ -491,25 +491,33 @@ function reconcileIncomingPlaybackState(item, rawSec, incomingIsPlaying, source 
   applyTrackToUI(item, rawSec, incomingIsPlaying, source);
 }
 
-async function pollSpotifyCurrentPlayback() {
-  if (!spotifyAuth.accessToken) return;
+async function pollSpotifyCurrentPlayback(opts = {}) {
+  if (!spotifyAuth.accessToken) return null;
   const pollSeq = playbackActionSeq;
+  const autoOpenIfPlaying = Boolean(opts && opts.autoOpenIfPlaying);
 
   // Si el Web Player local está activo y reproduciendo en este navegador, consultar primero su estado en memoria (0ms de lag)
   if (isLocalWebPlayerActive() && typeof webPlayer.getCurrentState === 'function') {
     try {
       const localState = await webPlayer.getCurrentState();
-      if (pollSeq !== playbackActionSeq) return;
+      if (pollSeq !== playbackActionSeq) return null;
       if (localState && localState.track_window && localState.track_window.current_track) {
         handleWebPlayerStateChanged(localState);
-        return;
+        const isPlaying = !localState.paused;
+        if (autoOpenIfPlaying && isPlaying && !state.isNowPlayingOpen && !state.startupPlaybackChecked) {
+          state.startupPlaybackChecked = true;
+          openNowPlaying({ instant: true });
+        } else if (autoOpenIfPlaying) {
+          state.startupPlaybackChecked = true;
+        }
+        return { isPlaying, item: localState.track_window.current_track };
       }
     } catch (e) { }
   }
 
   const pb = await spotifyFetch('/me/player');
   // Si el usuario ejecutó cualquier acción mientras el request HTTP estaba en vuelo, descartar esta respuesta vieja
-  if (pollSeq !== playbackActionSeq) return;
+  if (pollSeq !== playbackActionSeq) return null;
 
   if (pb && pb.item) {
     if (pb.device && pb.device.id) {
@@ -518,8 +526,20 @@ async function pollSpotifyCurrentPlayback() {
     spotifyAuth.shuffleState = !!pb.shuffle_state;
     spotifyAuth.repeatState = pb.repeat_state || 'off';
     const rawSec = (pb.progress_ms || 0) / 1000;
-    reconcileIncomingPlaybackState(pb.item, rawSec, !!pb.is_playing, 'poll');
+    const isPlaying = Boolean(pb.is_playing);
+    reconcileIncomingPlaybackState(pb.item, rawSec, isPlaying, 'poll');
+
+    if (autoOpenIfPlaying && isPlaying && !state.isNowPlayingOpen && !state.startupPlaybackChecked) {
+      state.startupPlaybackChecked = true;
+      openNowPlaying({ instant: true });
+    } else if (autoOpenIfPlaying) {
+      state.startupPlaybackChecked = true;
+    }
+    return { isPlaying, item: pb.item };
+  } else if (autoOpenIfPlaying) {
+    state.startupPlaybackChecked = true;
   }
+  return null;
 }
 
 // --------------------------------------------------------------------------

@@ -136,22 +136,37 @@ function goBack() {
 let npCloseAnimationTimer = null;
 let npOpenTimer = null;
 
-function openNowPlaying() {
+function openNowPlaying(opts = {}) {
+  const instant = Boolean(opts && opts.instant);
   state.isNowPlayingOpen = true;
   clearTimeout(npCloseAnimationTimer);
   clearTimeout(npOpenTimer);
 
-  // Asegurar que las vistas subyacentes se rendericen durante la transición y no queden en negro
-  document.body.classList.remove('np-fully-open');
+  if (instant) {
+    document.body.classList.add('np-fully-open');
+    nowPlayingOverlay.style.transition = 'none';
+    nowPlayingOverlay.classList.add('open');
+    nowPlayingOverlay.style.transform = 'translate3d(0, 0, 0)';
+  } else {
+    // Asegurar que las vistas subyacentes se rendericen durante la transición y no queden en negro
+    document.body.classList.remove('np-fully-open');
 
-  // Cancelar cualquier transición previa inmediatamente y arrancar desde abajo
-  nowPlayingOverlay.style.transition = 'none';
-  nowPlayingOverlay.style.transform = 'translate3d(0, 100%, 0)';
-  void nowPlayingOverlay.offsetHeight; // Forzar reflow para registrar posición inicial
+    // Cancelar cualquier transición previa inmediatamente y arrancar desde abajo
+    nowPlayingOverlay.style.transition = 'none';
+    nowPlayingOverlay.style.transform = 'translate3d(0, 100%, 0)';
+    void nowPlayingOverlay.offsetHeight; // Forzar reflow para registrar posición inicial
 
-  nowPlayingOverlay.classList.add('open');
-  nowPlayingOverlay.style.transition = 'transform 0.44s cubic-bezier(0.16, 1, 0.3, 1)';
-  nowPlayingOverlay.style.transform = 'translate3d(0, 0, 0)';
+    nowPlayingOverlay.classList.add('open');
+    nowPlayingOverlay.style.transition = 'transform 0.44s cubic-bezier(0.16, 1, 0.3, 1)';
+    nowPlayingOverlay.style.transform = 'translate3d(0, 0, 0)';
+
+    npOpenTimer = setTimeout(() => {
+      if (state.isNowPlayingOpen && nowPlayingOverlay.classList.contains('open')) {
+        document.body.classList.add('np-fully-open');
+        nowPlayingOverlay.style.transition = '';
+      }
+    }, 480);
+  }
 
   // Al abrir Now Playing, garantizar que el fondo lava refleje fielmente la canción actual
   if (state.playingCover) {
@@ -160,16 +175,10 @@ function openNowPlaying() {
 
   cacheLyricLineOffsets();
   updateScrubberAndLyricsUI(true);
-
-  npOpenTimer = setTimeout(() => {
-    if (state.isNowPlayingOpen && nowPlayingOverlay.classList.contains('open')) {
-      document.body.classList.add('np-fully-open');
-      nowPlayingOverlay.style.transition = '';
-    }
-  }, 480);
 }
 
 function closeNowPlaying(opts = {}) {
+  state.startupPlaybackChecked = true;
   if (!state.isNowPlayingOpen && !nowPlayingOverlay.classList.contains('open')) return;
 
   state.isNowPlayingOpen = false;

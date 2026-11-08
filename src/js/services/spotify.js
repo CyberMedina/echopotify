@@ -133,6 +133,11 @@ function handleWebPlayerStateChanged(sdkState) {
   const rawSec = Math.max(0, (sdkState.position || 0) / 1000);
   const incomingIsPlaying = !sdkState.paused;
   reconcileIncomingPlaybackState(cur, rawSec, incomingIsPlaying, 'sdk');
+
+  if (!state.startupPlaybackChecked && incomingIsPlaying && !state.isNowPlayingOpen) {
+    state.startupPlaybackChecked = true;
+    openNowPlaying({ instant: true });
+  }
 }
 
 window.onSpotifyWebPlaybackSDKReady = () => {

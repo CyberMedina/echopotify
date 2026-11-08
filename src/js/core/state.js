@@ -99,6 +99,7 @@ const state = {
   contextUpcomingTracks: [],
   liveQueueTracks: [],
   discoveryTracks: [],
+  startupPlaybackChecked: false,
   devModeEnabled: safeStorage.getItem('sp_dev_mode') === 'true'
 };
 
