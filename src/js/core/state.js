@@ -102,6 +102,7 @@ const state = {
   liveQueueTracks: [],
   discoveryTracks: [],
   startupPlaybackChecked: false,
+  wordByWordLyrics: safeStorage.getItem('sp_lyrics_word_by_word') !== 'false',
   devModeEnabled: safeStorage.getItem('sp_dev_mode') === 'true'
 };
 

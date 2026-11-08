@@ -250,6 +250,52 @@ if (fsRow) {
   });
 }
 
+// --------------------------------------------------------------------------
+// LYRICS MODE CONTROLLER: PALABRA POR PALABRA (AMLL) VS LÍNEA COMPLETA
+// --------------------------------------------------------------------------
+function syncLyricsModeUI() {
+  const isWbw = (state.wordByWordLyrics !== false);
+  const sw = document.getElementById('wordByWordLyricsSwitch');
+  if (sw) {
+    sw.classList.toggle('active', isWbw);
+    sw.setAttribute('aria-checked', isWbw ? 'true' : 'false');
+  }
+  const track = document.getElementById('lyricsScrollTrack');
+  if (track) {
+    track.classList.toggle('mode-line', !isWbw);
+  }
+}
+
+function toggleLyricsMode() {
+  state.wordByWordLyrics = (state.wordByWordLyrics === false) ? true : false;
+  safeStorage.setItem('sp_lyrics_word_by_word', state.wordByWordLyrics ? 'true' : 'false');
+  syncLyricsModeUI();
+  if (typeof updateScrubberAndLyricsUI === 'function') {
+    updateScrubberAndLyricsUI(true);
+  }
+  if (typeof showToast === 'function') {
+    showToast(state.wordByWordLyrics ? 'Letras: Palabra por palabra' : 'Letras: Línea completa');
+  }
+}
+
+const lyricsSwitch = document.getElementById('wordByWordLyricsSwitch');
+if (lyricsSwitch) {
+  lyricsSwitch.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleLyricsMode();
+  });
+}
+
+const lyricsRow = document.getElementById('lyricsModeSettingRow');
+if (lyricsRow) {
+  lyricsRow.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleLyricsMode();
+  });
+}
+
+syncLyricsModeUI();
+
 // Botón de Login en Landing Page (OAuth 2.0 PKCE)
 const landingLoginBtn = document.getElementById('landingLoginBtn');
 if (landingLoginBtn) {

@@ -12,10 +12,10 @@
   <link rel="preconnect" href="https://api.spotify.com" crossorigin />
   <link rel="dns-prefetch" href="https://i.scdn.co" />
   <link rel="dns-prefetch" href="https://mosaic.scdn.co" />
-  <link rel="stylesheet" href="src/css/base.css?v=4.8" />
-  <link rel="stylesheet" href="src/css/views.css?v=4.8" />
-  <link rel="stylesheet" href="src/css/now-playing.css?v=4.8" />
-  <link rel="stylesheet" href="src/css/theme-modals.css?v=4.8" />
+  <link rel="stylesheet" href="src/css/base.css?v=4.9" />
+  <link rel="stylesheet" href="src/css/views.css?v=4.9" />
+  <link rel="stylesheet" href="src/css/now-playing.css?v=4.9" />
+  <link rel="stylesheet" href="src/css/theme-modals.css?v=4.9" />
   <script src="https://cdn.html.games.alexa.a2z.com/alexa-html/latest/alexa-html.js"></script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 </head>
@@ -744,6 +744,24 @@
               <span class="apple-switch-thumb"></span>
             </button>
           </div>
+
+          <!-- Word-by-word vs Line-by-line Lyrics toggle row -->
+          <div class="modal-setting-row" id="lyricsModeSettingRow">
+            <div class="modal-setting-left">
+              <div class="modal-setting-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+              </div>
+              <div class="modal-setting-text">
+                <div class="modal-setting-label">Letras palabra por palabra</div>
+                <div class="modal-setting-desc">Efecto karaoke sincronizado. Si se desactiva, resalta la línea completa.</div>
+              </div>
+            </div>
+            <button type="button" class="apple-switch" id="wordByWordLyricsSwitch" role="switch" aria-checked="true" aria-label="Letras palabra por palabra">
+              <span class="apple-switch-thumb"></span>
+            </button>
+          </div>
         </div>
 
         <!-- Section 2: Opciones de desarrollador -->
@@ -821,24 +839,24 @@
   </div>
 
   <!-- Core Architecture -->
-  <script src="src/js/core/state.js?v=4.8"></script>
-  <script src="src/js/core/dom.js?v=4.8"></script>
-  <script src="src/js/core/color.js?v=4.8"></script>
+  <script src="src/js/core/state.js?v=4.9"></script>
+  <script src="src/js/core/dom.js?v=4.9"></script>
+  <script src="src/js/core/color.js?v=4.9"></script>
 
   <!-- External Services (OAuth 2.0 PKCE, Spotify API & Web Playback SDK, LRCLIB) -->
-  <script src="src/js/services/auth.js?v=4.8"></script>
-  <script src="src/js/services/spotify.js?v=4.8"></script>
-  <script src="src/js/services/lyrics.js?v=4.8"></script>
+  <script src="src/js/services/auth.js?v=4.9"></script>
+  <script src="src/js/services/spotify.js?v=4.9"></script>
+  <script src="src/js/services/lyrics.js?v=4.9"></script>
 
   <!-- UI Views & Renderers -->
-  <script src="src/js/views/catalog.js?v=4.8"></script>
-  <script src="src/js/views/details.js?v=4.8"></script>
-  <script src="src/js/views/player.js?v=4.8"></script>
+  <script src="src/js/views/catalog.js?v=4.9"></script>
+  <script src="src/js/views/details.js?v=4.9"></script>
+  <script src="src/js/views/player.js?v=4.9"></script>
 
   <!-- Controllers & Bootstrap -->
-  <script src="src/js/controllers/navigation.js?v=4.8"></script>
-  <script src="src/js/controllers/events.js?v=4.8"></script>
-  <script src="src/js/main.js?v=4.8"></script>
+  <script src="src/js/controllers/navigation.js?v=4.9"></script>
+  <script src="src/js/controllers/events.js?v=4.9"></script>
+  <script src="src/js/main.js?v=4.9"></script>
 </body>
 </html>
 

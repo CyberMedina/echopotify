@@ -994,6 +994,7 @@ document.querySelectorAll('.profile-btn').forEach(btn => {
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     syncFullscreenSwitchUI();
+    if (typeof syncLyricsModeUI === 'function') syncLyricsModeUI();
     spotifyModal.classList.add('open');
   });
 });

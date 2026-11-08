@@ -671,6 +671,8 @@ function buildLyricsDOM(lyricsArray) {
     return `<div class="${initialCls}" data-line-idx="${lineIdx}" data-start="${line.start}" data-end="${line.end}">${wordsHtml}</div>${interludeAfterHtml}`;
   }).join('');
 
+  lyricsScrollTrack.classList.toggle('mode-line', state.wordByWordLyrics === false);
+
   // Pre-cache all DOM references & timing floats so the 60fps loop does zero DOM queries or layout reads
   const lineEls = Array.from(lyricsScrollTrack.querySelectorAll('.lyric-line'));
   const interludeEls = Array.from(lyricsScrollTrack.querySelectorAll('.amll-interlude-dots'));
@@ -828,8 +830,9 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
     }
   }
 
+  const isWordByWord = (state.wordByWordLyrics !== false);
   const activeLine = cache[newActiveIdx];
-  if (activeLine) {
+  if (activeLine && isWordByWord) {
     const words = activeLine.words;
     for (let i = 0; i < words.length; i++) {
       const wObj = words[i];
