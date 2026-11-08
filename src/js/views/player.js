@@ -1273,6 +1273,18 @@ function updateActiveDeviceBadgeUI(device) {
   if (npDevRow) {
     npDevRow.classList.add('has-device');
     npDevRow.title = `Escuchando en: ${name} (toca para cambiar)`;
+    if (device.type) {
+      const oldIcon = npDevRow.querySelector('.np-device-icon');
+      if (oldIcon) {
+        const temp = document.createElement('div');
+        temp.innerHTML = getDeviceTypeSvg(device.type);
+        const newSvg = temp.firstElementChild;
+        if (newSvg) {
+          newSvg.classList.add('np-device-icon');
+          oldIcon.replaceWith(newSvg);
+        }
+      }
+    }
   }
 }
 
