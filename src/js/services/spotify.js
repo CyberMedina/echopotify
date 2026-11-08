@@ -126,6 +126,16 @@ function handleWebPlayerStateChanged(sdkState) {
   const cur = sdkState.track_window.current_track;
   if (webPlayerDeviceId) {
     spotifyAuth.activeDeviceId = webPlayerDeviceId;
+    spotifyAuth.activeDeviceName = spotifyAuth.activeDeviceName || 'SpotiEcho Web Player';
+    spotifyAuth.activeDeviceType = 'Computer';
+    if (typeof updateActiveDeviceBadgeUI === 'function') {
+      updateActiveDeviceBadgeUI({
+        id: webPlayerDeviceId,
+        name: spotifyAuth.activeDeviceName,
+        type: 'Computer',
+        is_active: true
+      });
+    }
   }
   spotifyAuth.shuffleState = Boolean(sdkState.shuffle);
   spotifyAuth.repeatState = sdkState.repeat_mode === 2 ? 'track' : (sdkState.repeat_mode === 1 ? 'context' : 'off');
@@ -167,6 +177,16 @@ function initWebPlayer() {
       // Solo asociar como activo si no hay otro dispositivo sonando activamente
       if (!spotifyAuth.activeDeviceId) {
         spotifyAuth.activeDeviceId = device_id;
+        spotifyAuth.activeDeviceName = 'SpotiEcho Web Player';
+        spotifyAuth.activeDeviceType = 'Computer';
+      }
+      if (typeof updateActiveDeviceBadgeUI === 'function' && (!spotifyAuth.activeDeviceName || spotifyAuth.activeDeviceId === device_id)) {
+        updateActiveDeviceBadgeUI({
+          id: device_id,
+          name: spotifyAuth.activeDeviceName || 'SpotiEcho Web Player',
+          type: 'Computer',
+          is_active: true
+        });
       }
     });
 
@@ -229,6 +249,11 @@ async function getTargetDeviceQuery() {
     const activeDev = devRes.devices.find(d => d.is_active);
     if (activeDev && activeDev.id) {
       spotifyAuth.activeDeviceId = activeDev.id;
+      spotifyAuth.activeDeviceName = activeDev.name;
+      spotifyAuth.activeDeviceType = activeDev.type;
+      if (typeof updateActiveDeviceBadgeUI === 'function') {
+        updateActiveDeviceBadgeUI(activeDev);
+      }
       return `?device_id=${activeDev.id}`;
     }
 
@@ -258,6 +283,25 @@ async function fetchAvailableDevices() {
     const res = await spotifyFetch('/me/player/devices');
     if (res && Array.isArray(res.devices)) {
       spotifyAuth.availableDevices = res.devices;
+      const active = res.devices.find(d => d.is_active);
+      if (active) {
+        spotifyAuth.activeDeviceId = active.id;
+        spotifyAuth.activeDeviceName = active.name;
+        spotifyAuth.activeDeviceType = active.type;
+        if (typeof updateActiveDeviceBadgeUI === 'function') {
+          updateActiveDeviceBadgeUI(active);
+        }
+      } else if (!spotifyAuth.activeDeviceId && res.devices.length > 0) {
+        const defaultDev = res.devices.find(d => d.type === 'Computer') || res.devices[0];
+        if (defaultDev) {
+          spotifyAuth.activeDeviceId = defaultDev.id;
+          spotifyAuth.activeDeviceName = defaultDev.name;
+          spotifyAuth.activeDeviceType = defaultDev.type;
+          if (typeof updateActiveDeviceBadgeUI === 'function') {
+            updateActiveDeviceBadgeUI(defaultDev);
+          }
+        }
+      }
       return res.devices;
     }
   } catch (err) {

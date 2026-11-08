@@ -504,6 +504,12 @@ async function pollSpotifyCurrentPlayback(opts = {}) {
       if (localState && localState.track_window && localState.track_window.current_track) {
         handleWebPlayerStateChanged(localState);
         const isPlaying = !localState.paused;
+        updateActiveDeviceBadgeUI({
+          id: webPlayerDeviceId,
+          name: spotifyAuth.activeDeviceName || 'SpotiEcho Web Player',
+          type: 'Computer',
+          is_active: true
+        });
         if (autoOpenIfPlaying && isPlaying && !state.isNowPlayingOpen && !state.startupPlaybackChecked) {
           state.startupPlaybackChecked = true;
           openNowPlaying({ instant: true });
@@ -542,6 +548,9 @@ async function pollSpotifyCurrentPlayback(opts = {}) {
   } else if (autoOpenIfPlaying) {
     state.startupPlaybackChecked = true;
   }
+  if (!spotifyAuth.activeDeviceName && typeof fetchAvailableDevices === 'function') {
+    fetchAvailableDevices();
+  }
   return null;
 }
 
@@ -556,6 +565,12 @@ state.isNowPlayingOpen = false;
 let npFullyOpenTimer = null;
 
 function getLyricLineClass(idx, activeIdx) {
+  if (activeIdx < 0) {
+    if (idx === 0) return 'lyric-line distance-1';
+    if (idx === 1) return 'lyric-line distance-2';
+    if (idx === 2) return 'lyric-line distance-3';
+    return 'lyric-line distance-far';
+  }
   const diff = idx - activeIdx;
   if (diff === 0) return 'lyric-line active';
   if (diff === -1) return 'lyric-line distance-prev';
@@ -667,7 +682,7 @@ function buildLyricsDOM(lyricsArray) {
       ? `<div class="amll-interlude-dots" data-istart="${(line.end + 0.15).toFixed(2)}" data-iend="${(line.lineEnd - 0.15).toFixed(2)}"><span class="amll-interlude-dot"></span><span class="amll-interlude-dot"></span><span class="amll-interlude-dot"></span></div>`
       : '';
 
-    const initialCls = getLyricLineClass(lineIdx, 0);
+    const initialCls = getLyricLineClass(lineIdx, -1);
     return `<div class="${initialCls}" data-line-idx="${lineIdx}" data-start="${line.start}" data-end="${line.end}">${wordsHtml}</div>${interludeAfterHtml}`;
   }).join('');
 
@@ -695,7 +710,7 @@ function buildLyricsDOM(lyricsArray) {
   state.lyricDOMCache = lineEls.map((lineEl, idx) => {
     const lineData = lyricsArray[idx] || {};
     const wordEls = Array.from(lineEl.querySelectorAll('.lyric-word'));
-    const initialCls = getLyricLineClass(idx, 0);
+    const initialCls = getLyricLineClass(idx, -1);
     return {
       el: lineEl,
       lastClass: initialCls,
@@ -796,13 +811,15 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
     }
   }
 
-  let newActiveIdx = 0;
-  for (let i = 0; i < cache.length; i++) {
-    if (lyricTime >= cache[i].start && lyricTime < cache[i].lineEnd) {
-      newActiveIdx = i;
-      break;
-    } else if (lyricTime >= cache[i].lineEnd) {
-      newActiveIdx = i;
+  let newActiveIdx = -1;
+  if (cache.length > 0 && lyricTime >= cache[0].start) {
+    for (let i = 0; i < cache.length; i++) {
+      if (lyricTime >= cache[i].start && lyricTime < cache[i].lineEnd) {
+        newActiveIdx = i;
+        break;
+      } else if (lyricTime >= cache[i].lineEnd) {
+        newActiveIdx = i;
+      }
     }
   }
 
@@ -831,7 +848,7 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
   }
 
   const isWordByWord = (state.wordByWordLyrics !== false);
-  const activeLine = cache[newActiveIdx];
+  const activeLine = (newActiveIdx >= 0) ? cache[newActiveIdx] : null;
   if (activeLine && isWordByWord) {
     const words = activeLine.words;
     for (let i = 0; i < words.length; i++) {
@@ -876,6 +893,8 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
         ? activeLine.targetOffset
         : Math.max(0, activeLine.el.offsetTop - 210);
       lyricsScrollTrack.style.transform = `translate3d(0, -${targetOffset}px, 0)`;
+    } else {
+      lyricsScrollTrack.style.transform = 'translate3d(0, 0, 0)';
     }
   }
 }
@@ -1265,6 +1284,15 @@ function getDeviceTypeLabel(type = '') {
 function updateActiveDeviceBadgeUI(device) {
   if (!device) return;
   const name = device.name || 'Dispositivo';
+  spotifyAuth.activeDeviceName = name;
+  if (device.id) spotifyAuth.activeDeviceId = device.id;
+  if (device.type) spotifyAuth.activeDeviceType = device.type;
+  try {
+    if (name && name !== 'Dispositivos disponibles') safeStorage.setItem('sp_active_device_name', name);
+    if (device.id) safeStorage.setItem('sp_active_device_id', device.id);
+    if (device.type) safeStorage.setItem('sp_active_device_type', device.type);
+  } catch (e) {}
+
   const npDeviceName = document.getElementById('npActiveDeviceName');
   if (npDeviceName) {
     npDeviceName.textContent = name;
@@ -1417,5 +1445,15 @@ function renderDevicesList(devices = []) {
         row.classList.remove('switching');
       }
     });
+  });
+}
+
+window.updateActiveDeviceBadgeUI = updateActiveDeviceBadgeUI;
+if (spotifyAuth.activeDeviceName) {
+  updateActiveDeviceBadgeUI({
+    id: spotifyAuth.activeDeviceId,
+    name: spotifyAuth.activeDeviceName,
+    type: spotifyAuth.activeDeviceType || 'Computer',
+    is_active: true
   });
 }

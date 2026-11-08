@@ -173,6 +173,19 @@ function openNowPlaying(opts = {}) {
     extractDynamicPaletteFromCover(state.playingCover, false);
   }
 
+  if (typeof updateActiveDeviceBadgeUI === 'function') {
+    if (spotifyAuth.activeDeviceName) {
+      updateActiveDeviceBadgeUI({
+        id: spotifyAuth.activeDeviceId,
+        name: spotifyAuth.activeDeviceName,
+        type: spotifyAuth.activeDeviceType || 'Computer',
+        is_active: true
+      });
+    } else if (typeof fetchAvailableDevices === 'function') {
+      fetchAvailableDevices();
+    }
+  }
+
   cacheLyricLineOffsets();
   updateScrubberAndLyricsUI(true);
 }
