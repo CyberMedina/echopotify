@@ -1283,7 +1283,7 @@ body.np-fully-open .ambient-bg {
   color: rgba(255, 255, 255, 0.56);
 }
 
-/* Bottom-Right Apple Music Dual Pill (Letras / Cola) */
+/* Bottom-Right Apple Music Dual Pill (Letras / Cola) - Frosted Glass Design System */
 .np-dock-controls {
   position: absolute;
   right: 38px;
@@ -1294,9 +1294,11 @@ body.np-fully-open .ambient-bg {
   gap: 6px;
   padding: 5px 6px;
   border-radius: 99px;
-  background: rgba(14, 18, 22, 0.68);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.14) 0%, rgba(20, 26, 32, 0.68) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
   touch-action: none;
   -webkit-touch-callout: none;
   user-select: none;
@@ -1305,15 +1307,15 @@ body.np-fully-open .ambient-bg {
 .np-dock-btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 8px 18px;
+  gap: 8px;
+  padding: 8px 20px;
   height: 44px;
   border-radius: 99px;
   border: 1px solid transparent;
   background: transparent;
-  color: rgba(255, 255, 255, 0.68);
+  color: rgba(255, 255, 255, 0.72);
   font-family: var(--font-sans);
-  font-size: 14.5px;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1330,7 +1332,7 @@ body.np-fully-open .ambient-bg {
 
 .np-dock-btn:hover {
   color: #ffffff;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .np-dock-btn:active {
@@ -1339,9 +1341,9 @@ body.np-fully-open .ambient-bg {
 
 .np-dock-btn.active {
   color: #ffffff;
-  background: rgba(255, 255, 255, 0.26);
-  border-color: rgba(255, 255, 255, 0.28);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.20);
+  background: rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
 }
 
 .np-dock-btn.disabled {
