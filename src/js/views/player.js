@@ -522,6 +522,9 @@ async function pollSpotifyCurrentPlayback(opts = {}) {
   if (pb && pb.item) {
     if (pb.device && pb.device.id) {
       spotifyAuth.activeDeviceId = pb.device.id;
+      spotifyAuth.activeDeviceName = pb.device.name;
+      spotifyAuth.activeDeviceType = pb.device.type;
+      updateActiveDeviceBadgeUI(pb.device);
     }
     spotifyAuth.shuffleState = !!pb.shuffle_state;
     spotifyAuth.repeatState = pb.repeat_state || 'off';
@@ -1228,5 +1231,151 @@ function updateNowPlayingRightPanelMode() {
   } else if (showQueue) {
     renderQueuePanelUI();
   }
+}
+
+// --------------------------------------------------------------------------
+// 12. SPOTIFY CONNECT: DEVICES LIST, SWITCHING & BADGES
+// --------------------------------------------------------------------------
+function getDeviceTypeSvg(type = '') {
+  const t = (type || '').toLowerCase();
+  if (t === 'smartphone' || t === 'phone') {
+    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>`;
+  }
+  if (t === 'speaker' || t === 'castaudio' || t === 'audiodongle') {
+    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"></rect><circle cx="12" cy="14" r="4"></circle><line x1="12" y1="6" x2="12.01" y2="6"></line></svg>`;
+  }
+  if (t === 'computer' || t === 'casttv') {
+    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
+  }
+  return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
+}
+
+function updateActiveDeviceBadgeUI(device) {
+  if (!device) return;
+  const name = device.name || 'Dispositivo';
+  const dockLabel = document.getElementById('npDevicesDockLabel');
+  if (dockLabel) {
+    dockLabel.textContent = name.length > 14 ? name.substring(0, 12) + '…' : name;
+  }
+  const dockBtn = document.getElementById('npToggleDevicesBtn');
+  if (dockBtn) {
+    dockBtn.classList.add('has-active-device');
+    dockBtn.title = `Escuchando en: ${name}`;
+  }
+  const miniBtn = document.getElementById('miniDeviceBtn');
+  if (miniBtn) {
+    miniBtn.title = `Escuchando en: ${name}`;
+    miniBtn.classList.toggle('active', Boolean(device.is_active));
+  }
+}
+
+async function openDevicesModal() {
+  const modal = document.getElementById('devicesModal');
+  const container = document.getElementById('devicesListContainer');
+  if (!modal || !container) return;
+
+  modal.classList.add('open');
+  container.innerHTML = `
+    <div class="devices-loading-shimmer">
+      <div class="devices-spinner"></div>
+      <span>Buscando dispositivos en tu red...</span>
+    </div>
+  `;
+
+  const devices = await fetchAvailableDevices();
+  renderDevicesList(devices);
+}
+
+function closeDevicesModal() {
+  const modal = document.getElementById('devicesModal');
+  if (modal) modal.classList.remove('open');
+}
+
+function renderDevicesList(devices = []) {
+  const container = document.getElementById('devicesListContainer');
+  const subtitle = document.getElementById('devicesModalSubtitle');
+  if (!container) return;
+
+  if (!devices || devices.length === 0) {
+    container.innerHTML = `
+      <div class="devices-empty-state">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <p>No se encontraron otros dispositivos activos.</p>
+        <span class="devices-hint">Asegúrate de que Spotify esté abierto en tu teléfono, altavoz o PC en la misma cuenta.</span>
+      </div>
+    `;
+    return;
+  }
+
+  const activeDev = devices.find(d => d.is_active || d.id === spotifyAuth.activeDeviceId);
+  if (subtitle && activeDev) {
+    subtitle.textContent = `Escuchando en: ${activeDev.name}`;
+  }
+
+  container.innerHTML = devices.map(d => {
+    const isActive = Boolean(d.is_active || d.id === spotifyAuth.activeDeviceId);
+    const iconSvg = getDeviceTypeSvg(d.type);
+    const typeLabel = d.type === 'Computer' ? 'Computadora' : (d.type === 'Smartphone' ? 'Teléfono' : (d.type === 'Speaker' ? 'Altavoz' : 'Dispositivo Spotify'));
+    return `
+      <div class="device-item ${isActive ? 'device-active' : ''}" data-device-id="${d.id}" data-device-name="${escapeHtml(d.name)}" role="button" tabindex="0">
+        <div class="device-icon ${isActive ? 'active-green' : ''}">
+          ${iconSvg}
+        </div>
+        <div class="device-info">
+          <div class="device-name ${isActive ? 'active-text' : ''}">${escapeHtml(d.name)}</div>
+          <div class="device-type-label">
+            ${isActive ? `
+              <span class="device-playing-indicator">
+                <span class="eq-dot"></span> Reproduciendo aquí
+              </span>
+            ` : `<span>${typeLabel} • Spotify Connect</span>`}
+          </div>
+        </div>
+        <div class="device-trailing">
+          ${isActive ? `
+            <div class="device-check-badge">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1ed760" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+          ` : `
+            <button type="button" class="device-switch-btn" aria-label="Cambiar a ${escapeHtml(d.name)}">
+              Pasar audio
+            </button>
+          `}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.device-item').forEach(item => {
+    item.addEventListener('click', async () => {
+      const devId = item.getAttribute('data-device-id');
+      const devName = item.getAttribute('data-device-name');
+      if (!devId) return;
+      if (devId === spotifyAuth.activeDeviceId) {
+        if (typeof showToast === 'function') showToast(`Ya estás escuchando en ${devName}`, true);
+        return;
+      }
+
+      item.classList.add('switching');
+      if (typeof showToast === 'function') showToast(`Cambiando audio a ${devName}...`, true);
+      const ok = await transferPlaybackToDevice(devId, true);
+      if (ok) {
+        if (typeof showToast === 'function') showToast(`Reproduciendo en ${devName}`, true);
+        spotifyAuth.activeDeviceName = devName;
+        updateActiveDeviceBadgeUI({ id: devId, name: devName, is_active: true });
+        setTimeout(async () => {
+          const freshDevs = await fetchAvailableDevices();
+          renderDevicesList(freshDevs);
+          setTimeout(closeDevicesModal, 450);
+        }, 500);
+      }
+    });
+  });
 }
 

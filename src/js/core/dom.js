@@ -85,6 +85,11 @@ const npQueueEq = document.getElementById('npQueueEq');
 const npQueueListContainer = document.getElementById('npQueueListContainer');
 
 const spotifyModal = document.getElementById('spotifyModal');
+const devicesModal = document.getElementById('devicesModal');
+const closeDevicesModalBtn = document.getElementById('closeDevicesModalBtn');
+const devicesListContainer = document.getElementById('devicesListContainer');
+const npToggleDevicesBtn = document.getElementById('npToggleDevicesBtn');
+const miniDeviceBtn = document.getElementById('miniDeviceBtn');
 const spotifyClientIdInput = document.getElementById('spotifyClientIdInput');
 const spotifyTokenInput = document.getElementById('spotifyTokenInput');
 const spotifyStatusDot = document.getElementById('spotifyStatusDot');

@@ -426,6 +426,13 @@
         </div>
       </div>
       <div class="mini-player-controls">
+        <button class="mini-ctrl-btn mini-device-btn" id="miniDeviceBtn" title="Dispositivos de reproducción (Spotify Connect)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+        </button>
         <button class="mini-ctrl-btn mini-like-btn" id="miniLikeBtn" title="Guardar en Tus me gusta">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
@@ -646,8 +653,45 @@
           </svg>
           <span class="np-dock-label">Cola</span>
         </button>
+        <button class="np-dock-btn" id="npToggleDevicesBtn" type="button" title="Dispositivos disponibles (Spotify Connect)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+          <span class="np-dock-label" id="npDevicesDockLabel">Dispositivos</span>
+        </button>
       </div>
     </aside>
+
+    <!-- ==================================================================
+         SPOTIFY CONNECT DEVICES MODAL
+         ================================================================== -->
+    <div class="spotify-modal-backdrop" id="devicesModal">
+      <div class="spotify-modal-card devices-modal-card">
+        <div class="modal-header">
+          <div class="modal-title-wrap">
+            <div class="devices-modal-header-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+              </svg>
+            </div>
+            <div>
+              <h2 class="modal-title">Escuchar en...</h2>
+              <div class="devices-modal-subtitle" id="devicesModalSubtitle">Dispositivos Spotify Connect</div>
+            </div>
+          </div>
+          <button class="modal-close-btn" id="closeDevicesModalBtn" title="Cerrar">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="devices-list" id="devicesListContainer">
+          <!-- Generado dinámicamente -->
+        </div>
+      </div>
+    </div>
 
     <!-- ==================================================================
          PROFILE / SETTINGS MODAL (Pixel-Perfect Echo Show Design System)

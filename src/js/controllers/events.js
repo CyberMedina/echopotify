@@ -1012,6 +1012,34 @@ if (spotifyModal) {
   });
 }
 
+// Devices Modal Controls (Spotify Connect)
+if (npToggleDevicesBtn) {
+  npToggleDevicesBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openDevicesModal();
+  });
+}
+if (miniDeviceBtn) {
+  miniDeviceBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openDevicesModal();
+  });
+}
+const closeDevBtn = document.getElementById('closeDevicesModalBtn');
+if (closeDevBtn) {
+  closeDevBtn.addEventListener('click', () => {
+    closeDevicesModal();
+  });
+}
+const devModalEl = document.getElementById('devicesModal');
+if (devModalEl) {
+  devModalEl.addEventListener('click', (e) => {
+    if (e.target === devModalEl) {
+      closeDevicesModal();
+    }
+  });
+}
+
 // --------------------------------------------------------------------------
 // THEME CONTROLLER (Auto Day/Night, Light, Dark)
 // --------------------------------------------------------------------------

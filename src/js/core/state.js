@@ -45,6 +45,8 @@ const spotifyAuth = {
   engineDeviceName: bridge ? bridge.getEngineDeviceName() : null,
   engineDeviceId: null,
   activeDeviceId: null,
+  activeDeviceName: null,
+  activeDeviceType: null,
   availableDevices: [],
   lastTrackId: null,
   isLiked: false,

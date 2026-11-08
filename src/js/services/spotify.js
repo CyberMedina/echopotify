@@ -164,15 +164,10 @@ function initWebPlayer() {
     webPlayer.addListener('ready', ({ device_id }) => {
       console.log('[Spotify Web SDK] Conectado exitosamente con Device ID:', device_id);
       webPlayerDeviceId = device_id;
-      spotifyAuth.activeDeviceId = device_id;
-      fetch('https://api.spotify.com/v1/me/player', {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${spotifyAuth.accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ device_ids: [device_id], play: false })
-      }).catch(e => console.warn('No se pudo transferir a webPlayer:', e));
+      // Solo asociar como activo si no hay otro dispositivo sonando activamente
+      if (!spotifyAuth.activeDeviceId) {
+        spotifyAuth.activeDeviceId = device_id;
+      }
     });
 
     webPlayer.addListener('not_ready', ({ device_id }) => {
@@ -217,19 +212,25 @@ async function findEngineDeviceId() {
 }
 
 async function getTargetDeviceQuery() {
-  // 1. Si el Web Player del navegador está listo, usarlo en 0ms
-  if (webPlayerDeviceId) {
-    return `?device_id=${webPlayerDeviceId}`;
-  }
-
-  // 2. Si ya conocemos el activeDeviceId por el estado de reproducción actual, devolverlo en 0ms sin bloquear con GET /devices
+  // 1. Si ya conocemos el activeDeviceId donde está sonando la música, usarlo siempre con prioridad
   if (spotifyAuth.activeDeviceId) {
     return `?device_id=${spotifyAuth.activeDeviceId}`;
+  }
+
+  // 2. Si el Web Player del navegador está listo y no hay otro dispositivo activo, usarlo
+  if (webPlayerDeviceId) {
+    return `?device_id=${webPlayerDeviceId}`;
   }
 
   const devRes = await spotifyFetch('/me/player/devices');
   if (devRes && Array.isArray(devRes.devices) && devRes.devices.length > 0) {
     spotifyAuth.availableDevices = devRes.devices;
+
+    const activeDev = devRes.devices.find(d => d.is_active);
+    if (activeDev && activeDev.id) {
+      spotifyAuth.activeDeviceId = activeDev.id;
+      return `?device_id=${activeDev.id}`;
+    }
 
     // 3. Buscar si hay algún Web Player (tipo Computer)
     const webDev = devRes.devices.find(d => d.type === 'Computer' && (d.name.includes('SpotiEcho') || d.name.includes('Silk') || d.name.includes('Echo Show')));
@@ -249,6 +250,40 @@ async function getTargetDeviceQuery() {
   }
 
   return '';
+}
+
+async function fetchAvailableDevices() {
+  if (!spotifyAuth.accessToken) return [];
+  try {
+    const res = await spotifyFetch('/me/player/devices');
+    if (res && Array.isArray(res.devices)) {
+      spotifyAuth.availableDevices = res.devices;
+      return res.devices;
+    }
+  } catch (err) {
+    console.warn('[Spotify Devices] Error fetching devices:', err);
+  }
+  return spotifyAuth.availableDevices || [];
+}
+
+async function transferPlaybackToDevice(deviceId, play = true) {
+  if (!spotifyAuth.accessToken || !deviceId) return false;
+  try {
+    const keepPlaying = (typeof play === 'boolean') ? play : (state.isPlaying || true);
+    await spotifyFetch('/me/player', {
+      method: 'PUT',
+      body: JSON.stringify({
+        device_ids: [deviceId],
+        play: keepPlaying
+      })
+    });
+    spotifyAuth.activeDeviceId = deviceId;
+    setTimeout(pollSpotifyCurrentPlayback, 600);
+    return true;
+  } catch (err) {
+    console.warn('[Spotify Devices] Error transferring playback:', err);
+    return false;
+  }
 }
 
 // Start the native librespot engine with a fresh token (only used on first login;
