@@ -457,3 +457,60 @@ syncDevModeUI();
     uiLog('BOOT', `App v4.0 lista | viewport=${window.innerWidth}x${window.innerHeight} | fs=${isFullscreenActive()}`);
   }
 })();
+
+// ============================================================================
+// PWA SERVICE WORKER + AUTO-FULLSCREEN (PRIMER GESTO) + LANDSCAPE EN MÓVIL
+// ============================================================================
+(function initPwaAndFullscreen() {
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch((err) => {
+        console.warn('[PWA SW]', err);
+      });
+    });
+  }
+
+  // En Echo Show nativo con bridge no es necesario pedir fullscreen web
+  if (typeof bridge !== 'undefined' && bridge) return;
+
+  const isStandaloneOrFullscreenPwa =
+    (window.matchMedia && (window.matchMedia('(display-mode: fullscreen)').matches || window.matchMedia('(display-mode: standalone)').matches)) ||
+    window.navigator.standalone === true;
+
+  const lockLandscapeIfMobile = () => {
+    const isTouchDevice = (navigator.maxTouchPoints || 0) > 0 || /Android|iPhone|iPad/i.test(navigator.userAgent || '');
+    if (isTouchDevice && screen.orientation && typeof screen.orientation.lock === 'function') {
+      screen.orientation.lock('landscape').catch(() => {});
+    }
+  };
+
+  if (isStandaloneOrFullscreenPwa) {
+    lockLandscapeIfMobile();
+    return;
+  }
+
+  let autoFsAttempted = false;
+  const requestAutoFullscreen = () => {
+    if (autoFsAttempted) return;
+    autoFsAttempted = true;
+    document.removeEventListener('pointerdown', requestAutoFullscreen, true);
+    document.removeEventListener('keydown', requestAutoFullscreen, true);
+
+    if (typeof isFullscreenActive === 'function' && isFullscreenActive()) {
+      lockLandscapeIfMobile();
+      return;
+    }
+
+    const root = document.documentElement;
+    const req = root.requestFullscreen
+      ? root.requestFullscreen({ navigationUI: 'hide' }).catch(() => root.requestFullscreen())
+      : (root.webkitRequestFullscreen ? Promise.resolve(root.webkitRequestFullscreen()) : null);
+
+    if (req && typeof req.then === 'function') {
+      req.then(lockLandscapeIfMobile).catch(() => {});
+    }
+  };
+
+  document.addEventListener('pointerdown', requestAutoFullscreen, { capture: true, passive: true });
+  document.addEventListener('keydown', requestAutoFullscreen, { capture: true, passive: true });
+})();
