@@ -328,6 +328,25 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
   state.playingArtist = artistName;
   state.playingArtists = artistsList;
   state.playingArtistId = (artistsList && artistsList[0] && artistsList[0].id) ? artistsList[0].id : state.playingArtistId;
+
+  if (trackChanged && state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionTracks.length > 0) {
+    const foundIdx = state.autoplaySessionTracks.findIndex(t =>
+      (nextId && cleanTrackId(t.id || t.uri) === nextId) ||
+      (nextTitle && t.title && t.title.toLowerCase() === nextTitle.toLowerCase())
+    );
+    if (foundIdx >= 0) {
+      state.autoplaySessionIndex = foundIdx;
+      const upcoming = state.autoplaySessionTracks.slice(foundIdx + 1);
+      state.liveQueueTracks = upcoming;
+      state.contextUpcomingTracks = upcoming;
+      if (typeof recordAutoplayHistory === 'function') {
+        recordAutoplayHistory(nextId || state.playingTrackUri);
+      }
+      if (upcoming.length < 8 && typeof replenishAutoplayQueue === 'function') {
+        replenishAutoplayQueue();
+      }
+    }
+  }
   state.playingAlbumTitle = albumName;
   state.playingCover = coverUrl;
   state.playingThumb = thumbUrl;
@@ -526,7 +545,9 @@ async function pollSpotifyCurrentPlayback(opts = {}) {
   if (pollSeq !== playbackActionSeq) return null;
 
   if (pb && pb.item) {
-    if (pb.device && pb.device.id) {
+    const isPlaying = Boolean(pb.is_playing);
+    // Solo adoptar el dispositivo remoto si está reproduciendo activamente (no si quedó pausado de una sesión vieja en TV/teléfono)
+    if (pb.device && pb.device.id && (isPlaying || !webPlayerDeviceId || pb.device.id === webPlayerDeviceId)) {
       spotifyAuth.activeDeviceId = pb.device.id;
       spotifyAuth.activeDeviceName = pb.device.name;
       spotifyAuth.activeDeviceType = pb.device.type;
@@ -535,7 +556,6 @@ async function pollSpotifyCurrentPlayback(opts = {}) {
     spotifyAuth.shuffleState = !!pb.shuffle_state;
     spotifyAuth.repeatState = pb.repeat_state || 'off';
     const rawSec = (pb.progress_ms || 0) / 1000;
-    const isPlaying = Boolean(pb.is_playing);
     reconcileIncomingPlaybackState(pb.item, rawSec, isPlaying, 'poll');
 
     if (autoOpenIfPlaying && isPlaying && !state.isNowPlayingOpen && !state.startupPlaybackChecked) {
@@ -998,13 +1018,21 @@ function renderQueuePanelUI() {
 
   // Priority 1: Pending tracks exist in queue
   if (queue.length > 0) {
-    if (npQueueHeading) npQueueHeading.textContent = 'A continuación';
+    if (npQueueHeading) npQueueHeading.textContent = state.isAutoplayQueue ? 'A continuación • Radio' : 'A continuación';
     if (npQueueSubheading) {
-      npQueueSubheading.textContent = `Siguiente en la lista • ${queue.length} canción${queue.length === 1 ? '' : 'es'}`;
+      if (state.isAutoplayQueue) {
+        const primaryArtist = state.playingArtist ? state.playingArtist.split(',')[0].trim() : '';
+        npQueueSubheading.textContent = primaryArtist
+          ? `Autoplay • Basado en ${primaryArtist} • Radio continua`
+          : `Autoplay • Radio continua`;
+      } else {
+        npQueueSubheading.textContent = `Siguiente en la lista • ${queue.length} canción${queue.length === 1 ? '' : 'es'}`;
+      }
       npQueueSubheading.style.display = 'block';
     }
     if (npQueueSeeAllBtn) npQueueSeeAllBtn.style.display = 'none';
-    npQueueListContainer.innerHTML = queue.slice(0, 25).map((t, i) => buildQueueRowHTML(t, i, 'queue')).join('');
+    const maxVisible = state.isAutoplayQueue ? 12 : 25;
+    npQueueListContainer.innerHTML = queue.slice(0, maxVisible).map((t, i) => buildQueueRowHTML(t, i, 'queue')).join('');
     hydrateImages(npQueueListContainer);
     return;
   }
@@ -1085,6 +1113,23 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
     return;
   }
 
+  // Autoplay Radio session manages its own bidirectional queue without losing history
+  if (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionTracks.length > 0) {
+    const idx = Math.max(0, state.autoplaySessionIndex || 0);
+    state.liveQueueTracks = state.autoplaySessionTracks.slice(idx + 1);
+    state.contextUpcomingTracks = state.liveQueueTracks;
+    state.queueLoading = false;
+    if (state.liveQueueTracks.length < 8 && !state.autoplayLoading && typeof replenishAutoplayQueue === 'function') {
+      replenishAutoplayQueue();
+    }
+    if (state.nowPlayingMode === 'queue') {
+      renderQueuePanelUI();
+    }
+    prewarmUpcomingSlice(state.liveQueueTracks);
+    updateNowPlayingRightPanelMode();
+    return;
+  }
+
   // Priority 1: Check real Spotify Player Queue (/me/player/queue)
   const qRes = await spotifyFetch('/me/player/queue');
   if (qRes && Array.isArray(qRes.queue) && qRes.queue.length > 0) {
@@ -1115,6 +1160,9 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
 
   if (state.liveQueueTracks.length > 0) {
     state.queueLoading = false;
+    if (state.isAutoplayQueue && state.liveQueueTracks.length <= 2 && !state.autoplayLoading && typeof replenishAutoplayQueue === 'function') {
+      replenishAutoplayQueue();
+    }
     if (state.nowPlayingMode === 'queue') {
       renderQueuePanelUI();
     }
@@ -1122,11 +1170,25 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
     return;
   }
 
+  // If autoplay recommendations are currently being fetched in parallel, wait for playSingleTrackWithAutoplay to populate
+  if (state.autoplayLoading) {
+    return;
+  }
+
   // Priority 2: Queue is empty -> Query API for musical discovery alternatives
-  const discovered = [];
+  let discovered = [];
+  if (typeof fetchSpotifyAutoplayTracks === 'function' && state.playingTrackId) {
+    discovered = await fetchSpotifyAutoplayTracks({
+      id: state.playingTrackId,
+      uri: state.playingTrackUri,
+      name: state.playingTrackTitle,
+      artist: state.playingArtist,
+      artistId: state.playingArtistId
+    }, 8);
+  }
   const seenDisc = new Set([state.playingTrackId, state.playingTrackTitle]);
 
-  if (state.playingTrackId && /^[a-zA-Z0-9]{22}$/.test(state.playingTrackId)) {
+  if (discovered.length === 0 && state.playingTrackId && /^[a-zA-Z0-9]{22}$/.test(state.playingTrackId)) {
     const recRes = await spotifyFetch(`/recommendations?seed_tracks=${state.playingTrackId}&limit=6`);
     if (recRes && Array.isArray(recRes.tracks)) {
       recRes.tracks.forEach(t => {

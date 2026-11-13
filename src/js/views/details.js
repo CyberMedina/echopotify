@@ -599,7 +599,7 @@ async function openEntityDetail(entityId) {
           entity.tracksNextOffset = plData.tracks.items.length;
           entity.hasMoreTracks = entity.tracksNextOffset < entity.tracksTotal;
           entity.tracks = plData.tracks.items
-            .filter(i => i && i.track)
+            .filter(i => i && i.track && !i.track.is_local && i.track.is_playable !== false && i.track.uri && !i.track.uri.startsWith('spotify:local:'))
             .map((i, idx) => {
               const imgs = (i.track.album && Array.isArray(i.track.album.images)) ? i.track.album.images : [];
               const medUrl = getSpotifyImage(imgs, 'medium') || entity.cover;
@@ -778,7 +778,7 @@ async function loadMorePlaylistTracks(entity) {
 
     const startIndex = entity.tracks.length;
     const newMappedTracks = nextItems
-      .filter(i => i && i.track)
+      .filter(i => i && i.track && !i.track.is_local && i.track.is_playable !== false && i.track.uri && !i.track.uri.startsWith('spotify:local:'))
       .map((i, idx) => {
         const imgs = (i.track.album && Array.isArray(i.track.album.images)) ? i.track.album.images : [];
         const medUrl = getSpotifyImage(imgs, 'medium') || entity.cover;

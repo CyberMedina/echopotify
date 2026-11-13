@@ -47,7 +47,7 @@ async function loadAllRealSpotifyData() {
   // 2. Liked Songs (/me/tracks)
   if (likedRes && typeof likedRes.total === 'number') {
     liveCatalog.likedTotal = likedRes.total;
-    const tracks = (likedRes.items || []).filter(i => i && i.track).map((i, idx) => {
+    const tracks = (likedRes.items || []).filter(i => i && i.track && !i.track.is_local && i.track.is_playable !== false && i.track.uri && !i.track.uri.startsWith('spotify:local:')).map((i, idx) => {
       const imgs = (i.track.album && i.track.album.images) ? i.track.album.images : [];
       return {
         num: idx + 1,
@@ -77,9 +77,61 @@ async function loadAllRealSpotifyData() {
       coverLarge: LIKED_SONGS_COVER,
       tracks: tracks,
       tracksTotal: likedRes.total,
-      tracksNextOffset: tracks.length,
-      hasMoreTracks: tracks.length < likedRes.total
+      tracksNextOffset: (likedRes.items || []).length,
+      hasMoreTracks: (likedRes.items || []).length < likedRes.total
     };
+
+    // Pre-cargar en segundo plano hasta 250 canciones de "Tus me gusta" para no quedar cortos al reproducir desde el medio
+    if ((likedRes.items || []).length < likedRes.total) {
+      (async function preloadLikedTracksInBackground() {
+        const entity = liveCatalog.entities['liked_songs'];
+        if (!entity || entity._preloadingLiked) return;
+        entity._preloadingLiked = true;
+        try {
+          let rawOffset = (likedRes.items || []).length;
+          const maxPreload = 250;
+          const seenUris = new Set(entity.tracks.map(t => t.uri).filter(Boolean));
+          while (entity.hasMoreTracks && entity.tracks.length < maxPreload && rawOffset < entity.tracksTotal) {
+            if (entity.isLoadingMore) break;
+            const res = await spotifyFetch(`/me/tracks?offset=${rawOffset}&limit=50`);
+            if (!res || !Array.isArray(res.items) || res.items.length === 0) break;
+            rawOffset += res.items.length;
+            const mapped = res.items
+              .filter(i => i && i.track && !i.track.is_local && i.track.is_playable !== false && i.track.uri && !i.track.uri.startsWith('spotify:local:'))
+              .filter(i => !seenUris.has(i.track.uri))
+              .map(i => {
+                seenUris.add(i.track.uri);
+                const imgs = (i.track.album && Array.isArray(i.track.album.images)) ? i.track.album.images : [];
+                return {
+                  num: entity.tracks.length + 1,
+                  id: i.track.id,
+                  uri: i.track.uri,
+                  title: i.track.name,
+                  artist: i.track.artists ? i.track.artists.map(a => a.name).join(', ') : '',
+                  album: i.track.album ? i.track.album.name : '',
+                  thumb: imgs.length > 0 ? getSpotifyImage(imgs, 'small') : DEFAULT_ALBUM_COVER,
+                  cover: imgs.length > 0 ? getSpotifyImage(imgs, 'medium') : DEFAULT_ALBUM_COVER,
+                  coverLarge: imgs.length > 0 ? getSpotifyImage(imgs, 'large') : DEFAULT_ALBUM_COVER,
+                  duration: Math.round((i.track.duration_ms || 200000) / 1000),
+                  popular: false
+                };
+              });
+            if (mapped.length > 0) {
+              mapped.forEach((t, idx) => { t.num = entity.tracks.length + idx + 1; });
+              entity.tracks.push(...mapped);
+              liveCatalog.likedTracks = entity.tracks;
+              mapped.forEach(t => { if (t.id) liveCatalog.likedTrackIds.add(t.id); });
+            }
+            entity.tracksNextOffset = rawOffset;
+            entity.hasMoreTracks = rawOffset < entity.tracksTotal;
+          }
+        } catch (e) {
+          console.warn('[Liked Songs Preload]', e);
+        } finally {
+          entity._preloadingLiked = false;
+        }
+      })();
+    }
   }
 
   // 3. User Playlists (/me/playlists) with Auto-Pagination for ALL playlists

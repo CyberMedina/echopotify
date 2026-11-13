@@ -28,13 +28,15 @@ document.addEventListener('click', async (e) => {
     const artist = directPlay.getAttribute('data-artist') || '';
     const cover = directPlay.getAttribute('data-cover') || state.playingCover;
     const thumb = directPlay.getAttribute('data-thumb') || cover;
-    state.singleTrackPlayback = !uri.startsWith('spotify:playlist:') && !uri.startsWith('spotify:album:');
+    const isContextUri = uri.startsWith('spotify:playlist:') || uri.startsWith('spotify:album:');
+    state.singleTrackPlayback = false;
+    state.isAutoplayQueue = !isContextUri;
     state.contextUpcomingTracks = [];
     const cleanId = cleanTrackId(uri);
     applyTrackToUI({ id: cleanId || uri, uri, name: title, artist, thumb, cover, coverLarge: cover, duration_ms: 210000 }, 0, true);
     openNowPlaying();
     if (uri) {
-      if (uri.startsWith('spotify:playlist:') || uri.startsWith('spotify:album:')) {
+      if (isContextUri) {
         playSpotifyContext(uri).then(res => {
           if (res && res.error) {
             console.warn('[Spotify Playback Error]', res.error);
@@ -44,7 +46,14 @@ document.addEventListener('click', async (e) => {
           }
         });
       } else {
-        playSpotifyUris([uri], []).then(res => {
+        playSingleTrackWithAutoplay({
+          id: cleanId || uri,
+          uri,
+          name: title,
+          artist,
+          thumb,
+          cover
+        }).then(res => {
           if (res && res.error) {
             console.warn('[Spotify Playback Error]', res.error);
           }
@@ -124,7 +133,7 @@ document.addEventListener('click', async (e) => {
       const uris = entity.tracks.slice(idx).map(t => t.uri).filter(Boolean);
       if (uris.length > 0) playSpotifyUris(uris, upcomingSlice);
     } else if (trackUri) {
-      playSpotifyUris([trackUri], []);
+      playSingleTrackWithAutoplay({ id: cleanId || trackId || trackUri, uri: trackUri, name: title, artist, album, thumb, cover, duration });
     }
     return;
   }
@@ -145,17 +154,28 @@ document.addEventListener('click', async (e) => {
 
     const cleanId = cleanTrackId(trackId || trackUri);
     if (qSource === 'queue' && state.liveQueueTracks.length > qIdx) {
+      if (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionTracks.length > 0) {
+        const baseIdx = Math.max(0, state.autoplaySessionIndex || 0);
+        state.autoplaySessionIndex = Math.min(state.autoplaySessionTracks.length - 1, baseIdx + 1 + qIdx);
+      }
       const remaining = state.liveQueueTracks.slice(qIdx + 1);
       state.singleTrackPlayback = false;
+      state.liveQueueTracks = remaining;
       state.contextUpcomingTracks = remaining;
       applyTrackToUI({ id: cleanId || trackId || trackUri || title, uri: trackUri, name: title, artist, album, thumb, cover, coverLarge: cover, duration }, 0, true);
-      const uris = [trackUri, ...remaining.map(t => t.uri)].filter(Boolean);
+      const uris = [trackUri, ...remaining.slice(0, 19).map(t => t.uri)].filter(Boolean);
       if (uris.length > 0) playSpotifyUris(uris, remaining);
+      if (state.isAutoplayQueue && remaining.length < 8 && typeof replenishAutoplayQueue === 'function') {
+        replenishAutoplayQueue();
+      }
     } else {
-      state.singleTrackPlayback = true;
+      state.singleTrackPlayback = false;
+      state.isAutoplayQueue = true;
       state.contextUpcomingTracks = [];
       applyTrackToUI({ id: cleanId || trackId || trackUri || title, uri: trackUri, name: title, artist, album, thumb, cover, coverLarge: cover, duration }, 0, true);
-      if (trackUri) playSpotifyUris([trackUri], []);
+      if (trackUri) {
+        playSingleTrackWithAutoplay({ id: cleanId || trackId || trackUri, uri: trackUri, name: title, artist, album, thumb, cover, duration });
+      }
     }
     return;
   }
@@ -669,22 +689,65 @@ async function skipNextTrack() {
       ? state.contextUpcomingTracks.map(normalizeApiTrack).filter(Boolean)
       : []);
 
+  if (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionTracks.length > 0) {
+    const nextIdx = (typeof state.autoplaySessionIndex === 'number' && state.autoplaySessionIndex >= 0)
+      ? state.autoplaySessionIndex + 1
+      : 1;
+    if (nextIdx < state.autoplaySessionTracks.length) {
+      state.autoplaySessionIndex = nextIdx;
+      const nextTrack = state.autoplaySessionTracks[nextIdx];
+      const remaining = state.autoplaySessionTracks.slice(nextIdx + 1);
+      state.liveQueueTracks = remaining;
+      state.contextUpcomingTracks = remaining;
+      if (typeof recordAutoplayHistory === 'function') {
+        recordAutoplayHistory(nextTrack.id || nextTrack.uri);
+      }
+      applyTrackToUI({
+        id: nextTrack.id || nextTrack.uri || nextTrack.title,
+        uri: nextTrack.uri,
+        name: nextTrack.title,
+        artist: nextTrack.artist,
+        album: nextTrack.album,
+        thumb: nextTrack.thumb || nextTrack.cover,
+        cover: nextTrack.cover,
+        coverLarge: nextTrack.cover,
+        duration: nextTrack.duration || 210
+      }, 0, true);
+      if (remaining.length < 8 && typeof replenishAutoplayQueue === 'function') {
+        replenishAutoplayQueue();
+      }
+      const forwardUris = [nextTrack.uri, ...remaining.slice(0, 19).map(t => t.uri)].filter(Boolean);
+      if (forwardUris.length > 0) {
+        await playSpotifyUris(forwardUris, remaining);
+      }
+      return;
+    }
+  }
+
+  let pickedNextTrack = null;
+  let pickedRemaining = [];
   if (queueSource.length > 0) {
-    const nextTrack = queueSource[0];
-    const remaining = queueSource.slice(1);
-    state.liveQueueTracks = remaining;
-    state.contextUpcomingTracks = remaining;
+    pickedNextTrack = queueSource[0];
+    pickedRemaining = queueSource.slice(1);
+    state.liveQueueTracks = pickedRemaining;
+    state.contextUpcomingTracks = pickedRemaining;
+    if (typeof recordAutoplayHistory === 'function') {
+      recordAutoplayHistory(pickedNextTrack.id || pickedNextTrack.uri);
+    }
     applyTrackToUI({
-      id: nextTrack.id || nextTrack.uri || nextTrack.title,
-      uri: nextTrack.uri,
-      name: nextTrack.title,
-      artist: nextTrack.artist,
-      album: nextTrack.album,
-      thumb: nextTrack.thumb || nextTrack.cover,
-      cover: nextTrack.cover,
-      coverLarge: nextTrack.cover,
-      duration: nextTrack.duration || 210
+      id: pickedNextTrack.id || pickedNextTrack.uri || pickedNextTrack.title,
+      uri: pickedNextTrack.uri,
+      name: pickedNextTrack.title,
+      artist: pickedNextTrack.artist,
+      album: pickedNextTrack.album,
+      thumb: pickedNextTrack.thumb || pickedNextTrack.cover,
+      cover: pickedNextTrack.cover,
+      coverLarge: pickedNextTrack.cover,
+      duration: pickedNextTrack.duration || 210
     }, 0, true);
+    if (state.isAutoplayQueue && pickedRemaining.length < 8 && typeof replenishAutoplayQueue === 'function') {
+      replenishAutoplayQueue();
+    }
   } else {
     lockUserPlaybackIntent('track_switch', {
       durationMs: 2800,
@@ -703,7 +766,13 @@ async function skipNextTrack() {
   if (spotifyAuth.accessToken) {
     const devQ = await getTargetDeviceQuery();
     if (cmdSeq !== playbackActionSeq) return;
-    await spotifyFetch(`/me/player/next${devQ}`, { method: 'POST' });
+    const nextRes = await spotifyFetch(`/me/player/next${devQ}`, { method: 'POST' });
+    if (nextRes && nextRes.error && state.isAutoplayQueue && pickedNextTrack && pickedNextTrack.uri) {
+      const fallbackUris = [pickedNextTrack.uri, ...pickedRemaining.map(t => t.uri)].filter(Boolean);
+      if (fallbackUris.length > 0) {
+        await playSpotifyUris(fallbackUris, pickedRemaining);
+      }
+    }
     setTimeout(() => {
       if (cmdSeq === playbackActionSeq) pollSpotifyCurrentPlayback();
     }, 650);
@@ -712,6 +781,35 @@ async function skipNextTrack() {
 
 async function skipPrevTrack() {
   if (spotifyAuth.accessToken && state.currentTimeSec < 4) {
+    if (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionIndex > 0) {
+      if (bridge && bridge.notifyTrackLoading) {
+        bridge.notifyTrackLoading('');
+        state.pcmFlowing = false;
+        state.currentTimeSec = 0;
+      }
+      const prevIdx = state.autoplaySessionIndex - 1;
+      state.autoplaySessionIndex = prevIdx;
+      const prevTrack = state.autoplaySessionTracks[prevIdx];
+      const remaining = state.autoplaySessionTracks.slice(prevIdx + 1);
+      state.liveQueueTracks = remaining;
+      state.contextUpcomingTracks = remaining;
+      applyTrackToUI({
+        id: prevTrack.id || prevTrack.uri || prevTrack.title,
+        uri: prevTrack.uri,
+        name: prevTrack.title,
+        artist: prevTrack.artist,
+        album: prevTrack.album,
+        thumb: prevTrack.thumb || prevTrack.cover,
+        cover: prevTrack.cover,
+        coverLarge: prevTrack.cover,
+        duration: prevTrack.duration || 210
+      }, 0, true);
+      const forwardUris = [prevTrack.uri, ...remaining.slice(0, 19).map(t => t.uri)].filter(Boolean);
+      if (forwardUris.length > 0) {
+        await playSpotifyUris(forwardUris, remaining);
+      }
+      return;
+    }
     if (bridge && bridge.notifyTrackLoading) {
       bridge.notifyTrackLoading('');
       state.pcmFlowing = false;
