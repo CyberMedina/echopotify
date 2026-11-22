@@ -83,15 +83,37 @@ function createStyleStub() {
   });
 }
 
-function createElementStub(tagName = 'div', id = '') {
+function matchesSelector(el, sel) {
+  if (!el || !sel) return false;
+  if (sel.startsWith('#')) return el.id === sel.slice(1);
+  if (sel.startsWith('.')) return Boolean(el.classList && el.classList.contains(sel.slice(1)));
+  if (sel.startsWith('[') && sel.endsWith(']')) {
+    return el.getAttribute && el.getAttribute(sel.slice(1, -1)) !== null;
+  }
+  return el.tagName === sel.toUpperCase();
+}
+
+function createElementStub(tagName = 'div', id = '', resolveElById = null) {
   const listeners = new Map();
   const attrs = new Map();
   if (id) attrs.set('id', id);
+  let rawClassName = '';
 
   const el = {
     tagName: String(tagName).toUpperCase(),
     id,
-    className: '',
+    parentElement: null,
+    get className() {
+      return rawClassName;
+    },
+    set className(val) {
+      rawClassName = String(val || '');
+      el.classList._set.clear();
+      rawClassName.split(/\s+/).filter(Boolean).forEach(c => el.classList._set.add(c));
+    },
+    _syncClassNameFromSet(nextVal) {
+      rawClassName = String(nextVal || '');
+    },
     textContent: '',
     value: '',
     title: '',
@@ -115,8 +137,6 @@ function createElementStub(tagName = 'div', id = '') {
     setAttribute(k, v) {
       attrs.set(String(k), String(v));
       if (k === 'class') {
-        el.classList._set.clear();
-        String(v).split(/\s+/).filter(Boolean).forEach(c => el.classList._set.add(c));
         el.className = String(v);
       }
     },
@@ -134,16 +154,20 @@ function createElementStub(tagName = 'div', id = '') {
       const list = listeners.get(type);
       if (list) listeners.set(type, list.filter(f => f !== fn));
     },
+    trigger(type, ev = {}) {
+      const list = listeners.get(type) || [];
+      const payload = {
+        target: el,
+        currentTarget: el,
+        cancelable: true,
+        stopPropagation() {},
+        preventDefault() {},
+        ...ev
+      };
+      for (const fn of list) fn(payload);
+    },
     click() {
-      const list = listeners.get('click') || [];
-      for (const fn of list) {
-        fn({
-          target: el,
-          currentTarget: el,
-          stopPropagation() {},
-          preventDefault() {}
-        });
-      }
+      el.trigger('click');
     },
     dispatchEvent() {
       return true;
@@ -151,7 +175,15 @@ function createElementStub(tagName = 'div', id = '') {
     getBoundingClientRect() {
       return { left: 0, top: 0, width: 1024, height: 640, right: 1024, bottom: 640 };
     },
-    closest() {
+    closest(sel) {
+      let cur = el;
+      while (cur) {
+        if (matchesSelector(cur, sel)) return cur;
+        cur = cur.parentElement || null;
+      }
+      if (sel === '#npRightLyrics' && el.id === 'lyricsScrollTrack' && resolveElById) {
+        return resolveElById('npRightLyrics');
+      }
       return null;
     },
     remove() {},
@@ -161,10 +193,16 @@ function createElementStub(tagName = 'div', id = '') {
       return all.length > 0 ? all[0] : null;
     },
     querySelectorAll(sel) {
+      if (sel === '.lyrics-skeleton-list' && el._innerHTML && el._innerHTML.includes('lyrics-skeleton-list')) {
+        const sk = createElementStub('div', '', resolveElById);
+        sk.parentElement = el;
+        return [sk];
+      }
       if (sel === '.lyric-line' && el.id === 'lyricsScrollTrack' && el._innerHTML) {
         const matches = [...el._innerHTML.matchAll(/class="(lyric-line[^"]*)"\s+data-line-idx="(\d+)"\s+data-start="([^"]+)"\s+data-end="([^"]+)"/g)];
         return matches.map((m, i) => {
-          const lineEl = createElementStub('div');
+          const lineEl = createElementStub('div', '', resolveElById);
+          lineEl.parentElement = el;
           lineEl.setAttribute('class', m[1]);
           lineEl.setAttribute('data-line-idx', m[2]);
           lineEl.setAttribute('data-start', m[3]);
@@ -176,7 +214,8 @@ function createElementStub(tagName = 'div', id = '') {
       if (sel === '.device-other-row' && el.id === 'devicesListContainer' && el._innerHTML) {
         const matches = [...el._innerHTML.matchAll(/class="device-other-row"\s+data-device-id="([^"]*)"\s+data-device-name="([^"]*)"/g)];
         return matches.map(m => {
-          const rowEl = createElementStub('div');
+          const rowEl = createElementStub('div', '', resolveElById);
+          rowEl.parentElement = el;
           rowEl.setAttribute('data-device-id', m[1]);
           rowEl.setAttribute('data-device-name', m[2]);
           return rowEl;
@@ -185,7 +224,10 @@ function createElementStub(tagName = 'div', id = '') {
       return [];
     }
   };
-  el.classList = createClassListStub(el);
+  el.classList = createClassListStub({
+    get className() { return rawClassName; },
+    set className(val) { el._syncClassNameFromSet(val); }
+  });
   return el;
 }
 
@@ -212,14 +254,18 @@ function createPlaybackHarness(opts = {}) {
 
   const getEl = (id) => {
     if (!elementsById.has(id)) {
-      elementsById.set(id, createElementStub('div', id));
+      const created = createElementStub('div', id, getEl);
+      elementsById.set(id, created);
+      if (id === 'lyricsScrollTrack') {
+        created.parentElement = getEl('npRightLyrics');
+      }
     }
     return elementsById.get(id);
   };
 
   const getSelectorEl = (sel) => {
     if (!selectorElements.has(sel)) {
-      selectorElements.set(sel, createElementStub('div'));
+      selectorElements.set(sel, createElementStub('div', '', getEl));
     }
     return selectorElements.get(sel);
   };
@@ -355,6 +401,10 @@ function createPlaybackHarness(opts = {}) {
       trackedTimeouts.add(t);
       return t;
     },
+    cancelAnimationFrame: (t) => {
+      trackedTimeouts.delete(t);
+      clearTimeout(t);
+    },
     setTimeout: (fn, ms = 0, ...args) => {
       const t = setTimeout(() => {
         trackedTimeouts.delete(t);
@@ -452,6 +502,32 @@ function createPlaybackHarness(opts = {}) {
     emitSdkEvent(eventName, payload) {
       const list = sdkListeners.get(eventName) || [];
       for (const cb of list) cb(payload);
+    },
+    triggerElement(elOrId, type, ev = {}) {
+      const targetEl = typeof elOrId === 'string' ? getEl(elOrId) : elOrId;
+      if (targetEl && typeof targetEl.trigger === 'function') {
+        targetEl.trigger(type, ev);
+      }
+    },
+    triggerDocument(type, ev = {}) {
+      const list = documentListeners.get(type) || [];
+      const payload = {
+        cancelable: true,
+        stopPropagation() {},
+        preventDefault() {},
+        ...ev
+      };
+      for (const fn of list) fn(payload);
+    },
+    triggerWindow(type, ev = {}) {
+      const list = documentListeners.get(`win:${type}`) || [];
+      const payload = {
+        cancelable: true,
+        stopPropagation() {},
+        preventDefault() {},
+        ...ev
+      };
+      for (const fn of list) fn(payload);
     },
     getPlayerConfig: () => createdPlayerConfig,
     getPlayerInstance: () => createdPlayerInstance,
@@ -1253,6 +1329,239 @@ test('15. Silent 204 transfer no-op from external device triggers direct /me/pla
     uris: ['spotify:track:song_b'],
     position_ms: 83000
   });
+});
+
+test('16. Manual lyrics scroll pauses auto-follow, enables browse clarity, respects Pause, and snaps back on Play', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  h.eval(`
+    state.isNowPlayingOpen = true;
+    state.nowPlayingMode = 'lyrics';
+    state.isPlaying = true;
+    state.durationSec = 180;
+    state.currentTimeSec = 2;
+    state.hasValidLyrics = true;
+    const sampleLyrics = [
+      { start: 0, end: 4, lineEnd: 5, text: 'Line zero alpha' },
+      { start: 5, end: 9, lineEnd: 10, text: 'Line one beta' },
+      { start: 10, end: 14, lineEnd: 15, text: 'Line two gamma' },
+      { start: 15, end: 19, lineEnd: 20, text: 'Line three delta' },
+      { start: 20, end: 24, lineEnd: 25, text: 'Line four epsilon' },
+      { start: 25, end: 29, lineEnd: 35, text: 'Line five zeta' }
+    ];
+    state.activeLyrics = sampleLyrics;
+    buildLyricsDOM(sampleLyrics);
+  `);
+  await h.flushMicrotasks(5);
+  h.eval('updateScrubberAndLyricsUI(true);');
+
+  assert.equal(h.eval('state.activeLineIndex'), 0);
+  assert.equal(h.eval('state.lyricDOMCache[0].targetOffset'), 10);
+  assert.equal(h.getEl('lyricsScrollTrack').style.transform, 'translate3d(0, -10.00px, 0)');
+
+  // Scroll manually while playing
+  const didScroll = h.eval('scrollLyricsByDelta(160, { snapDelayMs: 80 })');
+  assert.equal(didScroll, true);
+  assert.equal(h.eval('state.lyricsManualScrolling'), true);
+  assert.equal(h.getEl('npRightLyrics').classList.contains('is-manual-scroll'), true);
+  assert.equal(h.eval('state.lyricsScrollOffset'), 170);
+  assert.equal(h.getEl('lyricsScrollTrack').style.transform, 'translate3d(0, -170.00px, 0)');
+
+  // Playback advances to line 1: active class moves cleanly, but manual scroll offset stays untouched
+  h.eval('state.currentTimeSec = 6; updateScrubberAndLyricsUI(false);');
+  assert.equal(h.eval('state.activeLineIndex'), 1);
+  assert.equal(h.eval('state.lyricDOMCache[1].el.classList.contains("active")'), true);
+  assert.equal(h.getEl('lyricsScrollTrack').style.transform, 'translate3d(0, -170.00px, 0)');
+
+  // Pausing freezes snap-back so user can finish reading paused verses
+  h.eval('state.isPlaying = false; updatePlayPauseIcons();');
+  await new Promise(r => setTimeout(r, 140));
+  assert.equal(h.eval('state.lyricsManualScrolling'), true);
+  assert.equal(h.getEl('lyricsScrollTrack').style.transform, 'translate3d(0, -170.00px, 0)');
+
+  // Resuming playback schedules smooth snap-back to active line (line 1 -> targetOffset 58)
+  h.eval('state.isPlaying = true; updatePlayPauseIcons();');
+  await new Promise(r => setTimeout(r, 2600));
+  assert.equal(h.eval('state.lyricsManualScrolling'), false);
+  assert.equal(h.getEl('npRightLyrics').classList.contains('is-manual-scroll'), false);
+  assert.equal(h.getEl('lyricsScrollTrack').style.transform, 'translate3d(0, -58.00px, 0)');
+});
+
+test('17. Touch scroll on lyrics ignores swipe-down dismiss, guards accidental clicks after drag, and supports tap-to-seek resync', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  h.setFetchHandler(async () => emptyResponse(204));
+  h.eval(`
+    initWebPlayer();
+    spotifyAuth.activeDeviceId = 'web_dev_1';
+    webPlayerDeviceId = 'web_dev_1';
+    state.isNowPlayingOpen = true;
+    state.nowPlayingMode = 'lyrics';
+    state.isPlaying = true;
+    state.durationSec = 180;
+    state.currentTimeSec = 2;
+    state.hasValidLyrics = true;
+    const sampleLyrics = [
+      { start: 0, end: 4, lineEnd: 5, text: 'Zero' },
+      { start: 6, end: 10, lineEnd: 12, text: 'One' },
+      { start: 12, end: 16, lineEnd: 18, text: 'Two' },
+      { start: 18, end: 22, lineEnd: 24, text: 'Three' },
+      { start: 24, end: 28, lineEnd: 35, text: 'Four' }
+    ];
+    state.activeLyrics = sampleLyrics;
+    buildLyricsDOM(sampleLyrics);
+  `);
+  await h.flushMicrotasks(5);
+  h.eval('updateScrubberAndLyricsUI(true);');
+
+  const npRightLyrics = h.getEl('npRightLyrics');
+  const overlay = h.getEl('nowPlayingOverlay');
+  const line3 = h.eval('state.lyricDOMCache[3].el');
+  const line4 = h.eval('state.lyricDOMCache[4].el');
+
+  // Downward swipe over #npRightLyrics must NOT initiate swipe-down dismissal
+  h.triggerElement(overlay, 'touchstart', { touches: [{ clientX: 700, clientY: 200 }], target: line3 });
+  h.triggerWindow('touchmove', { touches: [{ clientX: 700, clientY: 260 }] });
+  assert.equal(h.eval('state.isSwipingNowPlaying'), false);
+  h.triggerWindow('touchend', {});
+
+  // Upward drag inside #npRightLyrics scrolls through upcoming lyrics
+  h.triggerElement(npRightLyrics, 'touchstart', { touches: [{ clientX: 700, clientY: 320 }], target: line3 });
+  h.triggerElement(npRightLyrics, 'touchmove', { touches: [{ clientX: 700, clientY: 200 }] });
+  h.triggerElement(npRightLyrics, 'touchend', {});
+
+  assert.equal(h.eval('state.lyricsManualScrolling'), true);
+  assert.ok(h.eval('state.lyricsScrollOffset') > 100, 'expected downward scroll offset after upward drag');
+
+  // Synthetic click right after drag end is blocked (no accidental seek)
+  h.triggerDocument('click', { target: line3 });
+  assert.equal(h.eval('state.lyricsManualScrolling'), true);
+  assert.equal(h.eval('state.currentTimeSec'), 2);
+  assert.equal(h.sdkActions.filter(a => a.type === 'seek').length, 0);
+
+  // Genuine tap after drag guard expires seeks, exits manual mode, and centers line 4
+  h.eval('state.lyricsLastDragEndAt = 0;');
+  h.triggerDocument('click', { target: line4 });
+
+  assert.equal(h.eval('state.lyricsManualScrolling'), false);
+  assert.equal(npRightLyrics.classList.contains('is-manual-scroll'), false);
+  assert.equal(h.eval('state.currentTimeSec'), 24);
+  const seekAction = h.sdkActions.find(a => a.type === 'seek');
+  assert.deepEqual(seekAction, { type: 'seek', ms: 24000 });
+  assert.equal(h.getEl('lyricsScrollTrack').style.transform, 'translate3d(0, -202.00px, 0)');
+});
+
+test('18. Queue lyrics prefetch caches upcoming track for 0ms switch and joins in-flight prefetch without duplicate requests', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  let lpCountNext = 0;
+  let lpCountInflight = 0;
+  h.setFetchHandler(async (url) => {
+    if (url.includes('lyricsplus.binimum.org') && url.includes('Next%20Track')) {
+      lpCountNext += 1;
+      return jsonResponse({
+        metadata: { title: 'Next Track', totalDuration: '3:05' },
+        lyrics: [
+          { time: 1000, duration: 2000, text: 'Prefetched one', syllabus: [{ time: 1000, duration: 2000, text: 'Prefetched one' }] },
+          { time: 150000, duration: 2000, text: 'Prefetched end', syllabus: [{ time: 150000, duration: 2000, text: 'Prefetched end' }] }
+        ]
+      });
+    }
+    if (url.includes('lyricsplus.binimum.org') && url.includes('Inflight%20Track')) {
+      lpCountInflight += 1;
+      await new Promise(r => setTimeout(r, 60));
+      return jsonResponse({
+        metadata: { title: 'Inflight Track', totalDuration: '3:10' },
+        lyrics: [
+          { time: 1000, duration: 2000, text: 'Joined flight', syllabus: [{ time: 1000, duration: 2000, text: 'Joined flight' }] },
+          { time: 152000, duration: 2000, text: 'Joined end', syllabus: [{ time: 152000, duration: 2000, text: 'Joined end' }] }
+        ]
+      });
+    }
+    return emptyResponse(404);
+  });
+
+  // Part A: Prefetch completes ahead of track change -> 0 additional fetches on switch
+  await h.eval('prefetchUpcomingLyrics([{ id: "q1", title: "Next Track", artist: "Next Artist", duration: 185 }], 2)');
+  assert.equal(lpCountNext, 1);
+  assert.equal(h.eval('lyricsMemoryCache.has("next artist::next track")'), true);
+
+  const callsBeforeSwitch = h.fetchCalls.length;
+  h.eval(`
+    state.isNowPlayingOpen = true;
+    state.nowPlayingMode = 'lyrics';
+    state.playingTrackTitle = 'Next Track';
+  `);
+  await h.eval('fetchSyncedLyricsForTrack("Next Track", "Next Artist", "Album", 185)');
+  await h.flushMicrotasks();
+
+  assert.equal(h.fetchCalls.length, callsBeforeSwitch, 'prefetched track should switch with zero network calls');
+  assert.equal(h.eval('state.hasValidLyrics'), true);
+  assert.equal(h.eval('state.lyricsLoading'), false);
+  assert.equal(h.getEl('lyricsScrollTrack').innerHTML.includes('lyrics-skeleton-list'), false);
+
+  // Part B: Switching while prefetch is still in flight joins the pending prefetch promise
+  const inflightPromise = h.eval('prefetchUpcomingLyrics([{ id: "q2", title: "Inflight Track", artist: "Infl Artist", duration: 190 }], 1)');
+  await new Promise(r => setTimeout(r, 15));
+  h.eval('state.playingTrackTitle = "Inflight Track";');
+  await Promise.all([
+    inflightPromise,
+    h.eval('fetchSyncedLyricsForTrack("Inflight Track", "Infl Artist", "Album", 190)')
+  ]);
+
+  assert.equal(lpCountInflight, 1, 'should join existing in-flight prefetch without duplicate LyricsPlus fetch');
+  assert.equal(h.eval('state.hasValidLyrics'), true);
+  assert.equal(h.eval('state.loadedLyricsKey'), 'infl artist::inflight track');
+});
+
+test('19. Uncached track renders visible Apple Music translucent lyrics skeleton cleanly and replaces it once loaded', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  h.setFetchHandler(async (url) => {
+    if (url.includes('lyricsplus.binimum.org')) {
+      await new Promise(r => setTimeout(r, 70));
+      return jsonResponse({
+        metadata: { title: 'Slow Track', totalDuration: '3:20' },
+        lyrics: [
+          { time: 1000, duration: 2000, text: 'Real line one', syllabus: [{ time: 1000, duration: 2000, text: 'Real line one' }] },
+          { time: 160000, duration: 2000, text: 'Real line end', syllabus: [{ time: 160000, duration: 2000, text: 'Real line end' }] }
+        ]
+      });
+    }
+    return emptyResponse(404);
+  });
+
+  h.eval(`
+    state.isNowPlayingOpen = true;
+    state.nowPlayingMode = 'lyrics';
+    state.playingTrackTitle = 'Slow Track';
+  `);
+
+  const fetchPromise = h.eval('fetchSyncedLyricsForTrack("Slow Track", "Slow Artist", "Slow Album", 200)');
+  await h.flushMicrotasks(4);
+
+  const trackEl = h.getEl('lyricsScrollTrack');
+  assert.equal(h.eval('state.lyricsLoading'), true);
+  assert.equal(trackEl.innerHTML.includes('lyrics-skeleton-list'), true);
+  assert.equal(trackEl.innerHTML.includes('Buscando letra'), false);
+  assert.equal(trackEl.classList.contains('lyrics-fade-out'), false);
+
+  // Calling updateNowPlayingRightPanelMode while loading must keep existing skeleton intact
+  const skelSnapshot = trackEl.innerHTML;
+  h.eval('updateNowPlayingRightPanelMode();');
+  assert.equal(trackEl.innerHTML, skelSnapshot);
+
+  await fetchPromise;
+  await h.flushMicrotasks(5);
+
+  assert.equal(h.eval('state.lyricsLoading'), false);
+  assert.equal(h.eval('state.hasValidLyrics'), true);
+  assert.equal(trackEl.innerHTML.includes('lyrics-skeleton-list'), false);
+  assert.equal(trackEl.innerHTML.includes('Real'), true);
 });
 
 

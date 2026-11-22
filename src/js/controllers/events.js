@@ -255,6 +255,9 @@ document.addEventListener('click', async (e) => {
   // 6. Click Lyric Line -> Seek Spotify & Local Timer
   const lyricLine = e.target.closest('.lyric-line');
   if (lyricLine && !state.isSwipingNowPlaying) {
+    if (state.lyricsLastDragEndAt && (Date.now() - state.lyricsLastDragEndAt) < 320) {
+      return;
+    }
     const startSec = parseFloat(lyricLine.getAttribute('data-start')) || 0;
     const seekMs = Math.round(startSec * 1000);
     state.currentTimeSec = startSec;
@@ -265,6 +268,9 @@ document.addEventListener('click', async (e) => {
     });
     if (bridge && bridge.notifyTrackSeeked) {
       bridge.notifyTrackSeeked(seekMs);
+    }
+    if (typeof exitLyricsManualScroll === 'function') {
+      exitLyricsManualScroll({ skipSnapBack: true });
     }
     updateScrubberAndLyricsUI(true);
     if (isLocalWebPlayerActive() && typeof webPlayer.seek === 'function') {
@@ -1235,6 +1241,9 @@ async function skipPrevTrack() {
     if (bridge && bridge.notifyTrackSeeked) {
       bridge.notifyTrackSeeked(0);
     }
+    if (typeof exitLyricsManualScroll === 'function') {
+      exitLyricsManualScroll({ skipSnapBack: true });
+    }
     updateScrubberAndLyricsUI(true);
     if (isLocalWebPlayerActive() && typeof webPlayer.seek === 'function') {
       try { webPlayer.seek(0); } catch (err) { }
@@ -1338,6 +1347,9 @@ npScrubberTrack.addEventListener('click', (e) => {
   });
   if (bridge && bridge.notifyTrackSeeked) {
     bridge.notifyTrackSeeked(seekMs);
+  }
+  if (typeof exitLyricsManualScroll === 'function') {
+    exitLyricsManualScroll({ skipSnapBack: true });
   }
   updateScrubberAndLyricsUI(true);
   if (isLocalWebPlayerActive() && typeof webPlayer.seek === 'function') {

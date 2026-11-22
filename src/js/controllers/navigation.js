@@ -208,6 +208,9 @@ function closeNowPlaying(opts = {}) {
   state.startupPlaybackChecked = true;
   if (!state.isNowPlayingOpen && !nowPlayingOverlay.classList.contains('open')) return;
 
+  if (typeof exitLyricsManualScroll === 'function') {
+    exitLyricsManualScroll({ skipSnapBack: true });
+  }
   state.isNowPlayingOpen = false;
   clearTimeout(npOpenTimer);
   clearTimeout(npCloseAnimationTimer);
@@ -261,6 +264,8 @@ function closeNowPlaying(opts = {}) {
     // 4. Lista de cola scrolleada hacia abajo: permitir scroll interno de la cola
     const queueList = target.closest('#npQueueListContainer');
     if (queueList && queueList.scrollTop > 5) return true;
+    // 5. Columna de letras sincronizadas: permitir scroll táctil libre sin cerrar Now Playing
+    if (target.closest('#npRightLyrics') && state.nowPlayingMode === 'lyrics' && (state.hasValidLyrics || state.lyricsLoading)) return true;
     return false;
   }
 
@@ -426,6 +431,7 @@ function closeNowPlaying(opts = {}) {
   let wheelResetTimer = null;
   overlay.addEventListener('wheel', (e) => {
     if (!state.isNowPlayingOpen) return;
+    if (e.target && e.target.closest && e.target.closest('#npRightLyrics') && state.nowPlayingMode === 'lyrics' && (state.hasValidLyrics || state.lyricsLoading)) return;
     const queueList = e.target.closest('#npQueueListContainer');
     if (queueList && queueList.scrollHeight > queueList.clientHeight && queueList.scrollTop > 5) return;
 

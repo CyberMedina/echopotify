@@ -461,6 +461,10 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
     }
 
     // Desvanecer letras anteriores suavemente sin reconstruir DOM pesado en mitad de la animación de 60fps
+    if (typeof exitLyricsManualScroll === 'function') {
+      exitLyricsManualScroll({ skipSnapBack: true });
+    }
+    state.lyricsScrollOffset = 0;
     if (shouldAnimateTransition && lyricsScrollTrack) {
       lyricsScrollTrack.classList.add('lyrics-fade-out');
     }
@@ -695,6 +699,16 @@ const FAST_CONNECTOR_WORDS = new Set([
 ]);
 
 const LYRICS_ANCHOR_OFFSET = 170;
+const LYRICS_SNAP_BACK_DELAY_MS = 4000;
+const LYRICS_RESUME_SNAP_BACK_DELAY_MS = 2500;
+const LYRICS_DRAG_THRESHOLD_PX = 8;
+const LYRICS_OVERSCROLL_MAX_PX = 84;
+
+let lyricsSnapBackTimer = null;
+let lyricsSnapBackClassTimer = null;
+let lyricsInertiaRaf = null;
+let lyricsWheelClearTimer = null;
+let isLyricsPointerDragging = false;
 
 function cacheLyricLineOffsets() {
   const cache = state.lyricDOMCache;
@@ -704,7 +718,393 @@ function cacheLyricLineOffsets() {
   }
 }
 
+function getLyricsActiveTargetOffset() {
+  const cache = state.lyricDOMCache;
+  if (!cache || cache.length === 0) return 0;
+  const active = (state.activeLineIndex >= 0 && cache[state.activeLineIndex]) ? cache[state.activeLineIndex] : null;
+  if (!active) return 0;
+  return typeof active.targetOffset === 'number'
+    ? active.targetOffset
+    : Math.max(0, active.el.offsetTop - LYRICS_ANCHOR_OFFSET);
+}
+
+function getLyricsMaxScrollOffset() {
+  const cache = state.lyricDOMCache;
+  if (!cache || cache.length === 0) return 0;
+  const lastLine = cache[cache.length - 1];
+  const lastTarget = typeof lastLine.targetOffset === 'number'
+    ? lastLine.targetOffset
+    : Math.max(0, (lastLine.el && lastLine.el.offsetTop ? lastLine.el.offsetTop : 0) - LYRICS_ANCHOR_OFFSET);
+  const viewH = (npRightLyrics && npRightLyrics.clientHeight) ? npRightLyrics.clientHeight : 0;
+  const trackH = (lyricsScrollTrack && lyricsScrollTrack.scrollHeight) ? lyricsScrollTrack.scrollHeight : 0;
+  return Math.max(0, lastTarget, trackH > viewH ? (trackH - viewH) : 0);
+}
+
+function rubberBandLyricsOffset(rawOffset, maxOffset) {
+  if (rawOffset < 0) {
+    const over = -rawOffset;
+    return -Math.round((1 - (1 / ((over / 220) + 1))) * LYRICS_OVERSCROLL_MAX_PX * 100) / 100;
+  }
+  if (rawOffset > maxOffset) {
+    const over = rawOffset - maxOffset;
+    return maxOffset + Math.round((1 - (1 / ((over / 220) + 1))) * LYRICS_OVERSCROLL_MAX_PX * 100) / 100;
+  }
+  return rawOffset;
+}
+
+function applyLyricsScrollOffset(offsetPx) {
+  const safeOffset = Number.isFinite(offsetPx) ? offsetPx : 0;
+  state.lyricsScrollOffset = safeOffset;
+  if (lyricsScrollTrack) {
+    lyricsScrollTrack.style.transform = `translate3d(0, ${(-safeOffset).toFixed(2)}px, 0)`;
+  }
+}
+
+function cancelLyricsInertia() {
+  if (lyricsInertiaRaf !== null) {
+    if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(lyricsInertiaRaf);
+    } else {
+      clearTimeout(lyricsInertiaRaf);
+    }
+    lyricsInertiaRaf = null;
+  }
+}
+
+function scheduleLyricsSnapBack(delayMs = LYRICS_SNAP_BACK_DELAY_MS) {
+  clearTimeout(lyricsSnapBackTimer);
+  lyricsSnapBackTimer = null;
+  if (!state.lyricsManualScrolling || !state.isPlaying || isLyricsPointerDragging) return;
+  const waitMs = (typeof delayMs === 'number' && delayMs >= 0) ? delayMs : LYRICS_SNAP_BACK_DELAY_MS;
+  lyricsSnapBackTimer = setTimeout(() => {
+    lyricsSnapBackTimer = null;
+    if (state.lyricsManualScrolling && state.isPlaying && !isLyricsPointerDragging) {
+      exitLyricsManualScroll({ animate: true });
+    }
+  }, waitMs);
+}
+
+function enterLyricsManualScroll(opts = {}) {
+  if (!state.hasValidLyrics || state.lyricsLoading || !state.lyricDOMCache || state.lyricDOMCache.length === 0) {
+    return false;
+  }
+  state.lyricsManualScrolling = true;
+  if (npRightLyrics) npRightLyrics.classList.add('is-manual-scroll');
+  if (!opts.keepTimer) {
+    clearTimeout(lyricsSnapBackTimer);
+    lyricsSnapBackTimer = null;
+  }
+  clearTimeout(lyricsSnapBackClassTimer);
+  if (lyricsScrollTrack) lyricsScrollTrack.classList.remove('is-snapping-back');
+  if (opts.scheduleSnapBack) {
+    scheduleLyricsSnapBack(opts.delayMs);
+  }
+  return true;
+}
+
+function exitLyricsManualScroll(opts = {}) {
+  clearTimeout(lyricsSnapBackTimer);
+  lyricsSnapBackTimer = null;
+  clearTimeout(lyricsWheelClearTimer);
+  lyricsWheelClearTimer = null;
+  clearTimeout(lyricsSnapBackClassTimer);
+  lyricsSnapBackClassTimer = null;
+  cancelLyricsInertia();
+
+  isLyricsPointerDragging = false;
+  state.lyricsManualScrolling = false;
+  if (npRightLyrics) {
+    npRightLyrics.classList.remove('is-manual-scroll', 'is-dragging');
+  }
+  if (lyricsScrollTrack) {
+    lyricsScrollTrack.classList.remove('is-dragging', 'is-wheel-scrolling', 'is-snapping-back');
+  }
+
+  if (!opts.skipSnapBack && lyricsScrollTrack) {
+    const target = getLyricsActiveTargetOffset();
+    if (opts.animate !== false) {
+      lyricsScrollTrack.classList.add('is-snapping-back');
+      applyLyricsScrollOffset(target);
+      lyricsSnapBackClassTimer = setTimeout(() => {
+        lyricsSnapBackClassTimer = null;
+        if (lyricsScrollTrack) lyricsScrollTrack.classList.remove('is-snapping-back');
+      }, 660);
+    } else {
+      applyLyricsScrollOffset(target);
+    }
+  }
+}
+
+function scrollLyricsByDelta(deltaPx, opts = {}) {
+  cancelLyricsInertia();
+  if (!enterLyricsManualScroll({ keepTimer: false })) return false;
+  const maxOffset = getLyricsMaxScrollOffset();
+  const nextOffset = Math.max(0, Math.min(maxOffset, (state.lyricsScrollOffset || 0) + (deltaPx || 0)));
+
+  if (opts.smoothWheel && lyricsScrollTrack) {
+    lyricsScrollTrack.classList.add('is-wheel-scrolling');
+    clearTimeout(lyricsWheelClearTimer);
+    lyricsWheelClearTimer = setTimeout(() => {
+      lyricsWheelClearTimer = null;
+      if (lyricsScrollTrack) lyricsScrollTrack.classList.remove('is-wheel-scrolling');
+    }, 160);
+  }
+
+  applyLyricsScrollOffset(nextOffset);
+  scheduleLyricsSnapBack(opts.snapDelayMs);
+  return true;
+}
+
+(function initLyricsManualScroll() {
+  if (!npRightLyrics || !lyricsScrollTrack) return;
+
+  let pointerMode = null; // 'touch' | 'mouse' | null
+  let startX = 0;
+  let startY = 0;
+  let lastY = 0;
+  let lastTime = 0;
+  let dragOriginOffset = 0;
+  let hasDragged = false;
+  let scrollVelocity = 0; // px/ms, positive moves lyrics toward bottom (offset increases)
+
+  function canScrollLyricsNow() {
+    return Boolean(
+      state.isNowPlayingOpen &&
+      state.nowPlayingMode === 'lyrics' &&
+      state.hasValidLyrics &&
+      !state.lyricsLoading &&
+      state.lyricDOMCache &&
+      state.lyricDOMCache.length > 0
+    );
+  }
+
+  function handlePointerStart(mode, clientX, clientY) {
+    if (!canScrollLyricsNow()) return false;
+    cancelLyricsInertia();
+    clearTimeout(lyricsSnapBackTimer);
+    lyricsSnapBackTimer = null;
+    clearTimeout(lyricsSnapBackClassTimer);
+    lyricsScrollTrack.classList.remove('is-snapping-back', 'is-wheel-scrolling');
+
+    pointerMode = mode;
+    startX = clientX;
+    startY = clientY;
+    lastY = clientY;
+    lastTime = Date.now();
+    dragOriginOffset = Number.isFinite(state.lyricsScrollOffset) ? state.lyricsScrollOffset : getLyricsActiveTargetOffset();
+    hasDragged = false;
+    scrollVelocity = 0;
+    return true;
+  }
+
+  function handlePointerMove(clientX, clientY, cancelableEvent) {
+    if (!pointerMode) return;
+    const vpScale = window._echoViewportScale || 1;
+    const dx = (clientX - startX) / vpScale;
+    const dy = (clientY - startY) / vpScale;
+
+    if (!hasDragged) {
+      if (Math.abs(dy) >= LYRICS_DRAG_THRESHOLD_PX && Math.abs(dy) >= Math.abs(dx) * 0.8) {
+        hasDragged = true;
+        isLyricsPointerDragging = true;
+        enterLyricsManualScroll({ keepTimer: false });
+        npRightLyrics.classList.add('is-dragging');
+        lyricsScrollTrack.classList.add('is-dragging');
+      } else if (Math.abs(dx) > 16 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+        pointerMode = null;
+        return;
+      } else {
+        return;
+      }
+    }
+
+    if (cancelableEvent && cancelableEvent.cancelable) {
+      cancelableEvent.preventDefault();
+    }
+
+    const now = Date.now();
+    const dt = Math.max(4, now - lastTime);
+    const stepDeltaScroll = (lastY - clientY) / vpScale;
+    const instVel = stepDeltaScroll / dt;
+    scrollVelocity = scrollVelocity * 0.45 + instVel * 0.55;
+    lastY = clientY;
+    lastTime = now;
+
+    const maxOffset = getLyricsMaxScrollOffset();
+    const rawOffset = dragOriginOffset - dy;
+    applyLyricsScrollOffset(rubberBandLyricsOffset(rawOffset, maxOffset));
+  }
+
+  function settleToBoundsAndScheduleSnap() {
+    const maxOffset = getLyricsMaxScrollOffset();
+    const cur = state.lyricsScrollOffset || 0;
+    if (cur < 0 || cur > maxOffset) {
+      const clamped = Math.max(0, Math.min(maxOffset, cur));
+      lyricsScrollTrack.classList.add('is-snapping-back');
+      applyLyricsScrollOffset(clamped);
+      clearTimeout(lyricsSnapBackClassTimer);
+      lyricsSnapBackClassTimer = setTimeout(() => {
+        lyricsSnapBackClassTimer = null;
+        if (lyricsScrollTrack) lyricsScrollTrack.classList.remove('is-snapping-back');
+      }, 660);
+    }
+    scheduleLyricsSnapBack();
+  }
+
+  function handlePointerEnd() {
+    if (!pointerMode) return;
+    const endedDrag = hasDragged;
+    const releaseVel = scrollVelocity;
+    const timeSinceMove = Date.now() - lastTime;
+
+    pointerMode = null;
+    isLyricsPointerDragging = false;
+    npRightLyrics.classList.remove('is-dragging');
+
+    if (!endedDrag) {
+      lyricsScrollTrack.classList.remove('is-dragging');
+      if (state.lyricsManualScrolling) {
+        scheduleLyricsSnapBack();
+      }
+      return;
+    }
+
+    state.lyricsLastDragEndAt = Date.now();
+    const maxOffset = getLyricsMaxScrollOffset();
+    const currentOffset = state.lyricsScrollOffset || 0;
+
+    if (currentOffset < 0 || currentOffset > maxOffset) {
+      lyricsScrollTrack.classList.remove('is-dragging');
+      settleToBoundsAndScheduleSnap();
+      return;
+    }
+
+    if (Math.abs(releaseVel) > 0.14 && timeSinceMove <= 90) {
+      let vel = Math.max(-2.6, Math.min(2.6, releaseVel));
+      let prevFrameTime = Date.now();
+
+      const stepInertia = () => {
+        lyricsInertiaRaf = null;
+        if (!state.lyricsManualScrolling || pointerMode) {
+          lyricsScrollTrack.classList.remove('is-dragging');
+          return;
+        }
+        const now = Date.now();
+        const frameMs = Math.min(48, Math.max(8, now - prevFrameTime));
+        prevFrameTime = now;
+
+        const nextOffset = (state.lyricsScrollOffset || 0) + vel * frameMs;
+        vel *= Math.pow(0.935, frameMs / 16.67);
+
+        if (nextOffset < 0 || nextOffset > maxOffset) {
+          applyLyricsScrollOffset(Math.max(0, Math.min(maxOffset, nextOffset)));
+          lyricsScrollTrack.classList.remove('is-dragging');
+          scheduleLyricsSnapBack();
+          return;
+        }
+
+        applyLyricsScrollOffset(nextOffset);
+        if (Math.abs(vel) >= 0.05) {
+          lyricsInertiaRaf = requestAnimationFrame(stepInertia);
+        } else {
+          lyricsScrollTrack.classList.remove('is-dragging');
+          scheduleLyricsSnapBack();
+        }
+      };
+
+      lyricsInertiaRaf = requestAnimationFrame(stepInertia);
+      return;
+    }
+
+    lyricsScrollTrack.classList.remove('is-dragging');
+    scheduleLyricsSnapBack();
+  }
+
+  npRightLyrics.addEventListener('touchstart', (e) => {
+    if (!e.touches || e.touches.length !== 1) return;
+    handlePointerStart('touch', e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+
+  npRightLyrics.addEventListener('touchmove', (e) => {
+    if (pointerMode !== 'touch' || !e.touches || e.touches.length !== 1) return;
+    handlePointerMove(e.touches[0].clientX, e.touches[0].clientY, e);
+  }, { passive: false });
+
+  npRightLyrics.addEventListener('touchend', () => {
+    if (pointerMode === 'touch') handlePointerEnd();
+  }, { passive: true });
+
+  npRightLyrics.addEventListener('touchcancel', () => {
+    if (pointerMode === 'touch') handlePointerEnd();
+  }, { passive: true });
+
+  npRightLyrics.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    handlePointerStart('mouse', e.clientX, e.clientY);
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (pointerMode === 'mouse') handlePointerMove(e.clientX, e.clientY, e);
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (pointerMode === 'mouse') handlePointerEnd();
+  });
+
+  npRightLyrics.addEventListener('wheel', (e) => {
+    if (!canScrollLyricsNow()) return;
+    const rawDelta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : 0;
+    if (!rawDelta) return;
+    e.stopPropagation();
+    if (e.cancelable) e.preventDefault();
+    const clampedDelta = Math.max(-160, Math.min(160, rawDelta));
+    scrollLyricsByDelta(clampedDelta, { smoothWheel: true });
+  }, { passive: false });
+})();
+
+function buildLyricsSkeletonHTML() {
+  const rows = [
+    { width: '74%', opacity: '0.86', delay: '0ms' },
+    { width: '54%', opacity: '0.70', delay: '110ms' },
+    { width: '82%', opacity: '0.54', delay: '220ms' },
+    { width: '46%', opacity: '0.39', delay: '330ms' },
+    { width: '68%', opacity: '0.26', delay: '440ms' },
+    { width: '58%', opacity: '0.15', delay: '550ms' }
+  ];
+  const linesHtml = rows.map(r => (
+    `<div class="lyrics-skeleton-line" style="width: ${r.width}; --skel-opacity: ${r.opacity}; --skel-delay: ${r.delay};"></div>`
+  )).join('');
+  return `
+    <div class="lyrics-skeleton-list" aria-hidden="true">
+      <div class="lyrics-skeleton-dots">
+        <span class="lyrics-skeleton-dot"></span>
+        <span class="lyrics-skeleton-dot"></span>
+        <span class="lyrics-skeleton-dot"></span>
+      </div>
+      ${linesHtml}
+    </div>
+  `;
+}
+
+function renderLyricsLoadingSkeleton() {
+  if (!lyricsScrollTrack) return;
+  if (!lyricsScrollTrack.querySelector('.lyrics-skeleton-list')) {
+    lyricsScrollTrack.innerHTML = buildLyricsSkeletonHTML();
+    applyLyricsScrollOffset(0);
+    lyricsScrollTrack.classList.add('lyrics-fade-out');
+    requestAnimationFrame(() => {
+      if (state.lyricsLoading && !state.hasValidLyrics && lyricsScrollTrack) {
+        lyricsScrollTrack.classList.remove('lyrics-fade-out');
+      }
+    });
+  } else {
+    lyricsScrollTrack.classList.remove('lyrics-fade-out');
+  }
+}
+
 function buildLyricsDOM(lyricsArray) {
+  exitLyricsManualScroll({ skipSnapBack: true });
+  applyLyricsScrollOffset(0);
   const firstLineStart = (lyricsArray[0] && lyricsArray[0].start) || 0;
   const hasIntroInterlude = firstLineStart >= 4.0;
   const introHtml = hasIntroInterlude
@@ -1008,13 +1408,15 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
 
   if (lineChanged) {
     state.activeLineIndex = newActiveIdx;
-    if (activeLine) {
-      const targetOffset = typeof activeLine.targetOffset === 'number'
-        ? activeLine.targetOffset
-        : Math.max(0, activeLine.el.offsetTop - LYRICS_ANCHOR_OFFSET);
-      lyricsScrollTrack.style.transform = `translate3d(0, -${targetOffset}px, 0)`;
-    } else {
-      lyricsScrollTrack.style.transform = 'translate3d(0, 0, 0)';
+    if (!state.lyricsManualScrolling) {
+      if (activeLine) {
+        const targetOffset = typeof activeLine.targetOffset === 'number'
+          ? activeLine.targetOffset
+          : Math.max(0, activeLine.el.offsetTop - LYRICS_ANCHOR_OFFSET);
+        applyLyricsScrollOffset(targetOffset);
+      } else {
+        applyLyricsScrollOffset(0);
+      }
     }
   }
 }
@@ -1065,6 +1467,14 @@ function setPlaybackBuffering(isBuffering) {
 function updatePlayPauseIcons() {
   if (npQueueEq) npQueueEq.classList.toggle('playing', !!state.isPlaying);
   if (npCoverStage) npCoverStage.classList.toggle('is-paused', !state.isPlaying);
+  if (state.lyricsManualScrolling) {
+    if (!state.isPlaying) {
+      clearTimeout(lyricsSnapBackTimer);
+      lyricsSnapBackTimer = null;
+    } else if (!lyricsSnapBackTimer && !isLyricsPointerDragging) {
+      scheduleLyricsSnapBack(LYRICS_RESUME_SNAP_BACK_DELAY_MS);
+    }
+  }
   if (state.lastRenderedIsPlaying === state.isPlaying) return;
   state.lastRenderedIsPlaying = state.isPlaying;
   const pauseMarkup = `
@@ -1237,6 +1647,9 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
       nextThree.forEach(t => {
         if (t && t.cover) prewarmTrackPalette(t.cover, [t.cover, t.thumb]);
       });
+    }
+    if (typeof prefetchUpcomingLyrics === 'function') {
+      prefetchUpcomingLyrics(tracksList, 2);
     }
   };
 
@@ -1452,21 +1865,21 @@ function updateNowPlayingRightPanelMode() {
   }
 
   // 5. Update Active Sub-Mode Contents
+  if (!showLyrics && state.lyricsManualScrolling && typeof exitLyricsManualScroll === 'function') {
+    exitLyricsManualScroll({ skipSnapBack: true });
+  }
+
   if (showLyrics) {
     if (state.hasValidLyrics) {
       if (lyricsScrollTrack) lyricsScrollTrack.classList.remove('lyrics-fade-out');
       requestAnimationFrame(() => {
         cacheLyricLineOffsets();
-        updateScrubberAndLyricsUI(true);
+        if (!state.lyricsManualScrolling) {
+          updateScrubberAndLyricsUI(true);
+        }
       });
     } else if (state.lyricsLoading) {
-      if (lyricsScrollTrack) {
-        lyricsScrollTrack.innerHTML = `
-          <div class="lyric-line distance-1" style="opacity: 0.65; font-size: 22px; margin-top: 100px; text-align: left;">
-            Buscando letra...
-          </div>
-        `;
-      }
+      renderLyricsLoadingSkeleton();
     }
   } else if (showQueue) {
     renderQueuePanelUI();

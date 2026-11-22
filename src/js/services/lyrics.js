@@ -228,6 +228,129 @@ function parsePlainLyricsToFallbackSync(plainString, totalDuration) {
 let lyricFetchSeq = 0;
 let activeLyricTrackKey = '';
 const lyricsMemoryCache = new Map();
+const MAX_LYRICS_CACHE_ENTRIES = 60;
+const lyricsPrefetchInFlight = new Map();
+const lyricsPrefetchAttempted = new Map();
+const LYRICS_PREFETCH_RETRY_COOLDOWN_MS = 5 * 60 * 1000;
+let lyricsPrefetchSeq = 0;
+
+function normalizeLyricsTrackMeta(trackName, artistName) {
+  const rawTrack = String(trackName || '');
+  const rawArtist = String(artistName || '');
+  const cleanTrack = rawTrack.replace(/\s*\(.*?\)\s*/g, '').replace(/\s*-\s*.*$/, '').trim() || rawTrack.trim();
+  const cleanArtist = rawArtist.replace(/\s*,\s*.*$/, '').trim() || rawArtist.trim();
+  const cacheKey = cleanTrack ? `${cleanArtist.toLowerCase()}::${cleanTrack.toLowerCase()}` : '';
+  return { cleanTrack, cleanArtist, cacheKey };
+}
+
+function setLyricsMemoryCache(cacheKey, parsedLines) {
+  if (!cacheKey || !Array.isArray(parsedLines) || parsedLines.length === 0) return;
+  if (lyricsMemoryCache.has(cacheKey)) {
+    lyricsMemoryCache.delete(cacheKey);
+  }
+  lyricsMemoryCache.set(cacheKey, parsedLines);
+  while (lyricsMemoryCache.size > MAX_LYRICS_CACHE_ENTRIES) {
+    const oldestKey = lyricsMemoryCache.keys().next().value;
+    if (!oldestKey) break;
+    lyricsMemoryCache.delete(oldestKey);
+  }
+}
+
+async function prefetchSingleTrackLyrics(track) {
+  if (!track || typeof track !== 'object') return null;
+  const trackName = track.title || track.name || '';
+  const artistName = (Array.isArray(track.artists) && track.artists[0] && track.artists[0].name)
+    ? track.artists[0].name
+    : (track.artist || '');
+  const { cleanTrack, cleanArtist, cacheKey } = normalizeLyricsTrackMeta(trackName, artistName);
+  if (!cacheKey) return null;
+  if (cacheKey === activeLyricTrackKey || cacheKey === state.loadedLyricsKey) return null;
+
+  if (lyricsMemoryCache.has(cacheKey)) {
+    return { lines: lyricsMemoryCache.get(cacheKey), triedLyricsPlus: true, triedLrclibGet: false };
+  }
+  if (lyricsPrefetchInFlight.has(cacheKey)) {
+    return lyricsPrefetchInFlight.get(cacheKey);
+  }
+  const lastMissAt = lyricsPrefetchAttempted.get(cacheKey) || 0;
+  if (lastMissAt && (Date.now() - lastMissAt) < LYRICS_PREFETCH_RETRY_COOLDOWN_MS) {
+    return null;
+  }
+
+  const durationSec = track.duration_ms
+    ? Math.round(track.duration_ms / 1000)
+    : (track.duration || 0);
+
+  const task = (async () => {
+    let triedLyricsPlus = false;
+    let triedLrclibGet = false;
+
+    try {
+      triedLyricsPlus = true;
+      const durParam = durationSec && durationSec > 0 ? `&duration=${Math.round(durationSec)}` : '';
+      const lpUrl = `https://lyricsplus.binimum.org/v2/lyrics/get?title=${encodeURIComponent(cleanTrack)}&artist=${encodeURIComponent(cleanArtist)}${durParam}`;
+      const lpRes = await timedLyricsFetch('prefetch-lp', 0, lpUrl, 3600);
+      if (lpRes && lpRes.ok) {
+        try {
+          const lpData = await lpRes.json();
+          const wordParsed = parseLyricsPlusWordSync(lpData, durationSec, cleanTrack);
+          if (wordParsed && wordParsed.length > 0) {
+            setLyricsMemoryCache(cacheKey, wordParsed);
+            lyrLog(`prefetch CACHE HIT (lyricsplus) "${cacheKey}" (${wordParsed.length} lines)`);
+            return { lines: wordParsed, triedLyricsPlus: true, triedLrclibGet: false };
+          }
+        } catch (e) { }
+      }
+    } catch (e) { }
+
+    try {
+      triedLrclibGet = true;
+      const getUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTrack)}&artist_name=${encodeURIComponent(cleanArtist)}`;
+      const res = await timedLyricsFetch('prefetch-get', 0, getUrl, 4500);
+      if (res && res.ok) {
+        try {
+          const data = await res.json();
+          if (data && !data.instrumental && data.syncedLyrics) {
+            const parsed = parseLrcToWordSync(data.syncedLyrics, durationSec);
+            if (parsed && parsed.length > 0) {
+              setLyricsMemoryCache(cacheKey, parsed);
+              lyrLog(`prefetch CACHE HIT (lrclib) "${cacheKey}" (${parsed.length} lines)`);
+              return { lines: parsed, triedLyricsPlus: true, triedLrclibGet: true };
+            }
+          }
+        } catch (e) { }
+      }
+    } catch (e) { }
+
+    lyricsPrefetchAttempted.set(cacheKey, Date.now());
+    if (lyricsPrefetchAttempted.size > 120) {
+      const oldestMiss = lyricsPrefetchAttempted.keys().next().value;
+      if (oldestMiss) lyricsPrefetchAttempted.delete(oldestMiss);
+    }
+    return { lines: null, triedLyricsPlus, triedLrclibGet };
+  })().finally(() => {
+    lyricsPrefetchInFlight.delete(cacheKey);
+  });
+
+  lyricsPrefetchInFlight.set(cacheKey, task);
+  return task;
+}
+
+async function prefetchUpcomingLyrics(tracksList, maxCount = 2) {
+  if (!Array.isArray(tracksList) || tracksList.length === 0) return;
+  const slice = tracksList.slice(0, Math.max(1, maxCount));
+  const seq = ++lyricsPrefetchSeq;
+
+  if (state.lyricsLoading) {
+    await new Promise(r => setTimeout(r, 350));
+    if (seq !== lyricsPrefetchSeq) return;
+  }
+
+  for (let i = 0; i < slice.length; i++) {
+    if (seq !== lyricsPrefetchSeq) return;
+    await prefetchSingleTrackLyrics(slice[i]);
+  }
+}
 
 // Diagnostics: forwarded to logcat (tag EchoJS) via WebChromeClient.onConsoleMessage
 function lyrLog(msg) {
@@ -267,9 +390,8 @@ async function timedLyricsFetch(tag, fetchId, url, timeoutMs) {
 
 async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durationSec) {
   if (!trackName) return;
-  const cleanTrack = (trackName || '').replace(/\s*\(.*?\)\s*/g, '').replace(/\s*-\s*.*$/, '').trim() || trackName;
-  const cleanArtist = (artistName || '').replace(/\s*,\s*.*$/, '').trim() || artistName;
-  const cacheKey = `${cleanArtist.toLowerCase()}::${cleanTrack.toLowerCase()}`;
+  const { cleanTrack, cleanArtist, cacheKey } = normalizeLyricsTrackMeta(trackName, artistName);
+  if (!cleanTrack) return;
 
   // If lyrics are already loaded and displayed for this exact song, never wipe or re-fetch!
   // (Compare against the key the loaded lyrics belong to; playingTrackTitle is already updated by the caller.)
@@ -278,7 +400,9 @@ async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durat
     state.lyricsLoading = false;
     if (lyricsScrollTrack) lyricsScrollTrack.classList.remove('lyrics-fade-out');
     updateNowPlayingRightPanelMode();
-    updateScrubberAndLyricsUI(true);
+    if (!state.lyricsManualScrolling) {
+      updateScrubberAndLyricsUI(true);
+    }
     return;
   }
 
@@ -293,12 +417,16 @@ async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durat
   lyrLog(`#${fetchId} START "${cacheKey}" dur=${durationSec}s`);
   activeLyricTrackKey = cacheKey;
   state.lyricsLoading = true;
+  if (typeof exitLyricsManualScroll === 'function') {
+    exitLyricsManualScroll({ skipSnapBack: true });
+  }
 
   // Check instant in-memory cache (0ms)
   if (lyricsMemoryCache.has(cacheKey)) {
     const cached = lyricsMemoryCache.get(cacheKey);
     if (cached && cached.length > 0) {
       lyrLog(`#${fetchId} memory cache hit (${cached.length} lines)`);
+      setLyricsMemoryCache(cacheKey, cached);
       state.lyricsLoading = false;
       state.hasValidLyrics = true;
       state.loadedLyricsKey = cacheKey;
@@ -317,72 +445,100 @@ async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durat
   state.lyricDOMCache = [];
   state.interludeDOMCache = [];
   state.activeLineIndex = -1;
-  if (lyricsScrollTrack) {
-    lyricsScrollTrack.classList.add('lyrics-fade-out');
-  }
   updateNowPlayingRightPanelMode();
 
-  // STEP 0: High-fidelity Apple Music TTML Word-Sync via LyricsPlus (Truth Source)
-  try {
-    const durParam = durationSec && durationSec > 0 ? `&duration=${Math.round(durationSec)}` : '';
-    const lpUrl = `https://lyricsplus.binimum.org/v2/lyrics/get?title=${encodeURIComponent(cleanTrack)}&artist=${encodeURIComponent(cleanArtist)}${durParam}`;
-    const lpRes = await timedLyricsFetch('lyricsplus-wordsync', fetchId, lpUrl, 3800);
-    if (fetchId !== lyricFetchSeq) { lyrLog(`#${fetchId} stale after lyricsplus, dropped`); return; }
-
-    if (lpRes && lpRes.ok) {
-      try {
-        const lpData = await lpRes.json();
-        const wordParsed = parseLyricsPlusWordSync(lpData, durationSec, cleanTrack);
-        if (wordParsed && wordParsed.length > 0) {
-          lyrLog(`#${fetchId} OK REAL APPLE MUSIC WORD-SYNC ${wordParsed.length} lines in ${Date.now() - tStart}ms`);
-          lyricsMemoryCache.set(cacheKey, wordParsed);
-          state.lyricsLoading = false;
-          state.hasValidLyrics = true;
-          state.loadedLyricsKey = cacheKey;
-          state.activeLyrics = wordParsed;
-          state.activeLineIndex = -1;
-          buildLyricsDOM(wordParsed);
-          updateNowPlayingRightPanelMode();
-          updateScrubberAndLyricsUI(true);
-          return;
-        }
-      } catch (jsonErr) {
-        lyrLog(`#${fetchId} lyricsplus parse error: ${jsonErr && jsonErr.message}`);
+  // If a background queue prefetch is already in flight for this exact track, join it seamlessly
+  let skipLyricsPlus = false;
+  let skipLrclibGet = false;
+  if (lyricsPrefetchInFlight.has(cacheKey)) {
+    try {
+      const prefResult = await lyricsPrefetchInFlight.get(cacheKey);
+      if (fetchId !== lyricFetchSeq) { lyrLog(`#${fetchId} stale after prefetch join, dropped`); return; }
+      if (prefResult && Array.isArray(prefResult.lines) && prefResult.lines.length > 0) {
+        lyrLog(`#${fetchId} joined in-flight prefetch (${prefResult.lines.length} lines in ${Date.now() - tStart}ms)`);
+        setLyricsMemoryCache(cacheKey, prefResult.lines);
+        state.lyricsLoading = false;
+        state.hasValidLyrics = true;
+        state.loadedLyricsKey = cacheKey;
+        state.activeLyrics = prefResult.lines;
+        state.activeLineIndex = -1;
+        buildLyricsDOM(prefResult.lines);
+        updateNowPlayingRightPanelMode();
+        updateScrubberAndLyricsUI(true);
+        return;
       }
+      if (prefResult) {
+        skipLyricsPlus = Boolean(prefResult.triedLyricsPlus);
+        skipLrclibGet = Boolean(prefResult.triedLrclibGet);
+      }
+    } catch (e) { }
+  }
+
+  // STEP 0: High-fidelity Apple Music TTML Word-Sync via LyricsPlus (Truth Source)
+  if (!skipLyricsPlus) {
+    try {
+      const durParam = durationSec && durationSec > 0 ? `&duration=${Math.round(durationSec)}` : '';
+      const lpUrl = `https://lyricsplus.binimum.org/v2/lyrics/get?title=${encodeURIComponent(cleanTrack)}&artist=${encodeURIComponent(cleanArtist)}${durParam}`;
+      const lpRes = await timedLyricsFetch('lyricsplus-wordsync', fetchId, lpUrl, 3800);
+      if (fetchId !== lyricFetchSeq) { lyrLog(`#${fetchId} stale after lyricsplus, dropped`); return; }
+
+      if (lpRes && lpRes.ok) {
+        try {
+          const lpData = await lpRes.json();
+          const wordParsed = parseLyricsPlusWordSync(lpData, durationSec, cleanTrack);
+          if (wordParsed && wordParsed.length > 0) {
+            lyrLog(`#${fetchId} OK REAL APPLE MUSIC WORD-SYNC ${wordParsed.length} lines in ${Date.now() - tStart}ms`);
+            setLyricsMemoryCache(cacheKey, wordParsed);
+            state.lyricsLoading = false;
+            state.hasValidLyrics = true;
+            state.loadedLyricsKey = cacheKey;
+            state.activeLyrics = wordParsed;
+            state.activeLineIndex = -1;
+            buildLyricsDOM(wordParsed);
+            updateNowPlayingRightPanelMode();
+            updateScrubberAndLyricsUI(true);
+            return;
+          }
+        } catch (jsonErr) {
+          lyrLog(`#${fetchId} lyricsplus parse error: ${jsonErr && jsonErr.message}`);
+        }
+      }
+    } catch (e) {
+      lyrLog(`#${fetchId} lyricsplus fetch error: ${e && e.message}`);
     }
-  } catch (e) {
-    lyrLog(`#${fetchId} lyricsplus fetch error: ${e && e.message}`);
   }
 
   let rawSyncedLrc = null;
 
   // STEP 1: Direct lookup via /api/get (returns exact syncedLyrics)
-  try {
-    const getUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTrack)}&artist_name=${encodeURIComponent(cleanArtist)}`;
-    let res = await timedLyricsFetch('get', fetchId, getUrl, 5000);
-    if (fetchId !== lyricFetchSeq) { lyrLog(`#${fetchId} stale after get, dropped`); return; }
+  if (!skipLrclibGet && fetchId === lyricFetchSeq) {
+    try {
+      const getUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTrack)}&artist_name=${encodeURIComponent(cleanArtist)}`;
+      let res = await timedLyricsFetch('get', fetchId, getUrl, 5000);
+      if (fetchId !== lyricFetchSeq) { lyrLog(`#${fetchId} stale after get, dropped`); return; }
 
-    // One retry on timeout / network error / 5xx (not on 404 = genuinely missing)
-    if (!res || res.status >= 500) {
-      await new Promise(r => setTimeout(r, 700));
-      if (fetchId !== lyricFetchSeq) return;
-      res = await timedLyricsFetch('get-retry', fetchId, getUrl, 6500);
-    }
-
-    if (fetchId !== lyricFetchSeq) { lyrLog(`#${fetchId} stale after get-retry, dropped`); return; }
-    if (res && res.ok) {
-      try {
-        const data = await res.json();
-        if (data && !data.instrumental && data.syncedLyrics) {
-          rawSyncedLrc = data.syncedLyrics;
-        } else {
-          lyrLog(`#${fetchId} get: no syncedLyrics (instrumental=${data && data.instrumental})`);
-        }
-      } catch (jsonErr) {
-        lyrLog(`#${fetchId} get: body is not JSON (${jsonErr && jsonErr.message})`);
+      // One retry on timeout / network error / 5xx (not on 404 = genuinely missing)
+      if (!res || res.status >= 500) {
+        await new Promise(r => setTimeout(r, 700));
+        if (fetchId !== lyricFetchSeq) return;
+        res = await timedLyricsFetch('get-retry', fetchId, getUrl, 6500);
       }
-    }
-  } catch (e) { }
+
+      if (fetchId !== lyricFetchSeq) { lyrLog(`#${fetchId} stale after get-retry, dropped`); return; }
+      if (res && res.ok) {
+        try {
+          const data = await res.json();
+          if (data && !data.instrumental && data.syncedLyrics) {
+            rawSyncedLrc = data.syncedLyrics;
+          } else {
+            lyrLog(`#${fetchId} get: no syncedLyrics (instrumental=${data && data.instrumental})`);
+          }
+        } catch (jsonErr) {
+          lyrLog(`#${fetchId} get: body is not JSON (${jsonErr && jsonErr.message})`);
+        }
+      }
+    } catch (e) { }
+  }
 
   // STEP 2: Fallback search if direct get didn't find it or had naming discrepancy
   if (!rawSyncedLrc && fetchId === lyricFetchSeq) {
@@ -430,7 +586,7 @@ async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durat
     const parsed = parseLrcToWordSync(rawSyncedLrc, durationSec);
     if (parsed && parsed.length > 0) {
       lyrLog(`#${fetchId} OK ${parsed.length} lines, total ${Date.now() - tStart}ms`);
-      lyricsMemoryCache.set(cacheKey, parsed);
+      setLyricsMemoryCache(cacheKey, parsed);
       state.hasValidLyrics = true;
       state.loadedLyricsKey = cacheKey;
       state.activeLyrics = parsed;
@@ -448,7 +604,10 @@ async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durat
   state.activeLyrics = [];
   state.lyricDOMCache = [];
   state.activeLineIndex = -1;
-  if (lyricsScrollTrack) lyricsScrollTrack.innerHTML = '';
+  if (lyricsScrollTrack) {
+    lyricsScrollTrack.innerHTML = '';
+    lyricsScrollTrack.classList.remove('lyrics-fade-out');
+  }
   updateNowPlayingRightPanelMode();
 }
 
