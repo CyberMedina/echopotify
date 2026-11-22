@@ -278,8 +278,8 @@ function closeNowPlaying(opts = {}) {
     if (el.closest('#npScrubberTrack') || el.closest('#npVolumeTrack')) return true;
     // 2. Botones de transporte (play, pause, next, prev, shuffle, repeat)
     if (el.closest('.np-transport-btn')) return true;
-    // 3. Botones dock inferiores (Letra / Cola) & favoritos
-    if (el.closest('.np-dock-btn') || el.closest('.np-circle-btn')) return true;
+    // 3. Botones dock inferiores (Letra / Cola), favoritos y selector de dispositivo
+    if (el.closest('.np-dock-btn') || el.closest('.np-circle-btn') || el.closest('#npDeviceIndicatorRow')) return true;
     // 4. Lista de cola scrolleada hacia abajo: permitir scroll interno de la cola
     const queueList = el.closest('#npQueueListContainer');
     if (queueList && queueList.scrollTop > 5) return true;

@@ -350,6 +350,13 @@ body.np-fully-open .ambient-bg {
   will-change: transform;
 }
 
+.np-controls-stack {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
 .np-cover-stage {
   position: relative;
   width: 264px;
@@ -496,35 +503,146 @@ body.np-fully-open .ambient-bg {
 
 /* --------------------------------------------------------------------------
    CENTERED IMMERSIVE MODE (Panel closed / No lyrics / No queue)
-   Butter-smooth GPU slide and scale without layout reflows
+   Horizontal landscape hero layout inspired by UX mockup
    -------------------------------------------------------------------------- */
+@keyframes npImmersiveReveal {
+  0% {
+    opacity: 0.25;
+    transform: translate3d(0, 2px, 0) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, -12px, 0) scale(1);
+  }
+}
+
 .np-main-grid.centered-layout .np-left-player {
-  transform: translate3d(0, 0, 0);
+  width: min(824px, calc(100% - 120px));
+  display: grid;
+  grid-template-columns: 296px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 48px;
+  row-gap: 42px;
+  align-items: center;
+  transform: translate3d(0, -12px, 0);
+  animation: npImmersiveReveal 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .np-main-grid.centered-layout .np-cover-stage {
-  transform: scale(1.06) translateY(0) translateZ(0);
-  margin-bottom: 24px;
-  border-radius: 17px;
+  width: 296px;
+  height: 296px;
+  margin: 0;
+  border-radius: 20px;
+  transform: scale(1) translateZ(0);
   box-shadow:
-    0 26px 56px -10px rgba(0, 0, 0, 0.46),
+    0 26px 56px -10px rgba(0, 0, 0, 0.48),
     0 10px 24px -4px rgba(0, 0, 0, 0.26);
 }
 
 .np-main-grid.centered-layout .np-cover-stage.is-paused {
-  transform: scale(0.90) translateY(0) translateZ(0);
+  transform: scale(0.88) translateZ(0);
   box-shadow:
     0 12px 28px -6px rgba(0, 0, 0, 0.28),
     0 4px 10px -2px rgba(0, 0, 0, 0.18);
 }
 
+.np-main-grid.centered-layout .np-cover-stage.is-buffering:not(.is-paused) {
+  transform: scale(0.94) translateZ(0);
+}
+
 .np-main-grid.centered-layout .np-cover-stage:active {
-  transform: scale(1.02) translateY(0) translateZ(0);
+  transform: scale(0.965) translateZ(0);
   transition: transform 0.16s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .np-main-grid.centered-layout .np-cover-stage.is-paused:active {
-  transform: scale(0.86) translateY(0) translateZ(0);
+  transform: scale(0.85) translateZ(0);
+}
+
+.np-main-grid.centered-layout .np-controls-stack {
+  justify-content: center;
+}
+
+.np-main-grid.centered-layout .np-meta-row {
+  margin-bottom: 26px;
+  gap: 16px;
+}
+
+.np-main-grid.centered-layout .np-track-title {
+  font-size: 36px;
+  line-height: 1.12;
+  letter-spacing: -0.028em;
+}
+
+.np-main-grid.centered-layout .np-track-artist {
+  font-size: 21.5px;
+  margin-top: 5px;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.np-main-grid.centered-layout .np-meta-actions {
+  gap: 12px;
+}
+
+.np-main-grid.centered-layout .np-circle-btn {
+  width: 46px;
+  height: 46px;
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.np-main-grid.centered-layout .np-circle-btn:hover {
+  background: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+
+.np-main-grid.centered-layout #npFavBtn.active {
+  background: rgba(30, 215, 96, 0.22);
+  border-color: rgba(30, 215, 96, 0.18);
+}
+
+.np-main-grid.centered-layout .np-scrubber-wrap {
+  margin-bottom: 18px;
+}
+
+.np-main-grid.centered-layout .np-slider-track {
+  height: 7px;
+  background: rgba(255, 255, 255, 0.20);
+}
+
+.np-main-grid.centered-layout .np-slider-track:not(.is-buffering) .np-slider-fill {
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.np-main-grid.centered-layout .np-time-row {
+  margin-top: 10px;
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.56);
+}
+
+.np-main-grid.centered-layout .np-transport-row {
+  margin: 4px 0 0 0;
+}
+
+.np-main-grid.centered-layout .np-transport-btn {
+  width: 58px;
+  height: 58px;
+}
+
+.np-main-grid.centered-layout .np-transport-btn.play-pause-main {
+  width: 68px;
+  height: 68px;
+}
+
+.np-main-grid.centered-layout .np-transport-btn.play-pause-main svg {
+  width: 46px;
+  height: 46px;
+}
+
+.np-main-grid.centered-layout .np-transport-btn.small-icon {
+  width: 48px;
+  height: 48px;
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .np-main-grid.centered-layout .np-right-column {

@@ -1921,7 +1921,7 @@ function getDeviceTypeSvg(type = '') {
   if (t === 'smartphone' || t === 'phone') {
     return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"></rect><line x1="11" y1="18" x2="13" y2="18"></line></svg>`;
   }
-  return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
+  return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 16H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1"></path><line x1="6" y1="20" x2="10" y2="20"></line><line x1="8" y1="16" x2="8" y2="20"></line><rect x="13" y="9" width="9" height="12" rx="2"></rect><circle cx="17.5" cy="12.2" r="0.8" fill="currentColor" stroke="none"></circle><circle cx="17.5" cy="16.5" r="2.2"></circle></svg>`;
 }
 
 function getDeviceTypeLabel(type = '') {
@@ -1936,9 +1936,11 @@ function getDeviceTypeLabel(type = '') {
 function setDeviceConnectingUI(mode = 'connecting') {
   if (spotifyAuth.activeDeviceId) return;
   const npDeviceName = document.getElementById('npActiveDeviceName');
+  const npDeviceOverline = document.getElementById('npActiveDeviceOverline');
   const npDevRow = document.getElementById('npDeviceIndicatorRow');
 
   if (mode === 'connecting') {
+    if (npDeviceOverline) npDeviceOverline.textContent = 'CONECTANDO AUDIO';
     if (npDeviceName) npDeviceName.textContent = 'Conectando SpotiEcho…';
     if (npDevRow) {
       npDevRow.classList.remove('has-device');
@@ -1946,6 +1948,7 @@ function setDeviceConnectingUI(mode = 'connecting') {
       npDevRow.title = 'Conectando SpotiEcho Web Player…';
     }
   } else {
+    if (npDeviceOverline) npDeviceOverline.textContent = 'SALIDA DE AUDIO';
     if (npDeviceName) npDeviceName.textContent = 'Elegir dispositivo';
     if (npDevRow) {
       npDevRow.classList.remove('is-connecting');
@@ -1968,6 +1971,10 @@ function updateActiveDeviceBadgeUI(device) {
     if (device.type) safeStorage.setItem('sp_active_device_type', device.type);
   } catch (e) {}
 
+  const npDeviceOverline = document.getElementById('npActiveDeviceOverline');
+  if (npDeviceOverline) {
+    npDeviceOverline.textContent = 'REPRODUCIENDO EN';
+  }
   const npDeviceName = document.getElementById('npActiveDeviceName');
   if (npDeviceName) {
     npDeviceName.textContent = name;

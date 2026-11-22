@@ -1093,6 +1093,7 @@ test('11. Cold-start token refresh deduplicates getOAuthToken and device pill sh
   assert.equal(ok, true);
 
   h.eval('initWebPlayer()');
+  assert.equal(h.getEl('npActiveDeviceOverline').textContent, 'CONECTANDO AUDIO');
   assert.equal(h.getEl('npActiveDeviceName').textContent, 'Conectando SpotiEcho…');
   assert.equal(h.getEl('npDeviceIndicatorRow').classList.contains('is-connecting'), true);
 
@@ -1105,6 +1106,7 @@ test('11. Cold-start token refresh deduplicates getOAuthToken and device pill sh
   assert.equal(tokenCalls.length, 1, 'getOAuthToken should reuse freshly refreshed token');
 
   h.emitSdkEvent('ready', { device_id: 'web_dev_1' });
+  assert.equal(h.getEl('npActiveDeviceOverline').textContent, 'REPRODUCIENDO EN');
   assert.equal(h.getEl('npActiveDeviceName').textContent, 'SpotiEcho Web Player');
   assert.equal(h.getEl('npDeviceIndicatorRow').classList.contains('is-connecting'), false);
   assert.equal(h.getEl('npDeviceIndicatorRow').classList.contains('has-device'), true);
