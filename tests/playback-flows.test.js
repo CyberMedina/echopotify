@@ -258,6 +258,8 @@ function createPlaybackHarness(opts = {}) {
       elementsById.set(id, created);
       if (id === 'lyricsScrollTrack') {
         created.parentElement = getEl('npRightLyrics');
+      } else if (id === 'npRightLyrics' || id === 'npRightQueue') {
+        created.parentElement = getEl('npRightColumn');
       }
     }
     return elementsById.get(id);
@@ -1562,6 +1564,72 @@ test('19. Uncached track renders visible Apple Music translucent lyrics skeleton
   assert.equal(h.eval('state.hasValidLyrics'), true);
   assert.equal(trackEl.innerHTML.includes('lyrics-skeleton-list'), false);
   assert.equal(trackEl.innerHTML.includes('Real'), true);
+});
+
+test('20. Reserved right scroll zone prevents dismiss collision on wheel/touch while preserving left-side and grabber dismiss', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  h.eval(`
+    state.isNowPlayingOpen = true;
+    state.nowPlayingMode = 'lyrics';
+    state.isPlaying = true;
+    state.durationSec = 180;
+    state.currentTimeSec = 2;
+    state.hasValidLyrics = true;
+    const sampleLyrics = [
+      { start: 0, end: 4, lineEnd: 5, text: 'Alpha line' },
+      { start: 5, end: 9, lineEnd: 10, text: 'Beta line' },
+      { start: 10, end: 14, lineEnd: 15, text: 'Gamma line' },
+      { start: 15, end: 19, lineEnd: 20, text: 'Delta line' }
+    ];
+    state.activeLyrics = sampleLyrics;
+    buildLyricsDOM(sampleLyrics);
+    nowPlayingOverlay.classList.add('open');
+  `);
+  await h.flushMicrotasks(5);
+
+  const overlay = h.getEl('nowPlayingOverlay');
+  const npRightColumn = h.getEl('npRightColumn');
+  const npRightLyrics = h.getEl('npRightLyrics');
+  const npRightQueue = h.getEl('npRightQueue');
+  const grabber = h.getEl('npGrabberZone');
+
+  // 1. Downward wheel on #npRightLyrics scrolls lyrics without dismissing Now Playing
+  h.triggerElement(npRightLyrics, 'wheel', { deltaY: 120, deltaX: 0, clientX: 700, target: npRightLyrics });
+  assert.equal(h.eval('state.isNowPlayingOpen'), true);
+  assert.equal(h.eval('state.lyricsManualScrolling'), true);
+
+  // 2. Downward wheel on #npRightColumn margin and overlay right-half never dismisses Now Playing
+  h.triggerElement(overlay, 'wheel', { deltaY: 120, deltaX: 0, clientX: 700, target: npRightColumn });
+  h.triggerElement(overlay, 'wheel', { deltaY: 120, deltaX: 0, clientX: 700, target: overlay });
+  assert.equal(h.eval('state.isNowPlayingOpen'), true);
+
+  // 3. Downward touch swipe starting inside right-half margin on overlay never initiates swipe-down dismiss
+  h.triggerElement(overlay, 'touchstart', { touches: [{ clientX: 700, clientY: 200 }], target: overlay });
+  h.triggerWindow('touchmove', { touches: [{ clientX: 700, clientY: 300 }] });
+  assert.equal(h.eval('state.isSwipingNowPlaying'), false);
+  assert.equal(h.eval('state.isNowPlayingOpen'), true);
+  h.triggerWindow('touchend', {});
+
+  // 4. Downward wheel on queue panel at scrollTop === 0 never closes Now Playing
+  h.eval('state.nowPlayingMode = "queue";');
+  h.triggerElement(overlay, 'wheel', { deltaY: 120, deltaX: 0, clientX: 700, target: npRightQueue });
+  assert.equal(h.eval('state.isNowPlayingOpen'), true);
+
+  // 5. Left column swipe-down STILL initiates dismiss cleanly
+  h.eval('state.nowPlayingMode = "lyrics";');
+  h.triggerElement(overlay, 'touchstart', { touches: [{ clientX: 180, clientY: 200 }], target: overlay });
+  h.triggerWindow('touchmove', { touches: [{ clientX: 180, clientY: 300 }] });
+  assert.equal(h.eval('state.isSwipingNowPlaying'), true);
+  h.triggerWindow('touchend', {});
+
+  // 6. Top grabber pill swipe-down STILL initiates dismiss even at x = 512 (center)
+  h.eval('state.isNowPlayingOpen = true; state.isSwipingNowPlaying = false;');
+  h.triggerElement(overlay, 'touchstart', { touches: [{ clientX: 512, clientY: 10 }], target: grabber });
+  h.triggerWindow('touchmove', { touches: [{ clientX: 512, clientY: 120 }] });
+  assert.equal(h.eval('state.isSwipingNowPlaying'), true);
+  h.triggerWindow('touchend', {});
 });
 
 

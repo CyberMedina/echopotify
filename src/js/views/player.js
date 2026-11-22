@@ -867,10 +867,13 @@ function scrollLyricsByDelta(deltaPx, opts = {}) {
   let hasDragged = false;
   let scrollVelocity = 0; // px/ms, positive moves lyrics toward bottom (offset increases)
 
+  function isLyricsPanelActive() {
+    return Boolean(state.isNowPlayingOpen && state.nowPlayingMode === 'lyrics');
+  }
+
   function canScrollLyricsNow() {
     return Boolean(
-      state.isNowPlayingOpen &&
-      state.nowPlayingMode === 'lyrics' &&
+      isLyricsPanelActive() &&
       state.hasValidLyrics &&
       !state.lyricsLoading &&
       state.lyricDOMCache &&
@@ -918,8 +921,13 @@ function scrollLyricsByDelta(deltaPx, opts = {}) {
       }
     }
 
-    if (cancelableEvent && cancelableEvent.cancelable) {
-      cancelableEvent.preventDefault();
+    if (cancelableEvent) {
+      if (typeof cancelableEvent.stopPropagation === 'function') {
+        cancelableEvent.stopPropagation();
+      }
+      if (cancelableEvent.cancelable) {
+        cancelableEvent.preventDefault();
+      }
     }
 
     const now = Date.now();
@@ -1021,11 +1029,17 @@ function scrollLyricsByDelta(deltaPx, opts = {}) {
   }
 
   npRightLyrics.addEventListener('touchstart', (e) => {
+    if (isLyricsPanelActive() && typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
     if (!e.touches || e.touches.length !== 1) return;
     handlePointerStart('touch', e.touches[0].clientX, e.touches[0].clientY);
   }, { passive: true });
 
   npRightLyrics.addEventListener('touchmove', (e) => {
+    if (isLyricsPanelActive() && typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
     if (pointerMode !== 'touch' || !e.touches || e.touches.length !== 1) return;
     handlePointerMove(e.touches[0].clientX, e.touches[0].clientY, e);
   }, { passive: false });
@@ -1040,6 +1054,9 @@ function scrollLyricsByDelta(deltaPx, opts = {}) {
 
   npRightLyrics.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
+    if (isLyricsPanelActive() && typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
     handlePointerStart('mouse', e.clientX, e.clientY);
   });
 
@@ -1052,12 +1069,16 @@ function scrollLyricsByDelta(deltaPx, opts = {}) {
   });
 
   npRightLyrics.addEventListener('wheel', (e) => {
+    if (!isLyricsPanelActive()) return;
+    if (typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
     if (!canScrollLyricsNow()) return;
-    const rawDelta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : 0;
-    if (!rawDelta) return;
-    e.stopPropagation();
+    const scaleY = e.deltaMode === 1 ? 32 : (e.deltaMode === 2 ? 320 : 1);
+    const rawDelta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? (e.deltaY * scaleY) : 0;
     if (e.cancelable) e.preventDefault();
-    const clampedDelta = Math.max(-160, Math.min(160, rawDelta));
+    if (!rawDelta) return;
+    const clampedDelta = Math.max(-180, Math.min(180, rawDelta));
     scrollLyricsByDelta(clampedDelta, { smoothWheel: true });
   }, { passive: false });
 })();

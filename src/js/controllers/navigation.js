@@ -253,25 +253,42 @@ function closeNowPlaying(opts = {}) {
   let isDragging = false;
   let currentDy = 0;
 
-  function shouldIgnoreEvent(target) {
-    if (!target) return false;
+  function isInsideReservedScrollArea(target, clientX) {
+    const el = (target && target.nodeType === 3) ? target.parentElement : target;
+    if (el && el.closest && el.closest('#npGrabberZone')) return false;
+    const isSplitRightPanelOpen = state.nowPlayingMode === 'lyrics' || state.nowPlayingMode === 'queue';
+    if (!isSplitRightPanelOpen) return false;
+    if (el && el.closest && (el.closest('#npRightLyrics') || el.closest('#npRightColumn') || el.closest('#npRightQueue'))) {
+      return true;
+    }
+    if (typeof clientX === 'number') {
+      const rect = overlay.getBoundingClientRect();
+      if (rect && rect.width > 0 && ((clientX - rect.left) / rect.width) >= 0.43) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function shouldIgnoreEvent(target, clientX) {
+    const el = (target && target.nodeType === 3) ? target.parentElement : target;
+    if (isInsideReservedScrollArea(el, clientX)) return true;
+    if (!el || !el.closest) return false;
     // 1. Scrubber track & volume track (interacción precisa de seek)
-    if (target.closest('#npScrubberTrack') || target.closest('#npVolumeTrack')) return true;
+    if (el.closest('#npScrubberTrack') || el.closest('#npVolumeTrack')) return true;
     // 2. Botones de transporte (play, pause, next, prev, shuffle, repeat)
-    if (target.closest('.np-transport-btn')) return true;
+    if (el.closest('.np-transport-btn')) return true;
     // 3. Botones dock inferiores (Letra / Cola) & favoritos
-    if (target.closest('.np-dock-btn') || target.closest('.np-circle-btn')) return true;
+    if (el.closest('.np-dock-btn') || el.closest('.np-circle-btn')) return true;
     // 4. Lista de cola scrolleada hacia abajo: permitir scroll interno de la cola
-    const queueList = target.closest('#npQueueListContainer');
+    const queueList = el.closest('#npQueueListContainer');
     if (queueList && queueList.scrollTop > 5) return true;
-    // 5. Columna de letras sincronizadas: permitir scroll táctil libre sin cerrar Now Playing
-    if (target.closest('#npRightLyrics') && state.nowPlayingMode === 'lyrics' && (state.hasValidLyrics || state.lyricsLoading)) return true;
     return false;
   }
 
   function handleStart(clientX, clientY, target) {
     if (!state.isNowPlayingOpen) return false;
-    if (shouldIgnoreEvent(target)) return false;
+    if (shouldIgnoreEvent(target, clientX)) return false;
 
     startX = clientX;
     startY = clientY;
@@ -431,9 +448,14 @@ function closeNowPlaying(opts = {}) {
   let wheelResetTimer = null;
   overlay.addEventListener('wheel', (e) => {
     if (!state.isNowPlayingOpen) return;
-    if (e.target && e.target.closest && e.target.closest('#npRightLyrics') && state.nowPlayingMode === 'lyrics' && (state.hasValidLyrics || state.lyricsLoading)) return;
-    const queueList = e.target.closest('#npQueueListContainer');
-    if (queueList && queueList.scrollHeight > queueList.clientHeight && queueList.scrollTop > 5) return;
+    if (isInsideReservedScrollArea(e.target, e.clientX)) {
+      wheelAccumulator = 0;
+      return;
+    }
+    if (e.target && e.target.closest && e.target.closest('#npQueueListContainer')) {
+      wheelAccumulator = 0;
+      return;
+    }
 
     if (e.deltaY > 0) {
       wheelAccumulator += e.deltaY;

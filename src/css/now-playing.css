@@ -455,11 +455,12 @@ body.np-fully-open .ambient-bg {
 /* Right Column: Lyrics or Queue Container (GPU Composited) */
 .np-right-column {
   position: absolute;
-  right: 48px;
-  top: 50%;
-  transform: translate3d(0, -50%, 0);
-  width: 508px;
-  height: 560px;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  left: calc(50% - 76px);
+  height: 100%;
+  transform: translate3d(0, 0, 0);
   z-index: 2;
   opacity: 1;
   pointer-events: auto;
@@ -528,7 +529,7 @@ body.np-fully-open .ambient-bg {
 
 .np-main-grid.centered-layout .np-right-column {
   opacity: 0;
-  transform: translate3d(70px, -50%, 0);
+  transform: translate3d(70px, 0, 0);
   pointer-events: none;
 }
 
@@ -805,7 +806,8 @@ body.np-fully-open .ambient-bg {
   inset: 0;
   height: 100%;
   overflow: hidden;
-  padding-left: 16px;
+  padding: 40px 48px 40px 48px;
+  box-sizing: border-box;
   contain: strict;
   user-select: none;
   touch-action: none;
@@ -831,6 +833,7 @@ body.np-fully-open .ambient-bg {
 }
 
 .lyrics-scroll-track {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 22px;
@@ -1170,8 +1173,8 @@ body.np-fully-open .ambient-bg {
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding-left: 16px;
-  padding-right: 4px;
+  padding: 40px 48px 40px 48px;
+  box-sizing: border-box;
   contain: layout paint;
 }
 
