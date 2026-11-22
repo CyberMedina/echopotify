@@ -21,8 +21,8 @@
   <link rel="dns-prefetch" href="https://mosaic.scdn.co" />
   <link rel="stylesheet" href="src/css/base.css?v=7.0" />
   <link rel="stylesheet" href="src/css/views.css?v=7.0" />
-  <link rel="stylesheet" href="src/css/now-playing.css?v=8.1" />
-  <link rel="stylesheet" href="src/css/theme-modals.css?v=8.2" />
+  <link rel="stylesheet" href="src/css/now-playing.css?v=8.7" />
+  <link rel="stylesheet" href="src/css/theme-modals.css?v=8.3" />
   <script src="https://cdn.html.games.alexa.a2z.com/alexa-html/latest/alexa-html.js"></script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 </head>
@@ -587,11 +587,10 @@
                   <polyline points="7 23 3 19 7 15"></polyline>
                   <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
                 </svg>
+                <span class="np-repeat-one-badge" aria-hidden="true">1</span>
               </button>
             </div>
           </div>
-
-          <button id="npShuffleBtn" type="button" style="display:none;" aria-hidden="true"></button>
 
           <!-- Hidden Volume Element kept for JS compatibility -->
           <div class="np-volume-row" style="display:none;">
@@ -616,12 +615,23 @@
                 <h3 class="np-queue-heading" id="npQueueHeading">A continuación</h3>
                 <div class="np-queue-subheading" id="npQueueSubheading"></div>
               </div>
-              <button class="np-queue-see-all" id="npQueueSeeAllBtn" type="button" style="display: none;">
-                <span id="npQueueSeeAllLabel">Ver cola</span>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="9 18 15 12 9 6"></polyline>
-                </svg>
-              </button>
+              <div class="np-queue-header-actions">
+                <button class="np-queue-shuffle-btn" id="npShuffleBtn" type="button" title="Aleatorio">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="16 3 21 3 21 8"></polyline>
+                    <line x1="4" y1="20" x2="21" y2="3"></line>
+                    <polyline points="21 16 21 21 16 21"></polyline>
+                    <line x1="15" y1="15" x2="21" y2="21"></line>
+                    <line x1="4" y1="4" x2="9" y2="9"></line>
+                  </svg>
+                </button>
+                <button class="np-queue-see-all" id="npQueueSeeAllBtn" type="button" style="display: none;">
+                  <span id="npQueueSeeAllLabel">Ver cola</span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+              </div>
             </div>
 
             <!-- Active Now Playing Card in Queue (hidden to avoid duplicating Now Playing from left column) -->
@@ -668,36 +678,24 @@
     </aside>
 
     <!-- ==================================================================
-         SPOTIFY CONNECT: AUDIO OUTPUT FLYOUT MODAL
+         SPOTIFY CONNECT: APPLE MUSIC / AIRPLAY AUDIO OUTPUT POPOVER
          ================================================================== -->
     <div class="spotify-modal-backdrop devices-backdrop" id="devicesModal">
       <div class="devices-flyout-card" id="devicesFlyoutCard">
         <div class="devices-flyout-header">
           <div class="devices-header-left">
-            <div class="audio-output-eq">
-              <span class="eq-b1"></span>
-              <span class="eq-b2"></span>
-              <span class="eq-b3"></span>
-            </div>
+            <img id="devicesNowPlayingCover" class="devices-np-thumb" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'/>" alt="" decoding="async" draggable="false" />
             <div class="devices-header-titles">
-              <h3 class="devices-header-title">Salida de audio</h3>
-              <p class="devices-header-subtitle">Elige dónde escuchar tu música</p>
+              <h3 class="devices-header-title" id="devicesNowPlayingTitle">Salida de audio</h3>
+              <p class="devices-header-subtitle" id="devicesNowPlayingArtist">Elige dónde escuchar</p>
             </div>
           </div>
           <button class="devices-flyout-close" id="closeDevicesModalBtn" type="button" title="Cerrar">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
         </div>
         <div class="devices-content-body" id="devicesListContainer">
           <!-- Generado dinámicamente -->
-        </div>
-        <div class="devices-flyout-footer">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="16" x2="12" y2="12"></line>
-            <line x1="12" y1="8" x2="12.01" y2="8"></line>
-          </svg>
-          <span>Selecciona un dispositivo para cambiar la reproducción.</span>
         </div>
       </div>
     </div>
@@ -859,24 +857,24 @@
   </div>
 
   <!-- Core Architecture -->
-  <script src="src/js/core/state.js?v=7.8"></script>
+  <script src="src/js/core/state.js?v=8.8"></script>
   <script src="src/js/core/dom.js?v=7.0"></script>
   <script src="src/js/core/color.js?v=7.0"></script>
 
   <!-- External Services (OAuth 2.0 PKCE, Spotify API & Web Playback SDK, EchoRadio, LRCLIB) -->
   <script src="src/js/services/auth.js?v=7.0"></script>
-  <script src="src/js/services/spotify.js?v=7.7"></script>
+  <script src="src/js/services/spotify.js?v=8.8"></script>
   <script src="src/js/services/radio.js?v=7.0"></script>
   <script src="src/js/services/lyrics.js?v=7.8"></script>
 
   <!-- UI Views & Renderers -->
-  <script src="src/js/views/catalog.js?v=7.6"></script>
+  <script src="src/js/views/catalog.js?v=7.8"></script>
   <script src="src/js/views/details.js?v=7.0"></script>
-  <script src="src/js/views/player.js?v=8.2"></script>
+  <script src="src/js/views/player.js?v=9.0"></script>
 
   <!-- Controllers & Bootstrap -->
   <script src="src/js/controllers/navigation.js?v=8.0"></script>
-  <script src="src/js/controllers/events.js?v=8.1"></script>
+  <script src="src/js/controllers/events.js?v=9.1"></script>
   <script src="src/js/main.js?v=7.6"></script>
 </body>
 </html>

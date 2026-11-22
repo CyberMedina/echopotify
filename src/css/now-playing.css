@@ -919,6 +919,78 @@ body.np-fully-open .ambient-bg {
   background: rgba(255, 255, 255, 0.14);
 }
 
+@keyframes npControlPop {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(0.84);
+  }
+  68% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.np-transport-btn.is-popping,
+.np-queue-shuffle-btn.is-popping {
+  animation: npControlPop 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#npRepeatBtn {
+  position: relative;
+}
+
+#npRepeatBtn.active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+#npRepeatBtn.active::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffffff;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+#npRepeatBtn.is-repeat-track {
+  background: rgba(255, 255, 255, 0.20);
+}
+
+.np-repeat-one-badge {
+  position: absolute;
+  top: 8px;
+  right: 7px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 99px;
+  background: #ffffff;
+  color: #141619;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 14px;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 0.16s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+#npRepeatBtn.is-repeat-track .np-repeat-one-badge {
+  opacity: 1;
+  transform: scale(1);
+}
+
 /* ==========================================================================
    Right Column: AMLL (Apple Music-Like Lyrics) Engine — Echo Show GPU Optimized
    - Static container vertical fade mask (0% re-raster cost)
@@ -1307,14 +1379,17 @@ body.np-fully-open .ambient-bg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 10px 14px 6px;
+  padding: 0 6px 14px 6px;
   flex-shrink: 0;
+  gap: 12px;
 }
 
 .np-queue-header-titles {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
 
 .np-queue-heading {
@@ -1326,10 +1401,51 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-queue-subheading {
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 400;
   color: rgba(255, 255, 255, 0.58);
   letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.np-queue-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.np-queue-shuffle-btn {
+  width: 42px;
+  height: 32px;
+  border-radius: 10px;
+  border: none;
+  background: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.76);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+.np-queue-shuffle-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.np-queue-shuffle-btn:active {
+  transform: scale(0.93);
+}
+
+.np-queue-shuffle-btn.active {
+  background: rgba(255, 255, 255, 0.94);
+  color: #141619;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
 }
 
 .np-queue-see-all {
@@ -1470,7 +1586,7 @@ body.np-fully-open .ambient-bg {
   scrollbar-width: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
   padding-bottom: 84px;
 }
 
@@ -1482,12 +1598,28 @@ body.np-fully-open .ambient-bg {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 9px 12px;
-  border-radius: 16px;
+  padding: 9px 10px;
+  border-radius: 12px;
   cursor: pointer;
   transition: background 0.15s ease, transform 0.12s ease;
   flex-shrink: 0;
   position: relative;
+}
+
+.np-queue-row + .np-queue-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 70px;
+  right: 10px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.np-queue-row.is-dragging::before,
+.np-queue-row.is-dragging + .np-queue-row::before {
+  opacity: 0;
 }
 
 .np-queue-row:hover {
@@ -1499,14 +1631,19 @@ body.np-fully-open .ambient-bg {
   transform: scale(0.99);
 }
 
-.np-queue-index {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.38);
-  width: 22px;
-  text-align: center;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
+.np-queue-row.is-displaced {
+  transition: transform 0.20s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.np-queue-row.is-dragging {
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
+  pointer-events: none;
+  will-change: transform;
+  transition: none !important;
 }
 
 .np-queue-row .np-queue-thumb {
@@ -1537,14 +1674,140 @@ body.np-fully-open .ambient-bg {
   text-overflow: ellipsis;
 }
 
-.np-queue-duration {
-  font-size: 13.5px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.55);
-  font-variant-numeric: tabular-nums;
+.np-queue-drag-handle {
+  width: 36px;
+  height: 36px;
   margin-left: auto;
-  padding-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.36);
+  cursor: grab;
+  touch-action: none;
   flex-shrink: 0;
+  border-radius: 10px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.np-queue-drag-handle:hover {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.np-queue-drag-handle:active {
+  cursor: grabbing;
+  color: #ffffff;
+}
+
+.np-queue-drag-handle svg {
+  pointer-events: none;
+}
+
+/* Smooth GPU row reveal after skeleton -> merged queue */
+@keyframes npQueueRowEnter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.np-queue-row.np-queue-row-enter {
+  animation: npQueueRowEnter 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--queue-enter-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+/* Apple Music Translucent Queue Skeleton Rows */
+.np-queue-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  position: relative;
+  flex-shrink: 0;
+  pointer-events: none;
+  user-select: none;
+  opacity: var(--skel-opacity, 0.72);
+}
+
+.np-queue-row + .np-queue-skeleton-row::before,
+.np-queue-skeleton-row + .np-queue-skeleton-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 70px;
+  right: 10px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.np-queue-skeleton-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.11);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.np-queue-skeleton-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.np-queue-skeleton-title {
+  height: 14px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.13);
+  position: relative;
+  overflow: hidden;
+}
+
+.np-queue-skeleton-artist {
+  height: 11px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  position: relative;
+  overflow: hidden;
+}
+
+.np-queue-skeleton-handle {
+  width: 16px;
+  height: 12px;
+  margin-left: auto;
+  margin-right: 10px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+}
+
+.np-queue-skeleton-thumb::after,
+.np-queue-skeleton-title::after,
+.np-queue-skeleton-artist::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 60%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 25%,
+    rgba(255, 255, 255, 0.30) 50%,
+    rgba(255, 255, 255, 0.08) 75%,
+    transparent 100%
+  );
+  transform: translate3d(-110%, 0, 0);
+  animation: appleScrubberShimmer 1.65s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-delay: var(--skel-delay, 0ms);
+  will-change: transform;
 }
 
 /* Priority 2: Elegant Empty State when only 1 song is playing */

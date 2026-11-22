@@ -107,6 +107,17 @@ const state = {
   userForcedCentered: false,
   nowPlayingMode: 'lyrics',
   queueExpanded: false,
+  hasCustomReorderedQueue: false,
+  isDraggingQueueRow: false,
+  shuffleToggleLockUntil: 0,
+  repeatToggleLockUntil: 0,
+  isLocalContextQueue: false,
+  activeContextType: '',
+  activeContextId: '',
+  activeContextUri: '',
+  activeContextName: '',
+  playbackHistory: [],
+  lastSeekToZeroAt: 0,
   singleTrackPlayback: false,
   isAutoplayQueue: false,
   autoplayLoading: false,
@@ -384,6 +395,10 @@ function saveLastPlayedTrack(trackData) {
       cover: trackData.cover || '',
       coverLarge: trackData.coverLarge || trackData.cover || '',
       duration: trackData.duration || 0,
+      contextType: trackData.contextType || '',
+      contextName: trackData.contextName || '',
+      contextUri: trackData.contextUri || '',
+      contextId: trackData.contextId || '',
       savedAt: Date.now()
     }));
   } catch (e) { }

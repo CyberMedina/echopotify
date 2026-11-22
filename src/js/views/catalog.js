@@ -81,6 +81,27 @@ async function loadAllRealSpotifyData() {
       hasMoreTracks: (likedRes.items || []).length < likedRes.total
     };
 
+    if (state.activeContextType === 'liked' && state.playingTrackId && (!Array.isArray(state.liveQueueTracks) || state.liveQueueTracks.length === 0)) {
+      const curCid = cleanTrackId(state.playingTrackId || state.playingTrackUri);
+      const curIdx = tracks.findIndex(t => curCid && cleanTrackId(t.id || t.uri) === curCid);
+      if (curIdx >= 0) {
+        const upcoming = tracks.slice(curIdx + 1);
+        const prev = tracks.slice(0, curIdx);
+        state.isLocalContextQueue = true;
+        state.activeContextName = 'Tus me gusta';
+        state.contextUpcomingTracks = upcoming;
+        state.liveQueueTracks = (typeof normalizeApiTrack === 'function')
+          ? upcoming.map(normalizeApiTrack).filter(Boolean)
+          : upcoming;
+        state.playbackHistory = ((typeof normalizeApiTrack === 'function')
+          ? prev.map(normalizeApiTrack).filter(Boolean)
+          : prev).slice(-50);
+        if (state.nowPlayingMode === 'queue' && typeof renderQueuePanelUI === 'function') {
+          renderQueuePanelUI();
+        }
+      }
+    }
+
     // Pre-cargar en segundo plano hasta 250 canciones de "Tus me gusta" para no quedar cortos al reproducir desde el medio
     if ((likedRes.items || []).length < likedRes.total) {
       (async function preloadLikedTracksInBackground() {
@@ -830,6 +851,7 @@ function renderLibrary(filter = 'all') {
       items.push({
         playUri: t.uri,
         trackObj: t,
+        contextSource: 'liked',
         title: t.title,
         sub: t.artist,
         cover: t.cover,
@@ -870,8 +892,9 @@ function renderLibrary(filter = 'all') {
       : (item.djCard ? `<span class="dj-ai-badge">AI</span>` : '');
 
     const rawLibDur = item.durationMs ? Math.round(item.durationMs / 1000) : (item.duration || '');
+    const contextAttr = item.contextSource ? ` data-context-source="${item.contextSource}"` : '';
     const actionAttr = item.playUri
-      ? `data-play-direct-uri="${item.playUri}" data-title="${item.title.replace(/"/g, '&quot;')}" data-artist="${item.sub.replace(/"/g, '&quot;')}" data-cover="${item.coverLarge || item.cover || ''}" data-thumb="${item.thumb || item.cover || ''}" data-duration="${rawLibDur}"`
+      ? `data-play-direct-uri="${item.playUri}" data-title="${item.title.replace(/"/g, '&quot;')}" data-artist="${item.sub.replace(/"/g, '&quot;')}" data-cover="${item.coverLarge || item.cover || ''}" data-thumb="${item.thumb || item.cover || ''}" data-duration="${rawLibDur}"${contextAttr}`
       : `data-open-entity="${item.id}"`;
 
     return `

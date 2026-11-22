@@ -31,18 +31,56 @@ document.addEventListener('click', async (e) => {
     const rawDur = parseInt(directPlay.getAttribute('data-duration'), 10);
     const duration = (Number.isFinite(rawDur) && rawDur > 0) ? rawDur : 0;
     const isContextUri = uri.startsWith('spotify:playlist:') || uri.startsWith('spotify:album:');
+    const contextSource = directPlay.getAttribute('data-context-source') || '';
+    const cleanId = cleanTrackId(uri);
+    const isLikedContext = Boolean(contextSource === 'liked' && !isContextUri && Array.isArray(liveCatalog.likedTracks) && liveCatalog.likedTracks.length > 0);
+    let likedUpcomingSlice = [];
     state.singleTrackPlayback = false;
+    state.hasCustomReorderedQueue = false;
     if (isContextUri) {
       if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
+      state.isLocalContextQueue = false;
+      state.activeContextType = uri.startsWith('spotify:album:') ? 'album' : 'playlist';
+      state.activeContextId = '';
+      state.activeContextUri = uri;
+      state.activeContextName = title || '';
+      state.playbackHistory = [];
       state.sdkNextTracks = [];
       state.liveQueueTracks = [];
       state.contextUpcomingTracks = [];
+    } else if (isLikedContext) {
+      if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
+      const clickedIdx = liveCatalog.likedTracks.findIndex(t =>
+        (cleanId && cleanTrackId(t.id || t.uri) === cleanId) || (uri && t.uri === uri)
+      );
+      likedUpcomingSlice = clickedIdx >= 0
+        ? liveCatalog.likedTracks.slice(clickedIdx + 1)
+        : liveCatalog.likedTracks.filter(t => t.uri !== uri);
+      const likedPrevSlice = clickedIdx > 0 ? liveCatalog.likedTracks.slice(0, clickedIdx) : [];
+      state.playbackHistory = ((typeof normalizeApiTrack === 'function')
+        ? likedPrevSlice.map(normalizeApiTrack).filter(Boolean)
+        : likedPrevSlice).slice(-50);
+      state.isLocalContextQueue = true;
+      state.activeContextType = 'liked';
+      state.activeContextId = 'liked_songs';
+      state.activeContextUri = '';
+      state.activeContextName = 'Tus me gusta';
+      state.sdkNextTracks = [];
+      state.contextUpcomingTracks = likedUpcomingSlice;
+      state.liveQueueTracks = (typeof normalizeApiTrack === 'function')
+        ? likedUpcomingSlice.map(normalizeApiTrack).filter(Boolean)
+        : likedUpcomingSlice;
     } else {
+      state.isLocalContextQueue = false;
+      state.activeContextType = '';
+      state.activeContextId = '';
+      state.activeContextUri = '';
+      state.activeContextName = '';
+      state.playbackHistory = [];
       state.isAutoplayQueue = true;
       state.sdkNextTracks = [];
       state.contextUpcomingTracks = [];
     }
-    const cleanId = cleanTrackId(uri);
     applyTrackToUI({
       id: cleanId || uri,
       uri,
@@ -62,6 +100,13 @@ document.addEventListener('click', async (e) => {
             if (uri.includes('37i9dQZF1EYkqdzj48dyYq')) {
               alert('Nota: Spotify restringe el AI DJ exclusivamente a su app oficial de iOS/Android; la API de Spotify no permite iniciar la voz del DJ en clientes externos.');
             }
+          }
+        });
+      } else if (isLikedContext) {
+        const likedUris = [uri, ...likedUpcomingSlice.slice(0, 79).map(t => t.uri)].filter(Boolean);
+        playSpotifyUris(likedUris, likedUpcomingSlice, { keepLocalContext: true }).then(res => {
+          if (res && res.error) {
+            console.warn('[Spotify Playback Error]', res.error);
           }
         });
       } else {
@@ -135,9 +180,37 @@ document.addEventListener('click', async (e) => {
 
     const entity = liveCatalog.entities[entityId] || liveCatalog.entities[state.selectedEntityId];
     const upcomingSlice = (entity && Array.isArray(entity.tracks)) ? entity.tracks.slice(idx + 1) : [];
+    const usesNativeContext = Boolean(entity && entity.uri && (entity.type === 'album' || entity.type === 'playlist'));
+    const usesLocalContext = Boolean(!usesNativeContext && entity && Array.isArray(entity.tracks));
     if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
     state.sdkNextTracks = [];
+    state.hasCustomReorderedQueue = false;
     state.singleTrackPlayback = false;
+    state.isLocalContextQueue = usesLocalContext;
+    if (usesNativeContext) {
+      state.activeContextType = entity.type || '';
+      state.activeContextId = entity.id || '';
+      state.activeContextUri = entity.uri || '';
+    } else if (usesLocalContext) {
+      state.activeContextType = (entity.id === 'liked_songs' || entity.type === 'liked') ? 'liked' : (entity.type || '');
+      state.activeContextId = entity.id || '';
+      state.activeContextUri = '';
+    } else {
+      state.activeContextType = '';
+      state.activeContextId = '';
+      state.activeContextUri = '';
+    }
+    state.activeContextName = entity
+      ? ((entity.id === 'liked_songs' || entity.type === 'liked') ? 'Tus me gusta' : (entity.title || ''))
+      : '';
+    if (usesLocalContext && entity && Array.isArray(entity.tracks) && idx > 0) {
+      const prevRaw = entity.tracks.slice(0, idx);
+      state.playbackHistory = ((typeof normalizeApiTrack === 'function')
+        ? prevRaw.map(normalizeApiTrack).filter(Boolean)
+        : prevRaw).slice(-50);
+    } else {
+      state.playbackHistory = [];
+    }
     state.contextUpcomingTracks = upcomingSlice;
     state.liveQueueTracks = (typeof normalizeApiTrack === 'function')
       ? upcomingSlice.map(normalizeApiTrack).filter(Boolean)
@@ -157,12 +230,17 @@ document.addEventListener('click', async (e) => {
     }, 0, true);
     openNowPlaying();
 
-    if (entity && entity.uri && (entity.type === 'album' || entity.type === 'playlist')) {
+    if (usesNativeContext) {
       playSpotifyContext(entity.uri, trackUri ? { uri: trackUri } : idx, upcomingSlice);
-    } else if (entity && Array.isArray(entity.tracks)) {
+    } else if (usesLocalContext) {
       const uris = entity.tracks.slice(idx).map(t => t.uri).filter(Boolean);
-      if (uris.length > 0) playSpotifyUris(uris, upcomingSlice);
+      if (uris.length > 0) playSpotifyUris(uris, upcomingSlice, { keepLocalContext: true });
     } else if (trackUri) {
+      state.isLocalContextQueue = false;
+      state.activeContextType = '';
+      state.activeContextId = '';
+      state.activeContextUri = '';
+      state.activeContextName = '';
       playSingleTrackWithAutoplay({
         id: cleanId || trackId || trackUri,
         uri: trackUri,
@@ -180,6 +258,7 @@ document.addEventListener('click', async (e) => {
   // 5B. Click Track inside Queue ("A continuación") or API Discovery List
   const queueRow = e.target.closest('.np-queue-row');
   if (queueRow && !state.isSwipingNowPlaying) {
+    if (e.target.closest('.np-queue-drag-handle') || state.isDraggingQueueRow) return;
     const qSource = queueRow.getAttribute('data-queue-source') || 'queue';
     const qIdx = parseInt(queueRow.getAttribute('data-queue-idx'), 10) || 0;
     const trackId = queueRow.getAttribute('data-track-id');
@@ -194,13 +273,18 @@ document.addEventListener('click', async (e) => {
 
     const cleanId = cleanTrackId(trackId || trackUri);
     state.sdkNextTracks = [];
+    state.hasCustomReorderedQueue = false;
     if (qSource === 'queue' && state.liveQueueTracks.length > qIdx) {
       const wasAutoplay = Boolean(state.isAutoplayQueue);
+      const wasLocalContext = Boolean(state.isLocalContextQueue);
       if (wasAutoplay && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionTracks.length > 0) {
         const baseIdx = Math.max(0, state.autoplaySessionIndex || 0);
         state.autoplaySessionIndex = Math.min(state.autoplaySessionTracks.length - 1, baseIdx + 1 + qIdx);
       }
       const remaining = state.liveQueueTracks.slice(qIdx + 1);
+      if (wasLocalContext && typeof pushCurrentTrackToHistory === 'function') {
+        pushCurrentTrackToHistory();
+      }
       state.singleTrackPlayback = false;
       state.liveQueueTracks = remaining;
       state.contextUpcomingTracks = remaining;
@@ -216,12 +300,22 @@ document.addEventListener('click', async (e) => {
         duration: duration || undefined
       }, 0, true);
       const uris = [trackUri, ...remaining.slice(0, 19).map(t => t.uri)].filter(Boolean);
-      if (uris.length > 0) playSpotifyUris(uris, remaining, { keepAutoplaySession: wasAutoplay });
+      if (uris.length > 0) {
+        playSpotifyUris(uris, remaining, {
+          keepAutoplaySession: wasAutoplay,
+          keepLocalContext: wasLocalContext
+        });
+      }
       if (wasAutoplay && remaining.length < 8 && typeof replenishAutoplayQueue === 'function') {
         replenishAutoplayQueue();
       }
     } else {
       state.singleTrackPlayback = false;
+      state.isLocalContextQueue = false;
+      state.activeContextType = '';
+      state.activeContextId = '';
+      state.activeContextUri = '';
+      state.activeContextName = '';
       state.isAutoplayQueue = true;
       state.contextUpcomingTracks = [];
       state.discoveryTracks = [];
@@ -357,9 +451,17 @@ function startAlbumOrPlaylistPlayback(shuffled = false) {
 
   if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
   state.sdkNextTracks = [];
+  state.hasCustomReorderedQueue = false;
   state.singleTrackPlayback = false;
 
   const tracks = Array.isArray(entity.tracks) ? entity.tracks : [];
+  const usesNativeContext = Boolean(entity.uri && (entity.type === 'album' || entity.type === 'playlist'));
+  state.playbackHistory = [];
+  state.isLocalContextQueue = !usesNativeContext;
+  state.activeContextType = (entity.id === 'liked_songs' || entity.type === 'liked') ? 'liked' : (entity.type || '');
+  state.activeContextId = entity.id || '';
+  state.activeContextUri = usesNativeContext ? (entity.uri || '') : '';
+  state.activeContextName = (entity.id === 'liked_songs' || entity.type === 'liked') ? 'Tus me gusta' : (entity.title || '');
 
   if (!shuffled) {
     const upcomingSlice = tracks.length > 0 ? tracks.slice(1) : [];
@@ -383,17 +485,17 @@ function startAlbumOrPlaylistPlayback(shuffled = false) {
       }, 0, true);
     }
     openNowPlaying();
-    if (entity.uri && (entity.type === 'album' || entity.type === 'playlist')) {
+    if (usesNativeContext) {
       playSpotifyContext(entity.uri, 0, upcomingSlice, { preserveShuffle: false });
     } else if (tracks.length > 0) {
       const uris = tracks.map(t => t.uri).filter(Boolean);
-      if (uris.length > 0) playSpotifyUris(uris, upcomingSlice);
+      if (uris.length > 0) playSpotifyUris(uris, upcomingSlice, { keepLocalContext: true });
     }
     return;
   }
 
   // Modo Aleatorio
-  if (entity.uri && (entity.type === 'album' || entity.type === 'playlist')) {
+  if (usesNativeContext) {
     state.contextUpcomingTracks = [];
     state.liveQueueTracks = [];
     openNowPlaying();
@@ -420,7 +522,7 @@ function startAlbumOrPlaylistPlayback(shuffled = false) {
     }, 0, true);
     openNowPlaying();
     const uris = shuffledTracks.map(t => t.uri).filter(Boolean);
-    if (uris.length > 0) playSpotifyUris(uris, remaining);
+    if (uris.length > 0) playSpotifyUris(uris, remaining, { keepLocalContext: true });
   }
 }
 
@@ -466,7 +568,14 @@ if (artistPlayBtn) {
     const first = tracks[0];
     if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
     state.sdkNextTracks = [];
+    state.hasCustomReorderedQueue = false;
     state.singleTrackPlayback = false;
+    state.isLocalContextQueue = true;
+    state.activeContextType = 'artist';
+    state.activeContextId = artist.id || state.selectedArtistId || '';
+    state.activeContextUri = '';
+    state.activeContextName = artist.name || artist.title || 'Artista';
+    state.playbackHistory = [];
     state.contextUpcomingTracks = tracks.slice(1).map(t => ({
       id: t.id || t.uri,
       uri: t.uri,
@@ -496,9 +605,9 @@ if (artistPlayBtn) {
     openNowPlaying();
     const uris = tracks.map(t => t.uri).filter(Boolean);
     if (uris.length > 0) {
-      playSpotifyUris(uris, state.contextUpcomingTracks);
+      playSpotifyUris(uris, state.contextUpcomingTracks, { keepLocalContext: true });
     } else if (first.uri) {
-      playSpotifyTrackUri(first.uri);
+      playSpotifyUris([first.uri], state.contextUpcomingTracks, { keepLocalContext: true });
     }
   });
 }
@@ -514,7 +623,14 @@ if (artistShuffleBtn) {
     const first = shuffled[0];
     if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
     state.sdkNextTracks = [];
+    state.hasCustomReorderedQueue = false;
     state.singleTrackPlayback = false;
+    state.isLocalContextQueue = true;
+    state.activeContextType = 'artist';
+    state.activeContextId = artist.id || state.selectedArtistId || '';
+    state.activeContextUri = '';
+    state.activeContextName = artist.name || artist.title || 'Artista';
+    state.playbackHistory = [];
     state.contextUpcomingTracks = shuffled.slice(1).map(t => ({
       id: t.id || t.uri,
       uri: t.uri,
@@ -544,9 +660,9 @@ if (artistShuffleBtn) {
     openNowPlaying();
     const uris = shuffled.map(t => t.uri).filter(Boolean);
     if (uris.length > 0) {
-      playSpotifyUris(uris, state.contextUpcomingTracks);
+      playSpotifyUris(uris, state.contextUpcomingTracks, { keepLocalContext: true });
     } else if (first.uri) {
-      playSpotifyTrackUri(first.uri);
+      playSpotifyUris([first.uri], state.contextUpcomingTracks, { keepLocalContext: true });
     }
   });
 }
@@ -599,7 +715,17 @@ function handleArtistTrackSelect(item) {
 
   if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
   state.sdkNextTracks = [];
+  state.hasCustomReorderedQueue = false;
   state.singleTrackPlayback = false;
+  state.isLocalContextQueue = true;
+  state.activeContextType = 'artist';
+  state.activeContextId = artist.id || state.selectedArtistId || '';
+  state.activeContextUri = '';
+  state.activeContextName = artist.name || artist.title || 'Artista';
+  const artistPrevRaw = idx > 0 ? tracks.slice(0, idx) : [];
+  state.playbackHistory = ((typeof normalizeApiTrack === 'function')
+    ? artistPrevRaw.map(normalizeApiTrack).filter(Boolean)
+    : artistPrevRaw).slice(-50);
   state.contextUpcomingTracks = upcoming;
   state.liveQueueTracks = (typeof normalizeApiTrack === 'function')
     ? upcoming.map(normalizeApiTrack).filter(Boolean)
@@ -620,26 +746,12 @@ function handleArtistTrackSelect(item) {
 
   openNowPlaying();
 
-  // Reproducción nativa de Spotify: Usar contexto de artista con offset de URI (evita error 403 Restriction Violated)
-  const spotifyArtistId = artist.spotifyId || (typeof state.selectedArtistId === 'string' && /^[0-9A-Za-z]{22}$/.test(state.selectedArtistId) ? state.selectedArtistId : null);
-  if (spotifyArtistId && trackUri) {
-    playSpotifyContext(`spotify:artist:${spotifyArtistId}`, { uri: trackUri }, upcoming, { suppressErrorUI: true }).then(res => {
-      if (res && res.error) {
-        const uris = tracks.slice(idx).map(t => t.uri).filter(Boolean);
-        if (uris.length > 0) {
-          playSpotifyUris(uris, upcoming);
-        } else if (trackUri) {
-          playSpotifyUris([trackUri], upcoming);
-        }
-      }
-    });
-  } else {
-    const uris = tracks.slice(idx).map(t => t.uri).filter(Boolean);
-    if (uris.length > 0) {
-      playSpotifyUris(uris, upcoming);
-    } else if (trackUri) {
-      playSpotifyUris([trackUri], upcoming);
-    }
+  // Reproducir directamente la lista de canciones del artista desde la pista elegida manteniendo el contexto local exacto
+  const uris = tracks.slice(idx).map(t => t.uri).filter(Boolean);
+  if (uris.length > 0) {
+    playSpotifyUris(uris, upcoming, { keepLocalContext: true });
+  } else if (trackUri) {
+    playSpotifyUris([trackUri], upcoming, { keepLocalContext: true });
   }
 }
 
@@ -798,12 +910,131 @@ miniPlayer.addEventListener('click', (e) => {
   openNowPlaying();
 });
 
+async function resolveSavedContextForResume(trackId, trackUri) {
+  const cid = cleanTrackId(trackId || trackUri);
+  if (!cid && !trackUri) return null;
+
+  const saved = (typeof loadLastPlayedTrack === 'function') ? loadLastPlayedTrack() : null;
+  const savedCid = saved ? cleanTrackId(saved.id || saved.uri) : '';
+  const savedMatchesTrack = Boolean(saved && ((cid && savedCid === cid) || (trackUri && saved.uri === trackUri)));
+
+  const ctxType = state.activeContextType || (savedMatchesTrack ? (saved.contextType || '') : '');
+  const ctxId = state.activeContextId || (savedMatchesTrack ? (saved.contextId || '') : '');
+  const ctxUri = state.activeContextUri || (savedMatchesTrack ? (saved.contextUri || '') : '');
+  const ctxName = state.activeContextName || (savedMatchesTrack ? (saved.contextName || '') : '');
+
+  if (ctxType === 'liked') {
+    let tracks = Array.isArray(liveCatalog.likedTracks) ? liveCatalog.likedTracks : [];
+    if (tracks.length === 0 && spotifyAuth.accessToken) {
+      try {
+        const res = await spotifyFetch('/me/tracks?limit=50');
+        if (res && Array.isArray(res.items)) {
+          tracks = res.items
+            .filter(i => i && i.track && !i.track.is_local && i.track.is_playable !== false && i.track.uri && !i.track.uri.startsWith('spotify:local:'))
+            .map((i, idx) => {
+              const imgs = (i.track.album && Array.isArray(i.track.album.images)) ? i.track.album.images : [];
+              return {
+                num: idx + 1,
+                id: i.track.id,
+                uri: i.track.uri,
+                title: i.track.name,
+                artist: i.track.artists ? i.track.artists.map(a => a.name).join(', ') : '',
+                album: i.track.album ? i.track.album.name : '',
+                thumb: imgs.length > 0 ? getSpotifyImage(imgs, 'small') : DEFAULT_ALBUM_COVER,
+                cover: imgs.length > 0 ? getSpotifyImage(imgs, 'medium') : DEFAULT_ALBUM_COVER,
+                coverLarge: imgs.length > 0 ? getSpotifyImage(imgs, 'large') : DEFAULT_ALBUM_COVER,
+                duration: Math.round((i.track.duration_ms || 200000) / 1000)
+              };
+            });
+          if (tracks.length > 0) {
+            liveCatalog.likedTracks = tracks;
+            liveCatalog.likedTrackIds = new Set(tracks.map(t => t.id).filter(Boolean));
+          }
+        }
+      } catch (e) {}
+    }
+    const idx = tracks.findIndex(t =>
+      (cid && cleanTrackId(t.id || t.uri) === cid) || (trackUri && t.uri === trackUri)
+    );
+    if (idx >= 0) {
+      const upcoming = tracks.slice(idx + 1);
+      const prev = tracks.slice(0, idx);
+      state.isLocalContextQueue = true;
+      state.activeContextType = 'liked';
+      state.activeContextId = 'liked_songs';
+      state.activeContextName = 'Tus me gusta';
+      state.contextUpcomingTracks = upcoming;
+      state.liveQueueTracks = (typeof normalizeApiTrack === 'function')
+        ? upcoming.map(normalizeApiTrack).filter(Boolean)
+        : upcoming;
+      state.playbackHistory = ((typeof normalizeApiTrack === 'function')
+        ? prev.map(normalizeApiTrack).filter(Boolean)
+        : prev).slice(-50);
+      const curUri = tracks[idx].uri || trackUri || (cid ? `spotify:track:${cid}` : '');
+      const uris = [curUri, ...upcoming.slice(0, 79).map(t => t.uri)].filter(Boolean);
+      return { mode: 'local_uris', uris, upcoming };
+    }
+  }
+
+  if (ctxType === 'artist' && ctxId) {
+    const artist = liveCatalog.entities[ctxId];
+    const tracks = (artist && Array.isArray(artist.tracks)) ? artist.tracks : [];
+    const idx = tracks.findIndex(t =>
+      (cid && cleanTrackId(t.id || t.uri) === cid) || (trackUri && t.uri === trackUri)
+    );
+    if (idx >= 0) {
+      const upcoming = tracks.slice(idx + 1);
+      const prev = tracks.slice(0, idx);
+      state.isLocalContextQueue = true;
+      state.activeContextType = 'artist';
+      state.activeContextId = ctxId;
+      state.activeContextName = (artist && (artist.name || artist.title)) || ctxName || 'Artista';
+      state.contextUpcomingTracks = upcoming;
+      state.liveQueueTracks = (typeof normalizeApiTrack === 'function')
+        ? upcoming.map(normalizeApiTrack).filter(Boolean)
+        : upcoming;
+      state.playbackHistory = ((typeof normalizeApiTrack === 'function')
+        ? prev.map(normalizeApiTrack).filter(Boolean)
+        : prev).slice(-50);
+      const curUri = tracks[idx].uri || trackUri || (cid ? `spotify:track:${cid}` : '');
+      const uris = [curUri, ...upcoming.slice(0, 79).map(t => t.uri)].filter(Boolean);
+      return { mode: 'local_uris', uris, upcoming };
+    }
+  }
+
+  if ((ctxType === 'playlist' || ctxType === 'album') && ctxUri) {
+    state.isLocalContextQueue = false;
+    state.activeContextType = ctxType;
+    state.activeContextId = ctxId;
+    state.activeContextUri = ctxUri;
+    state.activeContextName = ctxName;
+    return { mode: 'context_uri', contextUri: ctxUri };
+  }
+
+  return null;
+}
+
 async function playCloudItemDirectly(cloudPb, cloudItem) {
   const posMs = Math.max(0, Math.floor((cloudPb && cloudPb.progress_ms) || 0));
   const ctxUri = (cloudPb && cloudPb.context && cloudPb.context.uri) ? String(cloudPb.context.uri) : '';
   const isPlayableContext = ctxUri.startsWith('spotify:album:') || ctxUri.startsWith('spotify:playlist:') || ctxUri.startsWith('spotify:artist:');
   if (isPlayableContext) {
     const ctxRes = await playSpotifyContext(ctxUri, { uri: cloudItem.uri }, [], {
+      positionMs: posMs,
+      preserveShuffle: true,
+      suppressErrorUI: true
+    });
+    if (ctxRes && !ctxRes.error) return ctxRes;
+  }
+  const restored = await resolveSavedContextForResume(cloudItem.id, cloudItem.uri);
+  if (restored && restored.mode === 'local_uris' && restored.uris.length > 0) {
+    if (state.nowPlayingMode === 'queue' && typeof renderQueuePanelUI === 'function') {
+      renderQueuePanelUI();
+    }
+    return playSpotifyUris(restored.uris, restored.upcoming, { positionMs: posMs, keepLocalContext: true });
+  }
+  if (restored && restored.mode === 'context_uri' && restored.contextUri) {
+    const ctxRes = await playSpotifyContext(restored.contextUri, { uri: cloudItem.uri }, [], {
       positionMs: posMs,
       preserveShuffle: true,
       suppressErrorUI: true
@@ -880,6 +1111,21 @@ async function tryResumeCloudOrFallbackOnLocalSdk(devId, cmdSeq, preloadedCloudP
   }
 
   if (state.playingTrackUri) {
+    const restored = await resolveSavedContextForResume(state.playingTrackId, state.playingTrackUri);
+    if (restored && restored.mode === 'local_uris' && restored.uris.length > 0) {
+      if (state.nowPlayingMode === 'queue' && typeof renderQueuePanelUI === 'function') {
+        renderQueuePanelUI();
+      }
+      await playSpotifyUris(restored.uris, restored.upcoming, { keepLocalContext: true });
+      return true;
+    }
+    if (restored && restored.mode === 'context_uri' && restored.contextUri) {
+      const ctxRes = await playSpotifyContext(restored.contextUri, { uri: state.playingTrackUri }, [], {
+        preserveShuffle: true,
+        suppressErrorUI: true
+      });
+      if (ctxRes && !ctxRes.error) return true;
+    }
     await playSpotifyTrackUri(state.playingTrackUri, state.contextUpcomingTracks || []);
     return true;
   }
@@ -983,6 +1229,37 @@ async function togglePlayPause() {
   }
 }
 
+function getCurrentTrackSnapshot() {
+  if (!state.playingTrackId && !state.playingTrackUri && !state.playingTrackTitle) return null;
+  return {
+    id: state.playingTrackId || cleanTrackId(state.playingTrackUri) || state.playingTrackTitle,
+    uri: state.playingTrackUri || (state.playingTrackId ? `spotify:track:${cleanTrackId(state.playingTrackId)}` : ''),
+    title: state.playingTrackTitle || 'Canción',
+    artist: state.playingArtist || 'Spotify',
+    artists: Array.isArray(state.playingArtists) ? [...state.playingArtists] : [],
+    album: state.playingAlbumTitle || '',
+    thumb: state.playingThumb || state.playingCover || DEFAULT_ALBUM_COVER,
+    cover: state.playingCover || DEFAULT_ALBUM_COVER,
+    duration: state.durationSec || 210
+  };
+}
+
+function pushCurrentTrackToHistory() {
+  const snap = getCurrentTrackSnapshot();
+  if (!snap || (!snap.uri && !snap.id)) return;
+  if (!Array.isArray(state.playbackHistory)) state.playbackHistory = [];
+  const snapCid = cleanTrackId(snap.id || snap.uri);
+  const last = state.playbackHistory[state.playbackHistory.length - 1];
+  const lastCid = last ? cleanTrackId(last.id || last.uri) : '';
+  if (last && ((snapCid && lastCid === snapCid) || (snap.uri && last.uri === snap.uri))) {
+    return;
+  }
+  state.playbackHistory.push(snap);
+  if (state.playbackHistory.length > 50) {
+    state.playbackHistory = state.playbackHistory.slice(-50);
+  }
+}
+
 async function skipNextTrack() {
   // Record Spotify 30-second skip/satisfaction feedback BEFORE advancing
   const playedBeforeSkip = state.currentTimeSec || 0;
@@ -1065,31 +1342,51 @@ async function skipNextTrack() {
     }
   }
 
-  // Usar cola real del SDK primero (si el Web Player local está activo), luego liveQueueTracks, y contextUpcomingTracks solo sin Shuffle
+  // Usar cola completa reordenada si el usuario movió canciones; si no, fusionar sdkNextTracks (#1 real) con liveQueueTracks completos para no recortar la cola a 2 temas
   const usingLocalSdk = typeof isLocalWebPlayerActive === 'function' && isLocalWebPlayerActive();
-  const queueSource = (usingLocalSdk && Array.isArray(state.sdkNextTracks) && state.sdkNextTracks.length > 0)
-    ? state.sdkNextTracks
-    : (Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > 0)
-      ? state.liveQueueTracks
-      : (!spotifyAuth.shuffleState && Array.isArray(state.contextUpcomingTracks) && state.contextUpcomingTracks.length > 0
-        ? state.contextUpcomingTracks.map(normalizeApiTrack).filter(Boolean)
-        : []);
+  const wasCustomReordered = Boolean(state.hasCustomReorderedQueue);
+  const wasLocalContext = Boolean(state.isLocalContextQueue);
+  let queueSource = [];
+  if ((wasCustomReordered || wasLocalContext) && Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > 0) {
+    queueSource = state.liveQueueTracks;
+  } else if (Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > 0) {
+    if (usingLocalSdk && Array.isArray(state.sdkNextTracks) && state.sdkNextTracks.length > 0) {
+      const seenKeys = new Set();
+      for (const t of [...state.sdkNextTracks, ...state.liveQueueTracks]) {
+        if (!t) continue;
+        const key = cleanTrackId(t.id || t.uri) || (t.title || '').trim().toLowerCase();
+        if (!key || seenKeys.has(key)) continue;
+        seenKeys.add(key);
+        queueSource.push(t);
+      }
+    } else {
+      queueSource = state.liveQueueTracks;
+    }
+  } else if (usingLocalSdk && Array.isArray(state.sdkNextTracks) && state.sdkNextTracks.length > 0) {
+    queueSource = state.sdkNextTracks;
+  } else if (!spotifyAuth.shuffleState && Array.isArray(state.contextUpcomingTracks) && state.contextUpcomingTracks.length > 0) {
+    queueSource = state.contextUpcomingTracks.map(normalizeApiTrack).filter(Boolean);
+  }
 
   let pickedNextTrack = null;
   let pickedRemaining = [];
   if (queueSource.length > 0) {
     pickedNextTrack = queueSource[0];
     pickedRemaining = queueSource.slice(1);
-    if (Array.isArray(state.sdkNextTracks) && state.sdkNextTracks.length > 0) {
+    if (wasCustomReordered || wasLocalContext) {
+      state.sdkNextTracks = [];
+    } else if (Array.isArray(state.sdkNextTracks) && state.sdkNextTracks.length > 0) {
       state.sdkNextTracks = state.sdkNextTracks.slice(1);
     }
     state.liveQueueTracks = pickedRemaining;
     if (!spotifyAuth.shuffleState) {
       state.contextUpcomingTracks = pickedRemaining;
     }
+    state.hasCustomReorderedQueue = false;
     if (typeof recordAutoplayHistory === 'function') {
       recordAutoplayHistory(pickedNextTrack.id || pickedNextTrack.uri);
     }
+    pushCurrentTrackToHistory();
     applyTrackToUI({
       id: pickedNextTrack.id || pickedNextTrack.uri || pickedNextTrack.title,
       uri: pickedNextTrack.uri,
@@ -1102,8 +1399,21 @@ async function skipNextTrack() {
       coverLarge: pickedNextTrack.cover,
       duration: pickedNextTrack.duration || 210
     }, 0, true);
+    if (state.nowPlayingMode === 'queue' && typeof renderQueuePanelUI === 'function') {
+      renderQueuePanelUI();
+    }
     if (state.isAutoplayQueue && pickedRemaining.length < 8 && typeof replenishAutoplayQueue === 'function') {
       replenishAutoplayQueue();
+    }
+    if ((wasCustomReordered || wasLocalContext) && pickedNextTrack.uri) {
+      const nextUris = [pickedNextTrack.uri, ...pickedRemaining.slice(0, 19).map(t => t.uri)].filter(Boolean);
+      if (nextUris.length > 0) {
+        await playSpotifyUris(nextUris, pickedRemaining, {
+          keepAutoplaySession: Boolean(state.isAutoplayQueue),
+          keepLocalContext: wasLocalContext
+        });
+        return;
+      }
     }
   } else if (Array.isArray(state.discoveryTracks) && state.discoveryTracks.length > 0) {
     const nextDiscovery = state.discoveryTracks[0];
@@ -1155,6 +1465,55 @@ async function skipNextTrack() {
   }
 }
 
+async function restartCurrentTrackToZero() {
+  // Restarting a song after listening >= 40% is a strong positive replay signal
+  if (state.playingTrackId && typeof EchoRadio !== 'undefined' && typeof EchoRadio.recordPlaybackOutcome === 'function') {
+    const curRadioEntry = (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionIndex >= 0)
+      ? state.autoplaySessionTracks[state.autoplaySessionIndex]
+      : null;
+    EchoRadio.recordPlaybackOutcome({
+      id: state.playingTrackId,
+      uri: state.playingTrackUri,
+      title: state.playingTrackTitle,
+      artist: state.playingArtist,
+      artists: state.playingArtists,
+      duration: state.durationSec || 210,
+      radioChannel: curRadioEntry ? curRadioEntry.radioChannel : null
+    }, state.currentTimeSec || 0, state.durationSec || 210, 'replay');
+  }
+  state.currentTimeSec = 0;
+  state.lastSeekToZeroAt = Date.now();
+  lockUserPlaybackIntent('seek', {
+    durationMs: 2200,
+    targetSeekSec: 0,
+    targetIsPlaying: state.isPlaying
+  });
+  if (npScrubberFill) {
+    clearTimeout(scrubberResetTimer);
+    npScrubberFill.classList.add('scrubber-resetting');
+    scrubberResetTimer = setTimeout(() => {
+      npScrubberFill.classList.remove('scrubber-resetting');
+    }, 360);
+  }
+  if (bridge && bridge.notifyTrackSeeked) {
+    bridge.notifyTrackSeeked(0);
+  }
+  if (typeof exitLyricsManualScroll === 'function') {
+    exitLyricsManualScroll({ skipSnapBack: true });
+  }
+  updateScrubberAndLyricsUI(true);
+  if (isLocalWebPlayerActive() && typeof webPlayer.seek === 'function') {
+    try {
+      await webPlayer.seek(0);
+      return;
+    } catch (err) { }
+  }
+  if (spotifyAuth.accessToken) {
+    const devQ = await getTargetDeviceQuery();
+    spotifyFetch(`/me/player/seek?position_ms=0${devQ ? '&' + devQ.slice(1) : ''}`, { method: 'PUT' });
+  }
+}
+
 async function skipPrevTrack() {
   if (spotifyAuth.accessToken && state.currentTimeSec < 4) {
     if (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionIndex > 0) {
@@ -1182,12 +1541,64 @@ async function skipPrevTrack() {
         coverLarge: prevTrack.cover,
         duration: prevTrack.duration || 210
       }, 0, true);
+      if (state.nowPlayingMode === 'queue' && typeof renderQueuePanelUI === 'function') {
+        renderQueuePanelUI();
+      }
       const forwardUris = [prevTrack.uri, ...remaining.slice(0, 19).map(t => t.uri)].filter(Boolean);
       if (forwardUris.length > 0) {
         await playSpotifyUris(forwardUris, remaining, { keepAutoplaySession: true });
       }
       return;
     }
+
+    if (state.isLocalContextQueue) {
+      if (Array.isArray(state.playbackHistory) && state.playbackHistory.length > 0) {
+        if (bridge && bridge.notifyTrackLoading) {
+          bridge.notifyTrackLoading('');
+          state.pcmFlowing = false;
+          state.currentTimeSec = 0;
+        }
+        const prevTrack = state.playbackHistory.pop();
+        const curSnap = getCurrentTrackSnapshot();
+        const existingQueue = Array.isArray(state.liveQueueTracks) ? state.liveQueueTracks : [];
+        if (curSnap) {
+          const curCid = cleanTrackId(curSnap.id || curSnap.uri);
+          const filteredTail = existingQueue.filter(t => {
+            const tid = t ? cleanTrackId(t.id || t.uri) : '';
+            return !curCid || tid !== curCid;
+          });
+          state.liveQueueTracks = [curSnap, ...filteredTail];
+        } else {
+          state.liveQueueTracks = existingQueue;
+        }
+        state.contextUpcomingTracks = [...state.liveQueueTracks];
+        state.sdkNextTracks = [];
+        state.hasCustomReorderedQueue = false;
+        applyTrackToUI({
+          id: prevTrack.id || prevTrack.uri || prevTrack.title,
+          uri: prevTrack.uri,
+          name: prevTrack.title,
+          artist: prevTrack.artist,
+          artists: prevTrack.artists,
+          album: prevTrack.album,
+          thumb: prevTrack.thumb || prevTrack.cover,
+          cover: prevTrack.cover,
+          coverLarge: prevTrack.cover,
+          duration: prevTrack.duration || 210
+        }, 0, true);
+        if (state.nowPlayingMode === 'queue' && typeof renderQueuePanelUI === 'function') {
+          renderQueuePanelUI();
+        }
+        const prevUris = [prevTrack.uri, ...state.liveQueueTracks.slice(0, 19).map(t => t.uri)].filter(Boolean);
+        if (prevUris.length > 0) {
+          await playSpotifyUris(prevUris, state.liveQueueTracks, { keepLocalContext: true });
+        }
+        return;
+      }
+      await restartCurrentTrackToZero();
+      return;
+    }
+
     if (bridge && bridge.notifyTrackLoading) {
       bridge.notifyTrackLoading('');
       state.pcmFlowing = false;
@@ -1197,7 +1608,8 @@ async function skipPrevTrack() {
       durationMs: 2800,
       targetIsPlaying: true
     });
-    if (isLocalWebPlayerActive() && typeof webPlayer.previousTrack === 'function') {
+    const isFastDoubleTapPrev = Boolean(state.lastSeekToZeroAt && (Date.now() - state.lastSeekToZeroAt) < 2500);
+    if (isLocalWebPlayerActive() && typeof webPlayer.previousTrack === 'function' && !isFastDoubleTapPrev) {
       try {
         await webPlayer.previousTrack();
         return;
@@ -1210,47 +1622,7 @@ async function skipPrevTrack() {
       if (cmdSeq === playbackActionSeq) pollSpotifyCurrentPlayback();
     }, 650);
   } else {
-    // Restarting a song after listening >= 40% is a strong positive replay signal
-    if (state.playingTrackId && typeof EchoRadio !== 'undefined' && typeof EchoRadio.recordPlaybackOutcome === 'function') {
-      const curRadioEntry = (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionIndex >= 0)
-        ? state.autoplaySessionTracks[state.autoplaySessionIndex]
-        : null;
-      EchoRadio.recordPlaybackOutcome({
-        id: state.playingTrackId,
-        uri: state.playingTrackUri,
-        title: state.playingTrackTitle,
-        artist: state.playingArtist,
-        artists: state.playingArtists,
-        duration: state.durationSec || 210,
-        radioChannel: curRadioEntry ? curRadioEntry.radioChannel : null
-      }, state.currentTimeSec || 0, state.durationSec || 210, 'replay');
-    }
-    state.currentTimeSec = 0;
-    lockUserPlaybackIntent('seek', {
-      durationMs: 2200,
-      targetSeekSec: 0,
-      targetIsPlaying: state.isPlaying
-    });
-    if (npScrubberFill) {
-      clearTimeout(scrubberResetTimer);
-      npScrubberFill.classList.add('scrubber-resetting');
-      scrubberResetTimer = setTimeout(() => {
-        npScrubberFill.classList.remove('scrubber-resetting');
-      }, 360);
-    }
-    if (bridge && bridge.notifyTrackSeeked) {
-      bridge.notifyTrackSeeked(0);
-    }
-    if (typeof exitLyricsManualScroll === 'function') {
-      exitLyricsManualScroll({ skipSnapBack: true });
-    }
-    updateScrubberAndLyricsUI(true);
-    if (isLocalWebPlayerActive() && typeof webPlayer.seek === 'function') {
-      try { webPlayer.seek(0); } catch (err) { }
-    }
-    if (spotifyAuth.accessToken) {
-      spotifyFetch('/me/player/seek?position_ms=0', { method: 'PUT' });
-    }
+    await restartCurrentTrackToZero();
   }
 }
 
@@ -1283,17 +1655,110 @@ bindTouchButton(npPlayPauseBtn, togglePlayPause);
 bindTouchButton(npNextBtn, skipNextTrack);
 bindTouchButton(npPrevBtn, skipPrevTrack);
 
+function shuffleTracksFisherYates(list) {
+  const out = Array.isArray(list) ? [...list] : [];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+const npShuffleBtn = document.getElementById('npShuffleBtn');
+if (npShuffleBtn) {
+  bindTouchButton(npShuffleBtn, async () => {
+    const nextShuffle = !spotifyAuth.shuffleState;
+    spotifyAuth.shuffleState = nextShuffle;
+    state.shuffleToggleLockUntil = Date.now() + 2500;
+    if (typeof triggerControlPop === 'function') triggerControlPop(npShuffleBtn);
+    if (typeof updateShuffleButtonUI === 'function') updateShuffleButtonUI();
+
+    // En modo Autoplay/Radio o contexto local (Tus me gusta / Artista), mezclar la cola al instante sin salir del contexto
+    if ((state.isAutoplayQueue || state.isLocalContextQueue) && nextShuffle && Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > 1) {
+      const shuffled = shuffleTracksFisherYates(state.liveQueueTracks);
+      state.liveQueueTracks = shuffled;
+      state.contextUpcomingTracks = [...shuffled];
+      if (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionTracks.length > 0) {
+        const curIdx = Math.max(0, state.autoplaySessionIndex || 0);
+        state.autoplaySessionTracks = state.autoplaySessionTracks.slice(0, curIdx + 1).concat(shuffled);
+      }
+      state.hasCustomReorderedQueue = true;
+      if (typeof renderQueuePanelUI === 'function') renderQueuePanelUI();
+      return;
+    }
+
+    if (state.isLocalContextQueue) {
+      return;
+    }
+
+    const prevQueue = Array.isArray(state.liveQueueTracks) ? [...state.liveQueueTracks] : [];
+    state.hasCustomReorderedQueue = false;
+    state.sdkNextTracks = [];
+
+    if (spotifyAuth.accessToken) {
+      if (state.nowPlayingMode === 'queue' && prevQueue.length > 0 && typeof renderQueuePanelUI === 'function') {
+        state.liveQueueTracks = [];
+        state.queueLoading = true;
+        renderQueuePanelUI();
+      }
+      const devQ = await getTargetDeviceQuery();
+      const sep = devQ ? '&' : '?';
+      const res = await spotifyFetch(`/me/player/shuffle${devQ}${sep}state=${nextShuffle ? 'true' : 'false'}`, { method: 'PUT' });
+      if (res && res.error) {
+        if (nextShuffle && prevQueue.length > 1) {
+          const shuffled = shuffleTracksFisherYates(prevQueue);
+          state.liveQueueTracks = shuffled;
+          state.contextUpcomingTracks = [...shuffled];
+          state.hasCustomReorderedQueue = true;
+          state.queueLoading = false;
+          if (typeof renderQueuePanelUI === 'function') renderQueuePanelUI();
+          return;
+        }
+        spotifyAuth.shuffleState = !nextShuffle;
+        state.shuffleToggleLockUntil = 0;
+        state.liveQueueTracks = prevQueue;
+        state.queueLoading = false;
+        if (typeof updateShuffleButtonUI === 'function') updateShuffleButtonUI();
+        if (typeof renderQueuePanelUI === 'function') renderQueuePanelUI();
+        if (typeof showToast === 'function') showToast('Aleatorio no disponible en esta reproducción');
+        return;
+      }
+      setTimeout(() => {
+        if (typeof fetchAndRenderQueueForCurrentTrack === 'function') {
+          fetchAndRenderQueueForCurrentTrack();
+        }
+      }, 450);
+    }
+  });
+}
+
 const npRepeatBtn = document.getElementById('npRepeatBtn');
 if (npRepeatBtn) {
   bindTouchButton(npRepeatBtn, async () => {
     const current = spotifyAuth.repeatState || 'off';
     const nextState = current === 'off' ? 'context' : (current === 'context' ? 'track' : 'off');
     spotifyAuth.repeatState = nextState;
+    state.repeatToggleLockUntil = Date.now() + 2500;
+    if (typeof triggerControlPop === 'function') triggerControlPop(npRepeatBtn);
     if (typeof updateRepeatButtonUI === 'function') updateRepeatButtonUI();
     if (spotifyAuth.accessToken) {
       const devQ = await getTargetDeviceQuery();
       const sep = devQ ? '&' : '?';
-      await spotifyFetch(`/me/player/repeat${devQ}${sep}state=${nextState}`, { method: 'PUT' });
+      const res = await spotifyFetch(`/me/player/repeat${devQ}${sep}state=${nextState}`, { method: 'PUT' });
+      if (res && res.error) {
+        spotifyAuth.repeatState = current;
+        state.repeatToggleLockUntil = 0;
+        if (typeof updateRepeatButtonUI === 'function') updateRepeatButtonUI();
+        if (typeof showToast === 'function') showToast('Repetición no disponible en esta reproducción');
+        return;
+      }
+      if (state.nowPlayingMode === 'queue') {
+        setTimeout(() => {
+          if (typeof fetchAndRenderQueueForCurrentTrack === 'function') {
+            fetchAndRenderQueueForCurrentTrack();
+          }
+        }, 450);
+      }
     }
   });
 }

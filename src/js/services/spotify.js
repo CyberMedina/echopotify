@@ -215,8 +215,19 @@ function handleWebPlayerStateChanged(sdkState) {
       });
     }
   }
-  spotifyAuth.shuffleState = Boolean(sdkState.shuffle);
-  spotifyAuth.repeatState = sdkState.repeat_mode === 2 ? 'track' : (sdkState.repeat_mode === 1 ? 'context' : 'off');
+  const nowMs = Date.now();
+  const sdkShuffle = Boolean(sdkState.shuffle);
+  if (nowMs >= (state.shuffleToggleLockUntil || 0) || sdkShuffle === Boolean(spotifyAuth.shuffleState)) {
+    if (sdkShuffle === Boolean(spotifyAuth.shuffleState)) state.shuffleToggleLockUntil = 0;
+    spotifyAuth.shuffleState = sdkShuffle;
+  }
+  const sdkRepeat = sdkState.repeat_mode === 2 ? 'track' : (sdkState.repeat_mode === 1 ? 'context' : 'off');
+  if (nowMs >= (state.repeatToggleLockUntil || 0) || sdkRepeat === (spotifyAuth.repeatState || 'off')) {
+    if (sdkRepeat === (spotifyAuth.repeatState || 'off')) state.repeatToggleLockUntil = 0;
+    spotifyAuth.repeatState = sdkRepeat;
+  }
+  if (typeof updateShuffleButtonUI === 'function') updateShuffleButtonUI();
+  if (typeof updateRepeatButtonUI === 'function') updateRepeatButtonUI();
 
   const curCleanId = cleanTrackId(cur.id || cur.uri);
   const curTitleLow = (cur.name || '').trim().toLowerCase();
@@ -235,12 +246,33 @@ function handleWebPlayerStateChanged(sdkState) {
     seenSdkKeys.add(key);
     sdkNext.push(nt);
   }
-  state.sdkNextTracks = sdkNext;
+  const keepCustomOrder = Boolean(
+    state.hasCustomReorderedQueue &&
+    Array.isArray(state.liveQueueTracks) &&
+    state.liveQueueTracks.length > 0
+  );
+  const keepLocalContext = Boolean(
+    state.isLocalContextQueue &&
+    Array.isArray(state.liveQueueTracks) &&
+    state.liveQueueTracks.length > 0
+  );
+  const intent = state.userIntent;
+  const isStaleTrackSwitchSdkEvent = Boolean(
+    intent &&
+    intent.type === 'track_switch' &&
+    intent.isSpecificTrack &&
+    Date.now() < intent.startedAt + 4200 &&
+    !(intent.targetId && curCleanId === intent.targetId) &&
+    !(intent.targetTitle && curTitleLow === intent.targetTitle.toLowerCase())
+  );
+  if (!keepCustomOrder && !keepLocalContext && !isStaleTrackSwitchSdkEvent) {
+    state.sdkNextTracks = sdkNext;
+  }
 
-  if (!state.isAutoplayQueue && sdkNext.length > 0) {
+  if (!state.isAutoplayQueue && !keepCustomOrder && !keepLocalContext && !isStaleTrackSwitchSdkEvent && !state.isDraggingQueueRow && sdkNext.length > 0) {
     const merged = [...sdkNext];
     const seenMerged = new Set(seenSdkKeys);
-    if (!spotifyAuth.shuffleState && Array.isArray(state.liveQueueTracks)) {
+    if (Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > 0) {
       for (const lt of state.liveQueueTracks) {
         if (!lt) continue;
         const cid = cleanTrackId(lt.id || lt.uri);
@@ -262,15 +294,13 @@ function handleWebPlayerStateChanged(sdkState) {
   const rawSec = Math.max(0, (sdkState.position || 0) / 1000);
   const incomingIsPlaying = !sdkState.paused;
   if (incomingIsPlaying && typeof setPlaybackBuffering === 'function') {
-    const intent = state.userIntent;
-    const curTitle = (cur.name || '').trim().toLowerCase();
     const waitingForSpecificSwitch = Boolean(
       intent &&
       intent.type === 'track_switch' &&
       intent.isSpecificTrack &&
       Date.now() < intent.startedAt + 3400 &&
       !(intent.targetId && curCleanId === intent.targetId) &&
-      !(intent.targetTitle && curTitle === intent.targetTitle.toLowerCase())
+      !(intent.targetTitle && curTitleLow === intent.targetTitle.toLowerCase())
     );
     if (!waitingForSpecificSwitch) {
       setPlaybackBuffering(false);
@@ -801,6 +831,7 @@ async function playSpotifyContext(contextUri, offsetPosition = 0, upcomingSlice 
   activateWebPlayerAudio();
   const cmdSeq = playbackActionSeq;
   if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
+  state.isLocalContextQueue = false;
   state.singleTrackPlayback = false;
   state.sdkNextTracks = [];
   state.contextUpcomingTracks = Array.isArray(upcomingSlice) ? upcomingSlice : [];
@@ -844,6 +875,7 @@ async function playSpotifyUris(urisArray, upcomingSlice = [], opts = {}) {
   const safeUris = cleanUris.slice(0, 80);
 
   state.singleTrackPlayback = safeUris.length === 1;
+  state.isLocalContextQueue = Boolean(opts && opts.keepLocalContext);
   if (!opts || !opts.keepAutoplaySession) {
     if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
   }
@@ -876,10 +908,22 @@ async function playSpotifyUris(urisArray, upcomingSlice = [], opts = {}) {
     if (urisBody.position_ms) singleBody.position_ms = urisBody.position_ms;
     playRes = await executeSpotifyPlay(singleBody, cmdSeq, basePlayOpts);
     if (cmdSeq !== playbackActionSeq || !playRes) return null;
+    if (!playRes.error) {
+      state.singleTrackPlayback = true;
+      if (Array.isArray(upcomingSlice) && upcomingSlice.length > 0) {
+        state.isLocalContextQueue = true;
+      }
+    }
   }
 
   if (!playRes.error) {
-    setTimeout(pollSpotifyCurrentPlayback, 900);
+    setTimeout(() => {
+      if (cmdSeq !== playbackActionSeq) return;
+      pollSpotifyCurrentPlayback();
+      if (!state.isLocalContextQueue && typeof fetchAndRenderQueueForCurrentTrack === 'function') {
+        fetchAndRenderQueueForCurrentTrack();
+      }
+    }, 900);
   }
   return playRes;
 }

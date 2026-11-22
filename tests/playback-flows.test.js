@@ -1634,4 +1634,792 @@ test('20. Reserved right scroll zone prevents dismiss collision on wheel/touch w
   h.triggerWindow('touchend', {});
 });
 
+test('21. Queue reorder moves track cleanly, protects order from poll clobber, and plays reordered queue on Next', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  h.setFetchHandler(async (url) => {
+    if (url.includes('/me/player/queue')) {
+      return jsonResponse({
+        queue: [
+          { id: 'orig_1', uri: 'spotify:track:orig_1', name: 'Original 1', artists: [{ name: 'A' }], album: { name: 'Alb', images: [] } },
+          { id: 'orig_2', uri: 'spotify:track:orig_2', name: 'Original 2', artists: [{ name: 'A' }], album: { name: 'Alb', images: [] } },
+          { id: 'orig_3', uri: 'spotify:track:orig_3', name: 'Original 3', artists: [{ name: 'A' }], album: { name: 'Alb', images: [] } }
+        ]
+      });
+    }
+    return emptyResponse(204);
+  });
+
+  h.eval(`
+    initWebPlayer();
+    spotifyAuth.activeDeviceId = 'web_dev_1';
+    webPlayerDeviceId = 'web_dev_1';
+    webPlayerTransferredOnce = true;
+    state.isNowPlayingOpen = true;
+    state.nowPlayingMode = 'queue';
+    state.isPlaying = true;
+    state.playingTrackId = 'cur_0';
+    state.playingTrackTitle = 'Now';
+    state.liveQueueTracks = [
+      { id: 'orig_1', uri: 'spotify:track:orig_1', title: 'Original 1', artist: 'A', cover: '' },
+      { id: 'orig_2', uri: 'spotify:track:orig_2', title: 'Original 2', artist: 'A', cover: '' },
+      { id: 'orig_3', uri: 'spotify:track:orig_3', title: 'Original 3', artist: 'A', cover: '' }
+    ];
+    state.contextUpcomingTracks = [...state.liveQueueTracks];
+    renderQueuePanelUI();
+  `);
+
+  const listHtml = h.getEl('npQueueListContainer').innerHTML;
+  assert.equal(listHtml.includes('np-queue-drag-handle'), true);
+  assert.equal(listHtml.includes('np-queue-index'), false);
+  assert.equal(listHtml.includes('np-queue-duration'), false);
+
+  const reordered = h.eval('reorderQueueTrack(2, 0)');
+  assert.equal(reordered, true);
+  assert.equal(h.eval('state.hasCustomReorderedQueue'), true);
+  assert.deepEqual(
+    JSON.parse(h.eval('JSON.stringify(state.liveQueueTracks.map(x => x.id))')),
+    ['orig_3', 'orig_1', 'orig_2']
+  );
+
+  // Queue refresh must preserve custom user order instead of overwriting with /me/player/queue
+  await h.eval('fetchAndRenderQueueForCurrentTrack()');
+  assert.deepEqual(
+    JSON.parse(h.eval('JSON.stringify(state.liveQueueTracks.map(x => x.id))')),
+    ['orig_3', 'orig_1', 'orig_2']
+  );
+
+  await h.eval('skipNextTrack()');
+
+  assert.equal(h.eval('state.playingTrackId'), 'orig_3');
+  assert.equal(h.eval('state.hasCustomReorderedQueue'), false);
+  assert.equal(h.sdkActions.some(a => a.type === 'nextTrack'), false);
+  const playCall = h.fetchCalls.find(c => c.url.includes('/me/player/play'));
+  assert.ok(playCall, 'expected direct /me/player/play with custom reordered uris');
+  assert.deepEqual(playCall.bodyJson, {
+    uris: [
+      'spotify:track:orig_3',
+      'spotify:track:orig_1',
+      'spotify:track:orig_2'
+    ]
+  });
+});
+
+test('22. Custom queue reorder survives SDK player_state_changed/poll and Shuffle track switch keeps queue tail instead of shrinking to 2 tracks', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  h.setFetchHandler(async () => emptyResponse(204));
+  h.eval('initWebPlayer();');
+  h.emitSdkEvent('ready', { device_id: 'web_dev_1' });
+
+  // Part A: Reorder "Snowman" from index 1 -> 0; stale SDK next_tracks must NOT revert visual order
+  h.eval(`
+    state.isNowPlayingOpen = true;
+    state.nowPlayingMode = 'queue';
+    state.isPlaying = true;
+    state.playingTrackId = 'song_now';
+    state.playingTrackTitle = 'Current Song';
+    state.liveQueueTracks = [
+      { id: 't_old_1', uri: 'spotify:track:t_old_1', title: 'Old First', artist: 'A', cover: '' },
+      { id: 't_snow', uri: 'spotify:track:t_snow', title: 'Snowman', artist: 'Sia', cover: '' },
+      { id: 't_tail', uri: 'spotify:track:t_tail', title: 'Third Song', artist: 'B', cover: '' }
+    ];
+    state.contextUpcomingTracks = [...state.liveQueueTracks];
+    renderQueuePanelUI();
+    reorderQueueTrack(1, 0);
+  `);
+
+  h.emitSdkEvent('player_state_changed', {
+    paused: false,
+    position: 10000,
+    shuffle: false,
+    repeat_mode: 0,
+    track_window: {
+      current_track: { id: 'song_now', uri: 'spotify:track:song_now', name: 'Current Song', duration_ms: 180000, artists: [{ name: 'Now' }], album: { name: 'Alb', images: [] } },
+      next_tracks: [
+        { id: 't_old_1', uri: 'spotify:track:t_old_1', name: 'Old First', duration_ms: 180000, artists: [{ name: 'A' }], album: { name: 'Alb', images: [] } },
+        { id: 't_snow', uri: 'spotify:track:t_snow', name: 'Snowman', duration_ms: 165000, artists: [{ name: 'Sia' }], album: { name: 'Alb', images: [] } }
+      ]
+    }
+  });
+
+  assert.equal(h.eval('state.liveQueueTracks[0].title'), 'Snowman');
+  const firstIdxSnow = h.getEl('npQueueListContainer').innerHTML.indexOf('Snowman');
+  const firstIdxOld = h.getEl('npQueueListContainer').innerHTML.indexOf('Old First');
+  assert.ok(firstIdxSnow >= 0 && firstIdxOld > firstIdxSnow, 'expected Snowman to stay #1 visually in DOM');
+
+  // Part B: Under Shuffle, natural track change with 2 SDK next_tracks preserves remaining queue tail
+  h.eval(`
+    state.hasCustomReorderedQueue = false;
+    spotifyAuth.shuffleState = true;
+    state.liveQueueTracks = [
+      { id: 's1', uri: 'spotify:track:s1', title: 'Song 1', artist: 'A', cover: '' },
+      { id: 's2', uri: 'spotify:track:s2', title: 'Song 2', artist: 'A', cover: '' },
+      { id: 's3', uri: 'spotify:track:s3', title: 'Song 3', artist: 'A', cover: '' },
+      { id: 's4', uri: 'spotify:track:s4', title: 'Song 4', artist: 'A', cover: '' },
+      { id: 's5', uri: 'spotify:track:s5', title: 'Song 5', artist: 'A', cover: '' }
+    ];
+  `);
+
+  h.emitSdkEvent('player_state_changed', {
+    paused: false,
+    position: 200,
+    shuffle: true,
+    repeat_mode: 0,
+    track_window: {
+      current_track: { id: 's1', uri: 'spotify:track:s1', name: 'Song 1', duration_ms: 190000, artists: [{ name: 'A' }], album: { name: 'Alb', images: [] } },
+      next_tracks: [
+        { id: 's2', uri: 'spotify:track:s2', name: 'Song 2', duration_ms: 190000, artists: [{ name: 'A' }], album: { name: 'Alb', images: [] } },
+        { id: 's3', uri: 'spotify:track:s3', name: 'Song 3', duration_ms: 190000, artists: [{ name: 'A' }], album: { name: 'Alb', images: [] } }
+      ]
+    }
+  });
+
+  assert.deepEqual(
+    JSON.parse(h.eval('JSON.stringify(state.liveQueueTracks.map(x => x.id))')),
+    ['s2', 's3', 's4', 's5']
+  );
+});
+
+test('23. Post-reorder skipNextTrack with Queue tab open never shrinks queue to 2 stale SDK tracks', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  h.setFetchHandler(async () => emptyResponse(204));
+  h.eval('initWebPlayer();');
+  h.emitSdkEvent('ready', { device_id: 'web_dev_1' });
+
+  h.setGetCurrentState(async () => ({
+    paused: false,
+    position: 45000,
+    shuffle: false,
+    track_window: {
+      current_track: {
+        id: 'song_0',
+        uri: 'spotify:track:song_0',
+        name: 'Previous Playing Song',
+        duration_ms: 180000,
+        artists: [{ name: 'Prev Artist' }],
+        album: { name: 'Alb', images: [] }
+      },
+      next_tracks: [
+        { id: 'sinatra', uri: 'spotify:track:sinatra', name: 'Santa Claus Is Coming To Town', duration_ms: 165000, artists: [{ name: 'Frank Sinatra' }], album: { name: 'Alb', images: [] } },
+        { id: 'mariah', uri: 'spotify:track:mariah', name: "Santa Claus Is Comin' to Town", duration_ms: 204000, artists: [{ name: 'Mariah Carey' }], album: { name: 'Alb', images: [] } }
+      ]
+    }
+  }));
+
+  h.eval(`
+    spotifyAuth.activeDeviceId = 'web_dev_1';
+    webPlayerDeviceId = 'web_dev_1';
+    webPlayerTransferredOnce = true;
+    spotifyAuth.shuffleState = false;
+    state.isAutoplayQueue = false;
+    state.isNowPlayingOpen = true;
+    state.nowPlayingMode = 'queue';
+    state.isPlaying = true;
+    state.playingTrackId = 'song_0';
+    state.playingTrackTitle = 'Previous Playing Song';
+    state.liveQueueTracks = [
+      { id: 'sinatra', uri: 'spotify:track:sinatra', title: 'Santa Claus Is Coming To Town', artist: 'Frank Sinatra', cover: '' },
+      { id: 'snowman', uri: 'spotify:track:snowman', title: 'Snowman', artist: 'Sia', cover: '' },
+      { id: 'darlene', uri: 'spotify:track:darlene', title: 'All Alone on Christmas', artist: 'Darlene Love', cover: '' },
+      { id: 'shakin', uri: 'spotify:track:shakin', title: 'Merry Christmas Everyone - Extended', artist: "Shakin' Stevens", cover: '' },
+      { id: 'chuck', uri: 'spotify:track:chuck', title: 'Run Rudolph Run', artist: 'Chuck Berry', cover: '' }
+    ];
+    state.contextUpcomingTracks = [...state.liveQueueTracks];
+    renderQueuePanelUI();
+    reorderQueueTrack(1, 0);
+  `);
+
+  h.emitSdkEvent('player_state_changed', {
+    paused: false,
+    position: 46000,
+    shuffle: false,
+    repeat_mode: 0,
+    track_window: {
+      current_track: { id: 'song_0', uri: 'spotify:track:song_0', name: 'Previous Playing Song', duration_ms: 180000, artists: [{ name: 'Prev Artist' }], album: { name: 'Alb', images: [] } },
+      next_tracks: [
+        { id: 'sinatra', uri: 'spotify:track:sinatra', name: 'Santa Claus Is Coming To Town', duration_ms: 165000, artists: [{ name: 'Frank Sinatra' }], album: { name: 'Alb', images: [] } },
+        { id: 'mariah', uri: 'spotify:track:mariah', name: "Santa Claus Is Comin' to Town", duration_ms: 204000, artists: [{ name: 'Mariah Carey' }], album: { name: 'Alb', images: [] } }
+      ]
+    }
+  });
+
+  await h.eval('skipNextTrack()');
+  await h.eval('fetchAndRenderQueueForCurrentTrack()');
+
+  assert.equal(h.eval('state.playingTrackId'), 'snowman');
+  const playCall = h.fetchCalls.find(c => c.url.includes('/me/player/play'));
+  assert.ok(playCall, 'expected /me/player/play with all 5 reordered URIs');
+  assert.deepEqual(playCall.bodyJson, {
+    uris: [
+      'spotify:track:snowman',
+      'spotify:track:sinatra',
+      'spotify:track:darlene',
+      'spotify:track:shakin',
+      'spotify:track:chuck'
+    ]
+  });
+  assert.deepEqual(
+    JSON.parse(h.eval('JSON.stringify(state.liveQueueTracks.map(x => x.id))')),
+    ['sinatra', 'darlene', 'shakin', 'chuck']
+  );
+
+  const queueHtml = h.getEl('npQueueListContainer').innerHTML;
+  assert.equal(queueHtml.includes('Darlene Love'), true);
+  assert.equal(queueHtml.includes('Chuck Berry'), true);
+  assert.equal(queueHtml.includes('Mariah Carey'), false);
+});
+
+test('24. Queue panel renders translucent skeleton rows while loading and smoothly reveals newly merged tracks without popping existing rows', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  // 1. Empty + loading renders 6 skeleton placeholders and no empty state
+  h.eval(`
+    state.isNowPlayingOpen = true;
+    state.nowPlayingMode = 'queue';
+    state.queueLoading = true;
+    state.liveQueueTracks = [];
+    state.discoveryTracks = [];
+    renderQueuePanelUI();
+  `);
+
+  const htmlEmptyLoading = h.getEl('npQueueListContainer').innerHTML;
+  const emptySkelCount = (htmlEmptyLoading.match(/np-queue-skeleton-row/g) || []).length;
+  assert.equal(emptySkelCount, 6);
+  assert.equal(htmlEmptyLoading.includes('np-queue-empty-state'), false);
+
+  // 2. Partial seeded queue (2 SDK tracks) + loading shows 2 real tracks + 4 trailing skeleton rows
+  h.eval(`
+    state.queueLoading = true;
+    state.liveQueueTracks = [
+      { id: 'q1', uri: 'spotify:track:q1', title: 'Track 1', artist: 'Artist 1', cover: '' },
+      { id: 'q2', uri: 'spotify:track:q2', title: 'Track 2', artist: 'Artist 2', cover: '' }
+    ];
+    renderQueuePanelUI();
+  `);
+
+  const htmlPartial = h.getEl('npQueueListContainer').innerHTML;
+  const partialRowCount = (htmlPartial.match(/class="np-queue-row/g) || []).length;
+  const partialSkelCount = (htmlPartial.match(/np-queue-skeleton-row/g) || []).length;
+  assert.equal(partialRowCount, 2);
+  assert.equal(partialSkelCount, 4);
+
+  // 3. Full API merge arrives: skeletons vanish cleanly and only the 4 newly revealed tracks get np-queue-row-enter
+  h.eval(`
+    state.queueLoading = false;
+    state.liveQueueTracks = [
+      { id: 'q1', uri: 'spotify:track:q1', title: 'Track 1', artist: 'Artist 1', cover: '' },
+      { id: 'q2', uri: 'spotify:track:q2', title: 'Track 2', artist: 'Artist 2', cover: '' },
+      { id: 'q3', uri: 'spotify:track:q3', title: 'Track 3', artist: 'Artist 3', cover: '' },
+      { id: 'q4', uri: 'spotify:track:q4', title: 'Track 4', artist: 'Artist 4', cover: '' },
+      { id: 'q5', uri: 'spotify:track:q5', title: 'Track 5', artist: 'Artist 5', cover: '' },
+      { id: 'q6', uri: 'spotify:track:q6', title: 'Track 6', artist: 'Artist 6', cover: '' }
+    ];
+    renderQueuePanelUI();
+  `);
+
+  const htmlMerged = h.getEl('npQueueListContainer').innerHTML;
+  assert.equal(htmlMerged.includes('np-queue-skeleton-row'), false);
+  assert.equal((htmlMerged.match(/np-queue-row-enter/g) || []).length, 4);
+  assert.equal(/class="np-queue-row"[\s\S]*?data-track-id="q1"/.test(htmlMerged), true);
+  assert.equal(/class="np-queue-row"[\s\S]*?data-track-id="q2"/.test(htmlMerged), true);
+  assert.equal(/class="np-queue-row np-queue-row-enter"[\s\S]*?data-track-id="q3"/.test(htmlMerged), true);
+  assert.equal(/class="np-queue-row np-queue-row-enter"[\s\S]*?data-track-id="q6"/.test(htmlMerged), true);
+});
+
+test('25. Repeat 3-state cycle & Shuffle toggle animate, protect optimistic state against stale SDK events, show Queue skeleton, and fall back cleanly on 403', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  let failShuffleWith403 = false;
+  h.setFetchHandler(async (url) => {
+    if (failShuffleWith403 && url.includes('/me/player/shuffle')) {
+      return jsonResponse({ error: { status: 403, message: 'Restriction violated' } }, 403);
+    }
+    return emptyResponse(204);
+  });
+
+  h.eval(`
+    initWebPlayer();
+    h_ready = true;
+    spotifyAuth.activeDeviceId = 'web_dev_1';
+    webPlayerDeviceId = 'web_dev_1';
+    webPlayerTransferredOnce = true;
+    state.isNowPlayingOpen = true;
+    state.nowPlayingMode = 'queue';
+    state.playingTrackId = 'cur_song';
+    state.playingTrackTitle = 'Current';
+    state.liveQueueTracks = [
+      { id: 't1', uri: 'spotify:track:t1', title: 'Track 1', artist: 'Artist', cover: '' },
+      { id: 't2', uri: 'spotify:track:t2', title: 'Track 2', artist: 'Artist', cover: '' },
+      { id: 't3', uri: 'spotify:track:t3', title: 'Track 3', artist: 'Artist', cover: '' }
+    ];
+    renderQueuePanelUI();
+  `);
+
+  const repBtn = h.getEl('npRepeatBtn');
+  const shufBtn = h.getEl('npShuffleBtn');
+
+  // 1. Repeat cycles off -> context -> track -> off and resists stale SDK repeat_mode: 0
+  repBtn.click();
+  await h.flushMicrotasks(3);
+  assert.equal(h.eval('spotifyAuth.repeatState'), 'context');
+  assert.equal(repBtn.classList.contains('active'), true);
+  assert.equal(repBtn.classList.contains('is-repeat-track'), false);
+  assert.equal(repBtn.getAttribute('data-repeat-mode'), 'context');
+
+  // Stale SDK event claiming repeat_mode: 0 must NOT revert optimistic 'context' while locked
+  h.emitSdkEvent('player_state_changed', {
+    paused: false,
+    position: 5000,
+    shuffle: false,
+    repeat_mode: 0,
+    track_window: {
+      current_track: { id: 'cur_song', uri: 'spotify:track:cur_song', name: 'Current', duration_ms: 180000, artists: [{ name: 'A' }], album: { name: 'Alb', images: [] } },
+      next_tracks: []
+    }
+  });
+  assert.equal(h.eval('spotifyAuth.repeatState'), 'context');
+
+  repBtn.click();
+  await h.flushMicrotasks(3);
+  assert.equal(h.eval('spotifyAuth.repeatState'), 'track');
+  assert.equal(repBtn.classList.contains('active'), true);
+  assert.equal(repBtn.classList.contains('is-repeat-track'), true);
+  assert.equal(repBtn.getAttribute('data-repeat-mode'), 'track');
+
+  repBtn.click();
+  await h.flushMicrotasks(3);
+  assert.equal(h.eval('spotifyAuth.repeatState'), 'off');
+  assert.equal(repBtn.classList.contains('active'), false);
+  assert.equal(repBtn.classList.contains('is-repeat-track'), false);
+  assert.equal(repBtn.getAttribute('data-repeat-mode'), 'off');
+
+  const repeatCalls = h.fetchCalls.filter(c => c.url.includes('/me/player/repeat'));
+  assert.equal(repeatCalls.length, 3);
+  assert.equal(repeatCalls[0].url.includes('state=context'), true);
+  assert.equal(repeatCalls[1].url.includes('state=track'), true);
+  assert.equal(repeatCalls[2].url.includes('state=off'), true);
+
+  // 2. Shuffle displays Queue skeleton immediately on tap and resists stale SDK shuffle: false
+  shufBtn.click();
+  assert.equal(h.eval('spotifyAuth.shuffleState'), true);
+  assert.equal(shufBtn.classList.contains('active'), true);
+  assert.equal(h.eval('state.queueLoading'), true);
+  assert.equal(h.getEl('npQueueListContainer').innerHTML.includes('np-queue-skeleton-row'), true);
+
+  h.emitSdkEvent('player_state_changed', {
+    paused: false,
+    position: 8000,
+    shuffle: false,
+    repeat_mode: 0,
+    track_window: {
+      current_track: { id: 'cur_song', uri: 'spotify:track:cur_song', name: 'Current', duration_ms: 180000, artists: [{ name: 'A' }], album: { name: 'Alb', images: [] } },
+      next_tracks: []
+    }
+  });
+  assert.equal(h.eval('spotifyAuth.shuffleState'), true);
+  await h.flushMicrotasks(4);
+
+  // 3. Shuffle 403 restriction falls back gracefully to local Fisher-Yates shuffle without wiping queue
+  h.eval(`
+    spotifyAuth.shuffleState = false;
+    state.shuffleToggleLockUntil = 0;
+    state.liveQueueTracks = [
+      { id: 'f1', uri: 'spotify:track:f1', title: 'Fall 1', artist: 'A', cover: '' },
+      { id: 'f2', uri: 'spotify:track:f2', title: 'Fall 2', artist: 'A', cover: '' },
+      { id: 'f3', uri: 'spotify:track:f3', title: 'Fall 3', artist: 'A', cover: '' }
+    ];
+    state.queueLoading = false;
+  `);
+  failShuffleWith403 = true;
+  shufBtn.click();
+  await h.flushMicrotasks(6);
+
+  assert.equal(h.eval('spotifyAuth.shuffleState'), true);
+  assert.equal(h.eval('state.queueLoading'), false);
+  assert.equal(h.eval('state.hasCustomReorderedQueue'), true);
+  const fallbackIds = JSON.parse(h.eval('JSON.stringify(state.liveQueueTracks.map(x => x.id))')).sort();
+  assert.deepEqual(fallbackIds, ['f1', 'f2', 'f3']);
+});
+
+test('26. Context preservation across Liked Songs, Artist tracks, and Playlists prevents Autoplay hijack on Next', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  let multiUriReject403 = true;
+  h.setFetchHandler(async (url, init) => {
+    if (url.includes('/me/player/play') && init && typeof init.body === 'string') {
+      const parsed = JSON.parse(init.body);
+      if (multiUriReject403 && Array.isArray(parsed.uris) && parsed.uris.length > 1) {
+        return jsonResponse({ error: { status: 403, message: 'Restriction violated' } }, 403);
+      }
+    }
+    if (url.includes('/me/player/queue')) {
+      return jsonResponse({
+        queue: [
+          { id: 'rec_kanye', uri: 'spotify:track:rec_kanye', name: 'Stronger', artists: [{ name: 'Kanye West' }], album: { name: 'Graduation', images: [] } }
+        ]
+      });
+    }
+    return emptyResponse(204);
+  });
+
+  h.eval(`
+    initWebPlayer();
+    spotifyAuth.activeDeviceId = 'web_dev_1';
+    webPlayerDeviceId = 'web_dev_1';
+    webPlayerTransferredOnce = true;
+    state.isNowPlayingOpen = true;
+    state.nowPlayingMode = 'queue';
+
+    liveCatalog.likedTracks = [
+      { id: 'lk_1', uri: 'spotify:track:lk_1', title: '120', artist: 'Bad Bunny', album: 'Liked', duration: 150, cover: '' },
+      { id: 'lk_2', uri: 'spotify:track:lk_2', title: 'expectations', artist: 'Tainy', album: 'Liked', duration: 170, cover: '' },
+      { id: 'lk_3', uri: 'spotify:track:lk_3', title: 'Midnight Sun', artist: 'Zara', album: 'Liked', duration: 185, cover: '' },
+      { id: 'lk_4', uri: 'spotify:track:lk_4', title: 'Half Mast', artist: 'Empire', album: 'Liked', duration: 200, cover: '' }
+    ];
+    liveCatalog.entities['liked_songs'] = {
+      id: 'liked_songs',
+      type: 'liked',
+      uri: null,
+      title: 'Liked Songs',
+      artist: 'User',
+      tracks: liveCatalog.likedTracks
+    };
+
+    liveCatalog.entities['art_1234567890123456789012'] = {
+      id: 'art_1234567890123456789012',
+      spotifyId: '1234567890123456789012',
+      name: 'Sample Artist',
+      title: 'Sample Artist',
+      cover: '',
+      tracks: [
+        { id: 'ar_1', uri: 'spotify:track:ar_1', title: 'Hit 1', artist: 'Sample Artist', album: 'Alb', duration: 180, cover: '' },
+        { id: 'ar_2', uri: 'spotify:track:ar_2', title: 'Hit 2', artist: 'Sample Artist', album: 'Alb', duration: 190, cover: '' },
+        { id: 'ar_3', uri: 'spotify:track:ar_3', title: 'Hit 3', artist: 'Sample Artist', album: 'Alb', duration: 200, cover: '' }
+      ]
+    };
+
+    liveCatalog.entities['pl_test'] = {
+      id: 'pl_test',
+      type: 'playlist',
+      uri: 'spotify:playlist:pl_test',
+      title: 'Christmas Mix',
+      artist: 'Curator',
+      cover: '',
+      tracks: [
+        { id: 'pl_1', uri: 'spotify:track:pl_1', title: 'Snowman', artist: 'Sia', album: 'Everyday', duration: 165, cover: '' },
+        { id: 'pl_2', uri: 'spotify:track:pl_2', title: 'Last Christmas', artist: 'Wham!', album: 'Wham', duration: 260, cover: '' }
+      ]
+    };
+  `);
+
+  // 1. Liked Songs from track #1 ("120") preserves Liked queue even after 403 multi-URI fallback & unrelated /me/player/queue
+  h.eval(`state.selectedEntityId = 'liked_songs';`);
+  h.triggerDocument('click', {
+    target: {
+      closest(sel) {
+        if (sel !== '.track-row') return null;
+        return {
+          getAttribute(k) {
+            const map = {
+              'data-entity-id': 'liked_songs',
+              'data-track-index': '0',
+              'data-track-id': 'lk_1',
+              'data-track-uri': 'spotify:track:lk_1',
+              'data-track-title': '120',
+              'data-track-artist': 'Bad Bunny',
+              'data-track-album': 'Liked',
+              'data-track-duration': '150'
+            };
+            return map[k] || '';
+          }
+        };
+      }
+    }
+  });
+  await h.flushMicrotasks(8);
+
+  assert.equal(h.eval('state.isLocalContextQueue'), true);
+  assert.equal(h.eval('state.activeContextName'), 'Tus me gusta');
+  assert.deepEqual(
+    JSON.parse(h.eval('JSON.stringify(state.liveQueueTracks.map(x => x.id))')),
+    ['lk_2', 'lk_3', 'lk_4']
+  );
+
+  // Even calling fetchAndRenderQueueForCurrentTrack must NOT inject Kanye West
+  await h.eval('fetchAndRenderQueueForCurrentTrack()');
+  assert.deepEqual(
+    JSON.parse(h.eval('JSON.stringify(state.liveQueueTracks.map(x => x.id))')),
+    ['lk_2', 'lk_3', 'lk_4']
+  );
+
+  // Next from Liked Songs plays "expectations" (never Kanye West)
+  await h.eval('skipNextTrack()');
+  assert.equal(h.eval('state.playingTrackId'), 'lk_2');
+  assert.equal(h.eval('state.playingTrackTitle'), 'expectations');
+  assert.deepEqual(
+    JSON.parse(h.eval('JSON.stringify(state.liveQueueTracks.map(x => x.id))')),
+    ['lk_3', 'lk_4']
+  );
+
+  // 2. Artist track select plays track #2 via URIs (not broken spotify:artist: offset) and preserves Artist context
+  multiUriReject403 = false;
+  h.eval(`
+    state.selectedArtistId = 'art_1234567890123456789012';
+    handleArtistTrackSelect({
+      getAttribute(k) {
+        const map = {
+          'data-artist-track-index': '1',
+          'data-track-id': 'ar_2',
+          'data-track-uri': 'spotify:track:ar_2',
+          'data-track-title': 'Hit 2',
+          'data-track-artist': 'Sample Artist',
+          'data-track-duration': '190'
+        };
+        return map[k] || '';
+      }
+    });
+  `);
+  await h.flushMicrotasks(6);
+
+  assert.equal(h.eval('state.playingTrackId'), 'ar_2');
+  assert.equal(h.eval('state.isLocalContextQueue'), true);
+  assert.equal(h.eval('state.activeContextName'), 'Sample Artist');
+  const artistPlayCall = [...h.fetchCalls].reverse().find(c => c.url.includes('/me/player/play'));
+  assert.deepEqual(artistPlayCall.bodyJson, {
+    uris: ['spotify:track:ar_2', 'spotify:track:ar_3']
+  });
+
+  await h.eval('skipNextTrack()');
+  assert.equal(h.eval('state.playingTrackId'), 'ar_3');
+
+  // 3. Playlist uses native Spotify context_uri with isLocalContextQueue = false
+  h.eval(`
+    state.selectedEntityId = 'pl_test';
+    startAlbumOrPlaylistPlayback(false);
+  `);
+  await h.flushMicrotasks(6);
+
+  assert.equal(h.eval('state.isLocalContextQueue'), false);
+  assert.equal(h.eval('state.activeContextName'), 'Christmas Mix');
+  const plPlayCall = [...h.fetchCalls].reverse().find(c => c.url.includes('/me/player/play'));
+  assert.deepEqual(plPlayCall.bodyJson, {
+    context_uri: 'spotify:playlist:pl_test',
+    offset: { position: 0 }
+  });
+});
+
+test('27. skipPrevTrack respects local context history, eliminates double-seek, never escapes track #1, and handles fast double-tap in playlists', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  h.setFetchHandler(async () => emptyResponse(204));
+  h.eval(`
+    initWebPlayer();
+    spotifyAuth.activeDeviceId = 'web_dev_1';
+    webPlayerDeviceId = 'web_dev_1';
+    webPlayerTransferredOnce = true;
+    state.isNowPlayingOpen = true;
+    state.nowPlayingMode = 'queue';
+
+    liveCatalog.likedTracks = [
+      { id: 'lk_1', uri: 'spotify:track:lk_1', title: '120', artist: 'Bad Bunny', album: 'Liked', duration: 150, cover: '' },
+      { id: 'lk_2', uri: 'spotify:track:lk_2', title: 'expectations', artist: 'Tainy', album: 'Liked', duration: 170, cover: '' },
+      { id: 'lk_3', uri: 'spotify:track:lk_3', title: 'Midnight Sun', artist: 'Zara', album: 'Liked', duration: 185, cover: '' },
+      { id: 'lk_4', uri: 'spotify:track:lk_4', title: 'Half Mast', artist: 'Empire', album: 'Liked', duration: 200, cover: '' }
+    ];
+    liveCatalog.entities['liked_songs'] = {
+      id: 'liked_songs',
+      type: 'liked',
+      uri: null,
+      title: 'Liked Songs',
+      artist: 'User',
+      tracks: liveCatalog.likedTracks
+    };
+    state.selectedEntityId = 'liked_songs';
+  `);
+
+  // 1. Start Liked Songs from track #2 ("expectations") -> playbackHistory seeded with ["120"]
+  h.triggerDocument('click', {
+    target: {
+      closest(sel) {
+        if (sel !== '.track-row') return null;
+        return {
+          getAttribute(k) {
+            const map = {
+              'data-entity-id': 'liked_songs',
+              'data-track-index': '1',
+              'data-track-id': 'lk_2',
+              'data-track-uri': 'spotify:track:lk_2',
+              'data-track-title': 'expectations',
+              'data-track-artist': 'Tainy',
+              'data-track-album': 'Liked',
+              'data-track-duration': '170'
+            };
+            return map[k] || '';
+          }
+        };
+      }
+    }
+  });
+  await h.flushMicrotasks(6);
+
+  assert.equal(h.eval('state.playbackHistory.length'), 1);
+  assert.equal(h.eval('state.playbackHistory[0].id'), 'lk_1');
+
+  // Advance to track #3 ("Midnight Sun")
+  await h.eval('skipNextTrack()');
+  assert.equal(h.eval('state.playingTrackId'), 'lk_3');
+  assert.deepEqual(
+    JSON.parse(h.eval('JSON.stringify(state.playbackHistory.map(x => x.id))')),
+    ['lk_1', 'lk_2']
+  );
+
+  // Tap Previous at 10s -> restarts "Midnight Sun" via webPlayer.seek(0) ONLY (no duplicate HTTP /me/player/seek)
+  h.eval('state.currentTimeSec = 10;');
+  await h.eval('skipPrevTrack()');
+  assert.equal(h.eval('state.playingTrackId'), 'lk_3');
+  assert.equal(h.eval('state.currentTimeSec'), 0);
+  assert.equal(h.sdkActions.filter(a => a.type === 'seek' && a.ms === 0).length, 1);
+  assert.equal(h.fetchCalls.some(c => c.url.includes('/me/player/seek')), false);
+
+  // Tap Previous again (< 4s) -> pops "expectations", prepends "Midnight Sun" back into liveQueueTracks
+  await h.eval('skipPrevTrack()');
+  assert.equal(h.eval('state.playingTrackId'), 'lk_2');
+  assert.equal(h.eval('state.isLocalContextQueue'), true);
+  assert.deepEqual(
+    JSON.parse(h.eval('JSON.stringify(state.liveQueueTracks.map(x => x.id))')),
+    ['lk_3', 'lk_4']
+  );
+
+  // Tap Previous again (< 4s) -> pops "120"
+  await h.eval('skipPrevTrack()');
+  assert.equal(h.eval('state.playingTrackId'), 'lk_1');
+  assert.deepEqual(
+    JSON.parse(h.eval('JSON.stringify(state.liveQueueTracks.map(x => x.id))')),
+    ['lk_2', 'lk_3', 'lk_4']
+  );
+
+  // Tap Previous on track #1 (empty history) -> restarts to 0:00 instead of calling webPlayer.previousTrack()
+  h.eval('state.currentTimeSec = 1;');
+  await h.eval('skipPrevTrack()');
+  assert.equal(h.eval('state.playingTrackId'), 'lk_1');
+  assert.equal(h.sdkActions.some(a => a.type === 'previousTrack'), false);
+
+  // 2. Native Playlist: fast double-tap Previous at 15s then 0s sends POST /me/player/previous on tap 2
+  h.eval(`
+    state.isLocalContextQueue = false;
+    state.isAutoplayQueue = false;
+    state.playbackHistory = [];
+    state.playingTrackId = 'pl_2';
+    state.playingTrackTitle = 'Track 2';
+    state.currentTimeSec = 15;
+  `);
+  await h.eval('skipPrevTrack()');
+  assert.equal(h.eval('state.currentTimeSec'), 0);
+  await h.eval('skipPrevTrack()');
+  assert.equal(h.fetchCalls.some(c => c.url.includes('/me/player/previous') && c.method === 'POST'), true);
+});
+
+test('28. Cold-reload mini-player resume rehydrates persisted Liked Songs context instead of Spotify recommendations', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  h.setFetchHandler(async (url) => {
+    if (url.includes('/me/player/queue')) {
+      return jsonResponse({
+        queue: [
+          { id: 'rec_kanye', uri: 'spotify:track:rec_kanye', name: 'Stronger', artists: [{ name: 'Kanye West' }], album: { name: 'Graduation', images: [] } }
+        ]
+      });
+    }
+    if (url.includes('/me/tracks')) {
+      return jsonResponse({
+        total: 4,
+        items: [
+          { track: { id: 'lk_1', uri: 'spotify:track:lk_1', name: '120', duration_ms: 150000, artists: [{ name: 'Bad Bunny' }], album: { name: 'Liked', images: [] } } },
+          { track: { id: 'lk_2', uri: 'spotify:track:lk_2', name: 'expectations', duration_ms: 170000, artists: [{ name: 'Tainy' }], album: { name: 'Liked', images: [] } } },
+          { track: { id: 'lk_3', uri: 'spotify:track:lk_3', name: 'Midnight Sun', duration_ms: 185000, artists: [{ name: 'Zara' }], album: { name: 'Liked', images: [] } } },
+          { track: { id: 'lk_4', uri: 'spotify:track:lk_4', name: 'Half Mast', duration_ms: 200000, artists: [{ name: 'Empire' }], album: { name: 'Liked', images: [] } } }
+        ]
+      });
+    }
+    if (url.endsWith('/me/player')) {
+      return jsonResponse({
+        is_playing: false,
+        progress_ms: 42000,
+        context: null,
+        item: {
+          id: 'lk_2',
+          uri: 'spotify:track:lk_2',
+          name: 'expectations',
+          duration_ms: 170000,
+          artists: [{ name: 'Tainy' }],
+          album: { name: 'Liked', images: [] }
+        },
+        device: { id: 'web_dev_1', name: 'SpotiEcho Web Player', type: 'Computer', is_active: true }
+      });
+    }
+    return emptyResponse(204);
+  });
+
+  h.eval(`
+    initWebPlayer();
+    spotifyAuth.activeDeviceId = 'web_dev_1';
+    webPlayerDeviceId = 'web_dev_1';
+    webPlayerTransferredOnce = true;
+    saveLastPlayedTrack({
+      id: 'lk_2',
+      uri: 'spotify:track:lk_2',
+      name: 'expectations',
+      artist: 'Tainy',
+      album: 'Liked',
+      duration: 170,
+      contextType: 'liked',
+      contextName: 'Tus me gusta',
+      contextId: 'liked_songs'
+    });
+    const cached = loadLastPlayedTrack();
+    applyTrackToUI(cached, 0, false, 'cache');
+    state.nowPlayingMode = 'queue';
+  `);
+
+  await h.eval('togglePlayPause()');
+
+  assert.equal(h.eval('state.isLocalContextQueue'), true);
+  assert.equal(h.eval('state.activeContextName'), 'Tus me gusta');
+  assert.deepEqual(
+    JSON.parse(h.eval('JSON.stringify(state.liveQueueTracks.map(x => x.id))')),
+    ['lk_3', 'lk_4']
+  );
+  assert.deepEqual(
+    JSON.parse(h.eval('JSON.stringify(state.playbackHistory.map(x => x.id))')),
+    ['lk_1']
+  );
+
+  const playCall = [...h.fetchCalls].reverse().find(c => c.url.includes('/me/player/play'));
+  assert.ok(playCall, 'expected /me/player/play with restored Liked Songs uris');
+  assert.deepEqual(playCall.bodyJson, {
+    uris: [
+      'spotify:track:lk_2',
+      'spotify:track:lk_3',
+      'spotify:track:lk_4'
+    ],
+    position_ms: 42000
+  });
+});
+
+
+
+
+
+
+
 

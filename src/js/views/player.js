@@ -309,6 +309,15 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
   const trackChanged = isFirstTrack || (state.playingTrackId !== nextId) || (state.playingTrackTitle !== nextTitle);
   const shouldAnimateTransition = trackChanged && !isFirstTrack;
   state.isCachedPlaceholderTrack = (source === 'cache');
+  if (source === 'cache' && trackObj) {
+    if (trackObj.contextType) state.activeContextType = trackObj.contextType;
+    if (trackObj.contextName) state.activeContextName = trackObj.contextName;
+    if (trackObj.contextId) state.activeContextId = trackObj.contextId;
+    if (trackObj.contextUri) state.activeContextUri = trackObj.contextUri;
+    if (trackObj.contextType === 'liked' || trackObj.contextType === 'artist') {
+      state.isLocalContextQueue = true;
+    }
+  }
 
   // Si es una acción directa del usuario para reproducir/cambiar canción, blindar el estado
   // para que ningún poll o evento rezagado de la canción anterior revierta la UI
@@ -402,7 +411,11 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
       thumb: thumbUrl,
       cover: coverUrl,
       coverLarge: coverUrl,
-      duration: hasRealDuration ? durationSec : 0
+      duration: hasRealDuration ? durationSec : 0,
+      contextType: state.activeContextType || '',
+      contextName: state.activeContextName || '',
+      contextId: state.activeContextId || '',
+      contextUri: state.activeContextUri || ''
     });
   }
 
@@ -642,8 +655,19 @@ async function pollSpotifyCurrentPlayback(opts = {}) {
         });
       }
     }
-    spotifyAuth.shuffleState = !!pb.shuffle_state;
-    spotifyAuth.repeatState = pb.repeat_state || 'off';
+    const nowMs = Date.now();
+    const pollShuffle = !!pb.shuffle_state;
+    if (nowMs >= (state.shuffleToggleLockUntil || 0) || pollShuffle === Boolean(spotifyAuth.shuffleState)) {
+      if (pollShuffle === Boolean(spotifyAuth.shuffleState)) state.shuffleToggleLockUntil = 0;
+      spotifyAuth.shuffleState = pollShuffle;
+    }
+    const pollRepeat = pb.repeat_state || 'off';
+    if (nowMs >= (state.repeatToggleLockUntil || 0) || pollRepeat === (spotifyAuth.repeatState || 'off')) {
+      if (pollRepeat === (spotifyAuth.repeatState || 'off')) state.repeatToggleLockUntil = 0;
+      spotifyAuth.repeatState = pollRepeat;
+    }
+    if (typeof updateShuffleButtonUI === 'function') updateShuffleButtonUI();
+    if (typeof updateRepeatButtonUI === 'function') updateRepeatButtonUI();
     const rawSec = (pb.progress_ms || 0) / 1000;
     reconcileIncomingPlaybackState(pb.item, rawSec, isPlaying, 'poll');
 
@@ -1301,6 +1325,19 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
     const remaining = Math.max(0, state.durationSec - curIntSec);
     npTimeRemaining.textContent = `-${formatTime(remaining)}`;
 
+    if (
+      (state.hasCustomReorderedQueue || (state.isLocalContextQueue && state.singleTrackPlayback)) &&
+      state.isPlaying &&
+      !state.isBuffering &&
+      state.durationSec >= 15 &&
+      (state.durationSec - state.currentTimeSec) <= 1.2 &&
+      Array.isArray(state.liveQueueTracks) &&
+      state.liveQueueTracks.length > 0 &&
+      typeof skipNextTrack === 'function'
+    ) {
+      skipNextTrack();
+    }
+
     // Proactive 50% pre-calculation for uninterrupted Radio transitions
     if (
       state.isPlaying &&
@@ -1485,12 +1522,45 @@ function setPlaybackBuffering(isBuffering) {
   }
 }
 
+function triggerControlPop(el) {
+  if (!el || !el.classList) return;
+  el.classList.remove('is-popping');
+  if (el._popClearTimer) {
+    clearTimeout(el._popClearTimer);
+    el._popClearTimer = null;
+  }
+  const applyPop = () => {
+    el.classList.add('is-popping');
+    el._popClearTimer = setTimeout(() => {
+      el.classList.remove('is-popping');
+      el._popClearTimer = null;
+    }, 340);
+  };
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(applyPop);
+  } else {
+    applyPop();
+  }
+}
+
+function updateShuffleButtonUI() {
+  const shufBtn = typeof document !== 'undefined' ? document.getElementById('npShuffleBtn') : null;
+  if (!shufBtn) return;
+  const active = Boolean(spotifyAuth.shuffleState);
+  shufBtn.classList.toggle('active', active);
+  shufBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  shufBtn.title = active ? 'Aleatorio (activo)' : 'Aleatorio';
+}
+
 function updateRepeatButtonUI() {
   const repBtn = typeof document !== 'undefined' ? document.getElementById('npRepeatBtn') : null;
   if (!repBtn) return;
   const mode = spotifyAuth.repeatState || 'off';
   const isActive = mode !== 'off';
   repBtn.classList.toggle('active', isActive);
+  repBtn.classList.toggle('is-repeat-track', mode === 'track');
+  repBtn.setAttribute('data-repeat-mode', mode);
+  repBtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   repBtn.title = mode === 'track'
     ? 'Repetir canción actual (activo)'
     : (mode === 'context' ? 'Repetir en bucle (activo)' : 'Repetir en bucle');
@@ -1499,6 +1569,7 @@ function updateRepeatButtonUI() {
 function updatePlayPauseIcons() {
   if (npQueueEq) npQueueEq.classList.toggle('playing', !!state.isPlaying);
   if (npCoverStage) npCoverStage.classList.toggle('is-paused', !state.isPlaying);
+  updateShuffleButtonUI();
   updateRepeatButtonUI();
   if (state.lyricsManualScrolling) {
     if (!state.isPlaying) {
@@ -1559,16 +1630,49 @@ const QUEUE_ICON_SVG = `<svg width="26" height="26" viewBox="0 0 24 24" fill="no
 const CENTERED_ICON_SVG = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"></rect><circle cx="12" cy="12" r="3.5"></circle></svg>`;
 const EXPAND_PANEL_ICON_SVG = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"></rect><line x1="15" y1="3" x2="15" y2="21"></line></svg>`;
 
-function buildQueueRowHTML(track, idx, sourceType = 'queue') {
+const QUEUE_DRAG_HANDLE_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="16" x2="20" y2="16"></line></svg>`;
+
+const QUEUE_SKELETON_TITLE_WIDTHS = ['64%', '52%', '72%', '58%', '68%', '48%'];
+const QUEUE_SKELETON_ARTIST_WIDTHS = ['40%', '34%', '44%', '36%', '42%', '30%'];
+
+function buildQueueSkeletonRowsHTML(count = 6, startIndex = 0) {
+  const safeCount = Math.max(0, Math.floor(count || 0));
+  if (safeCount === 0) return '';
+  let html = '';
+  for (let i = 0; i < safeCount; i++) {
+    const slotIdx = startIndex + i;
+    const titleW = QUEUE_SKELETON_TITLE_WIDTHS[slotIdx % QUEUE_SKELETON_TITLE_WIDTHS.length];
+    const artistW = QUEUE_SKELETON_ARTIST_WIDTHS[slotIdx % QUEUE_SKELETON_ARTIST_WIDTHS.length];
+    const opacity = Math.max(0.24, 0.78 - slotIdx * 0.09).toFixed(2);
+    const delayMs = slotIdx * 90;
+    html += `
+      <div class="np-queue-skeleton-row" aria-hidden="true" style="--skel-opacity: ${opacity}; --skel-delay: ${delayMs}ms;">
+        <div class="np-queue-skeleton-thumb"></div>
+        <div class="np-queue-skeleton-meta">
+          <div class="np-queue-skeleton-title" style="width: ${titleW};"></div>
+          <div class="np-queue-skeleton-artist" style="width: ${artistW};"></div>
+        </div>
+        <div class="np-queue-skeleton-handle"></div>
+      </div>
+    `;
+  }
+  return html;
+}
+
+function buildQueueRowHTML(track, idx, sourceType = 'queue', animateEnter = false, enterOrder = 0) {
   const safeTitle = (track.title || '').replace(/"/g, '&quot;');
   const safeArtist = (track.artist || '').replace(/"/g, '&quot;');
   const safeAlbum = (track.album || '').replace(/"/g, '&quot;');
   const coverUrl = track.cover || DEFAULT_ALBUM_COVER;
   const thumbUrl = track.thumb || coverUrl;
   const durSec = track.duration || 210;
-  const durFormatted = formatTime(durSec);
+  const handleHtml = sourceType === 'queue'
+    ? `<div class="np-queue-drag-handle" aria-label="Reordenar" title="Arrastra para reordenar">${QUEUE_DRAG_HANDLE_SVG}</div>`
+    : '';
+  const enterClass = animateEnter ? ' np-queue-row-enter' : '';
+  const enterStyle = animateEnter ? ` style="--queue-enter-delay: ${Math.min(enterOrder, 6) * 28}ms;"` : '';
   return `
-    <div class="np-queue-row"
+    <div class="np-queue-row${enterClass}"${enterStyle}
          data-queue-source="${sourceType}"
          data-queue-idx="${idx}"
          data-track-id="${track.id || ''}"
@@ -1579,19 +1683,22 @@ function buildQueueRowHTML(track, idx, sourceType = 'queue') {
          data-track-thumb="${thumbUrl}"
          data-track-cover="${coverUrl}"
          data-track-duration="${durSec}">
-      <span class="np-queue-index">${idx + 1}</span>
       ${renderOptImg(thumbUrl, safeTitle, 'np-queue-thumb')}
       <div class="np-queue-meta">
         <div class="np-queue-title">${track.title}</div>
         <div class="np-queue-artist">${track.artist}</div>
       </div>
-      <div class="np-queue-duration">${durFormatted}</div>
+      ${handleHtml}
     </div>
   `;
 }
 
+let lastQueueRenderedIds = [];
+let lastQueueHadSkeleton = false;
+let lastQueueRenderSignature = '';
+
 function renderQueuePanelUI() {
-  if (!npQueueListContainer) return;
+  if (!npQueueListContainer || state.isDraggingQueueRow) return;
 
   // Do not duplicate the current track card in the right column, as Now Playing
   // is already permanently featured in large format on the left column
@@ -1599,55 +1706,115 @@ function renderQueuePanelUI() {
     npQueueCurrentCard.style.display = 'none';
   }
 
+  updateShuffleButtonUI();
+
   const queue = state.liveQueueTracks || [];
   const discovery = state.discoveryTracks || [];
+  const primaryArtist = state.playingArtist ? state.playingArtist.split(',')[0].trim() : '';
 
-  // Priority 1: Pending tracks exist in queue
+  // Priority 1: Pending tracks exist in queue ("A continuación")
   if (queue.length > 0) {
-    if (npQueueHeading) npQueueHeading.textContent = state.isAutoplayQueue ? 'A continuación • Radio' : 'A continuación';
+    let sub = '';
+    if (state.isAutoplayQueue) {
+      sub = primaryArtist ? `Reproducción automática · ${primaryArtist}` : 'Reproducción automática';
+    } else if (state.hasCustomReorderedQueue) {
+      sub = 'Orden personalizado';
+    } else if (state.activeContextName || state.playingAlbumTitle) {
+      sub = `Continuando desde ${state.activeContextName || state.playingAlbumTitle}`;
+    }
+
+    if (npQueueHeading) npQueueHeading.textContent = 'A continuación';
     if (npQueueSubheading) {
-      if (state.isAutoplayQueue) {
-        if (typeof EchoRadio !== 'undefined' && typeof EchoRadio.getSessionSubtitle === 'function') {
-          npQueueSubheading.textContent = EchoRadio.getSessionSubtitle();
-        } else {
-          const primaryArtist = state.playingArtist ? state.playingArtist.split(',')[0].trim() : '';
-          npQueueSubheading.textContent = primaryArtist
-            ? `Radio • Basado en ${primaryArtist} • Autoplay`
-            : `Radio • Autoplay personalizado`;
-        }
+      if (sub) {
+        npQueueSubheading.textContent = sub;
+        npQueueSubheading.style.display = 'block';
       } else {
-        npQueueSubheading.textContent = `Siguiente en la lista • ${queue.length} canción${queue.length === 1 ? '' : 'es'}`;
+        npQueueSubheading.textContent = '';
+        npQueueSubheading.style.display = 'none';
       }
-      npQueueSubheading.style.display = 'block';
     }
     if (npQueueSeeAllBtn) npQueueSeeAllBtn.style.display = 'none';
+
     const maxVisible = state.isAutoplayQueue ? 12 : 25;
-    npQueueListContainer.innerHTML = queue.slice(0, maxVisible).map((t, i) => buildQueueRowHTML(t, i, 'queue')).join('');
+    const visibleTracks = queue.slice(0, maxVisible);
+    const skeletonCount = (state.queueLoading && visibleTracks.length < 6) ? (6 - visibleTracks.length) : 0;
+    const visibleIds = visibleTracks.map(t => cleanTrackId(t.id || t.uri) || (t.title || ''));
+    const renderSig = `q|${visibleIds.join(',')}|sk:${skeletonCount}|sub:${sub || ''}`;
+    if (renderSig === lastQueueRenderSignature && npQueueListContainer.innerHTML) {
+      return;
+    }
+
+    const shouldAnimateNewRows = lastQueueHadSkeleton && !(state.hasCustomReorderedQueue && !lastQueueHadSkeleton);
+    const prevIdsSet = new Set(lastQueueRenderedIds);
+    let enterOrder = 0;
+
+    const rowsHtml = visibleTracks.map((t, i) => {
+      const tid = visibleIds[i];
+      const isNewAfterSkeleton = Boolean(shouldAnimateNewRows && tid && !prevIdsSet.has(tid));
+      const order = isNewAfterSkeleton ? enterOrder++ : 0;
+      return buildQueueRowHTML(t, i, 'queue', isNewAfterSkeleton, order);
+    }).join('');
+    const skeletonHtml = skeletonCount > 0 ? buildQueueSkeletonRowsHTML(skeletonCount, visibleTracks.length) : '';
+
+    npQueueListContainer.innerHTML = rowsHtml + skeletonHtml;
+    lastQueueRenderedIds = visibleIds;
+    lastQueueHadSkeleton = skeletonCount > 0;
+    lastQueueRenderSignature = renderSig;
     hydrateImages(npQueueListContainer);
+    return;
+  }
+
+  // Priority 1.5: Skeleton placeholders while queue/autoplay is loading with no seeded tracks yet
+  if (state.queueLoading || state.autoplayLoading) {
+    if (npQueueHeading) npQueueHeading.textContent = 'A continuación';
+    if (npQueueSubheading) {
+      npQueueSubheading.textContent = '';
+      npQueueSubheading.style.display = 'none';
+    }
+    if (npQueueSeeAllBtn) npQueueSeeAllBtn.style.display = 'none';
+
+    const renderSig = 'loading:6';
+    if (renderSig === lastQueueRenderSignature && npQueueListContainer.innerHTML) {
+      return;
+    }
+    npQueueListContainer.innerHTML = buildQueueSkeletonRowsHTML(6, 0);
+    lastQueueRenderedIds = [];
+    lastQueueHadSkeleton = true;
+    lastQueueRenderSignature = renderSig;
     return;
   }
 
   // Priority 2: Musical Discovery when no pending queue exists and API returned recommendations
   if (discovery.length > 0) {
-    if (npQueueHeading) npQueueHeading.textContent = 'Descubrimiento musical';
+    if (npQueueHeading) npQueueHeading.textContent = 'Reproducción automática';
     if (npQueueSubheading) {
-      npQueueSubheading.textContent = state.playingArtist
-        ? `Sugerencias basadas en ${state.playingArtist}`
-        : 'Para seguir escuchando según esta canción';
+      npQueueSubheading.textContent = primaryArtist
+        ? `Similar a ${primaryArtist}`
+        : 'Sugerencias para continuar';
       npQueueSubheading.style.display = 'block';
     }
     if (npQueueSeeAllBtn) npQueueSeeAllBtn.style.display = 'none';
 
-    npQueueListContainer.innerHTML = discovery.slice(0, 8).map((t, i) => buildQueueRowHTML(t, i, 'discovery')).join('');
+    const animateDiscovery = lastQueueHadSkeleton;
+    npQueueListContainer.innerHTML = discovery.slice(0, 8).map((t, i) => buildQueueRowHTML(t, i, 'discovery', animateDiscovery, i)).join('');
+    lastQueueRenderedIds = [];
+    lastQueueHadSkeleton = false;
+    lastQueueRenderSignature = '';
     hydrateImages(npQueueListContainer);
     return;
   }
 
   // Priority 3: Fallback empty state only when neither queue nor discovery tracks are available
   if (npQueueHeading) npQueueHeading.textContent = 'A continuación';
-  if (npQueueSubheading) npQueueSubheading.style.display = 'none';
+  if (npQueueSubheading) {
+    npQueueSubheading.textContent = '';
+    npQueueSubheading.style.display = 'none';
+  }
   if (npQueueSeeAllBtn) npQueueSeeAllBtn.style.display = 'none';
 
+  lastQueueRenderedIds = [];
+  lastQueueHadSkeleton = false;
+  lastQueueRenderSignature = 'empty';
   npQueueListContainer.innerHTML = `
     <div class="np-queue-empty-state">
       <div class="np-queue-empty-icon">
@@ -1658,12 +1825,167 @@ function renderQueuePanelUI() {
         </svg>
       </div>
       <div>
-        <div class="np-queue-empty-title">Cola de reproducción vacía</div>
+        <div class="np-queue-empty-title">Sin canciones a continuación</div>
         <div class="np-queue-empty-sub">Agrega canciones o elige una lista para continuar</div>
       </div>
     </div>
   `;
 }
+
+function reorderQueueTrack(fromIdx, toIdx) {
+  const queue = state.liveQueueTracks;
+  if (!Array.isArray(queue) || queue.length < 2) return false;
+  if (fromIdx < 0 || fromIdx >= queue.length || toIdx < 0 || toIdx >= queue.length || fromIdx === toIdx) {
+    return false;
+  }
+
+  const nextQueue = [...queue];
+  const [moved] = nextQueue.splice(fromIdx, 1);
+  nextQueue.splice(toIdx, 0, moved);
+
+  state.liveQueueTracks = nextQueue;
+  state.contextUpcomingTracks = [...nextQueue];
+  state.sdkNextTracks = [];
+  state.hasCustomReorderedQueue = true;
+
+  if (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionTracks.length > 0) {
+    const curIdx = Math.max(0, state.autoplaySessionIndex || 0);
+    state.autoplaySessionTracks = state.autoplaySessionTracks.slice(0, curIdx + 1).concat(nextQueue);
+  }
+
+  renderQueuePanelUI();
+  if (typeof prefetchUpcomingLyrics === 'function') {
+    prefetchUpcomingLyrics(nextQueue, 2);
+  }
+  return true;
+}
+
+(function initQueueDragReorder() {
+  if (!npQueueListContainer) return;
+
+  let activeMode = null; // 'touch' | 'mouse' | null
+  let dragRows = [];
+  let draggedRow = null;
+  let fromIdx = -1;
+  let targetIdx = -1;
+  let startY = 0;
+  let rowStride = 66;
+
+  function beginDrag(mode, clientY, target) {
+    if (!target || !target.closest) return false;
+    const handle = target.closest('.np-queue-drag-handle');
+    if (!handle) return false;
+    const row = handle.closest('.np-queue-row');
+    if (!row || row.getAttribute('data-queue-source') !== 'queue') return false;
+
+    const rows = Array.from(npQueueListContainer.querySelectorAll('.np-queue-row[data-queue-source="queue"]'));
+    const idx = parseInt(row.getAttribute('data-queue-idx'), 10);
+    if (!Number.isFinite(idx) || idx < 0 || rows.length < 2) return false;
+
+    activeMode = mode;
+    dragRows = rows;
+    draggedRow = row;
+    fromIdx = idx;
+    targetIdx = idx;
+    startY = clientY;
+    rowStride = rows.length > 1
+      ? Math.max(48, (rows[1].offsetTop || 0) - (rows[0].offsetTop || 0))
+      : (row.offsetHeight || 66);
+
+    state.isDraggingQueueRow = true;
+    row.classList.add('is-dragging');
+    return true;
+  }
+
+  function moveDrag(clientY, cancelableEvent) {
+    if (!activeMode || !draggedRow) return;
+    if (cancelableEvent && cancelableEvent.cancelable) {
+      cancelableEvent.preventDefault();
+    }
+    if (cancelableEvent && typeof cancelableEvent.stopPropagation === 'function') {
+      cancelableEvent.stopPropagation();
+    }
+
+    const vpScale = window._echoViewportScale || 1;
+    const dy = (clientY - startY) / vpScale;
+    draggedRow.style.transform = `translate3d(0, ${dy.toFixed(1)}px, 0) scale(1.02)`;
+
+    const nextTarget = Math.max(0, Math.min(dragRows.length - 1, fromIdx + Math.round(dy / rowStride)));
+    if (nextTarget !== targetIdx) {
+      targetIdx = nextTarget;
+      for (let i = 0; i < dragRows.length; i++) {
+        const r = dragRows[i];
+        if (i === fromIdx || r === draggedRow) continue;
+        r.classList.add('is-displaced');
+        let shift = 0;
+        if (fromIdx < targetIdx && i > fromIdx && i <= targetIdx) {
+          shift = -rowStride;
+        } else if (fromIdx > targetIdx && i >= targetIdx && i < fromIdx) {
+          shift = rowStride;
+        }
+        r.style.transform = shift ? `translate3d(0, ${shift}px, 0)` : '';
+      }
+    }
+  }
+
+  function finishDrag(applyOrder) {
+    if (!activeMode) return;
+    const finalFrom = fromIdx;
+    const finalTarget = targetIdx;
+
+    for (let i = 0; i < dragRows.length; i++) {
+      dragRows[i].classList.remove('is-dragging', 'is-displaced');
+      dragRows[i].style.transform = '';
+    }
+
+    activeMode = null;
+    dragRows = [];
+    draggedRow = null;
+    fromIdx = -1;
+    targetIdx = -1;
+    state.isDraggingQueueRow = false;
+
+    if (applyOrder && finalTarget !== finalFrom) {
+      reorderQueueTrack(finalFrom, finalTarget);
+    }
+  }
+
+  npQueueListContainer.addEventListener('touchstart', (e) => {
+    if (!e.touches || e.touches.length !== 1) return;
+    if (beginDrag('touch', e.touches[0].clientY, e.target)) {
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+    }
+  }, { passive: true });
+
+  window.addEventListener('touchmove', (e) => {
+    if (activeMode !== 'touch' || !e.touches || e.touches.length !== 1) return;
+    moveDrag(e.touches[0].clientY, e);
+  }, { passive: false });
+
+  window.addEventListener('touchend', () => {
+    if (activeMode === 'touch') finishDrag(true);
+  }, { passive: true });
+
+  window.addEventListener('touchcancel', () => {
+    if (activeMode === 'touch') finishDrag(false);
+  }, { passive: true });
+
+  npQueueListContainer.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    if (beginDrag('mouse', e.clientY, e.target)) {
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+    }
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (activeMode === 'mouse') moveDrag(e.clientY, e);
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (activeMode === 'mouse') finishDrag(true);
+  });
+})();
 
 async function fetchAndRenderQueueForCurrentTrack(trackObj) {
   const reqTrackId = state.playingTrackId;
@@ -1685,6 +2007,17 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
       prefetchUpcomingLyrics(tracksList, 2);
     }
   };
+
+  if (!state.isAutoplayQueue && (state.hasCustomReorderedQueue || state.isLocalContextQueue) && Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > 0) {
+    state.discoveryTracks = [];
+    state.queueLoading = false;
+    if (state.nowPlayingMode === 'queue') {
+      renderQueuePanelUI();
+    }
+    prewarmUpcomingSlice(state.liveQueueTracks);
+    updateNowPlayingRightPanelMode();
+    return;
+  }
 
   const curCid = cleanTrackId(state.playingTrackId || state.playingTrackUri);
   const curTitleLow = (state.playingTrackTitle || '').trim().toLowerCase();
@@ -1734,13 +2067,24 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
     try {
       const localState = await webPlayer.getCurrentState();
       if (reqActionSeq !== playbackActionSeq || reqTrackId !== state.playingTrackId) return;
-      if (localState && localState.track_window && Array.isArray(localState.track_window.next_tracks)) {
+      const localCur = localState && localState.track_window ? localState.track_window.current_track : null;
+      const localCurCid = localCur ? cleanTrackId(localCur.id || localCur.uri) : '';
+      const localCurTitle = localCur ? (localCur.name || '').trim().toLowerCase() : '';
+      const sdkMatchesCurrentTrack = Boolean(
+        localCur && (
+          (curCid && localCurCid === curCid) ||
+          (curTitleLow && localCurTitle === curTitleLow)
+        )
+      );
+      if (sdkMatchesCurrentTrack && Array.isArray(localState.track_window.next_tracks)) {
         state.sdkNextTracks = buildMergedQueue(localState.track_window.next_tracks);
+      } else if (!sdkMatchesCurrentTrack) {
+        state.sdkNextTracks = [];
       }
     } catch (e) { }
   }
 
-  // Seed initial liveQueueTracks before API call: prefer SDK next_tracks; use local contextUpcomingTracks only when aligned & not shuffled
+  // Seed initial liveQueueTracks before API call: prefer SDK next_tracks; preserve live tail or aligned context
   if (Array.isArray(state.sdkNextTracks) && state.sdkNextTracks.length > 0) {
     let alignedContext = [];
     if (!spotifyAuth.shuffleState && Array.isArray(state.contextUpcomingTracks) && state.contextUpcomingTracks.length > 0) {
@@ -1752,7 +2096,11 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
       );
       if (matchPos >= 0) {
         alignedContext = state.contextUpcomingTracks.slice(matchPos + 1);
+      } else if (Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > state.sdkNextTracks.length) {
+        alignedContext = state.liveQueueTracks;
       }
+    } else if (Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > state.sdkNextTracks.length) {
+      alignedContext = state.liveQueueTracks;
     }
     state.liveQueueTracks = buildMergedQueue(state.sdkNextTracks, alignedContext);
   } else if (!spotifyAuth.shuffleState && Array.isArray(state.contextUpcomingTracks) && state.contextUpcomingTracks.length > 0) {
@@ -2022,6 +2370,19 @@ async function openDevicesModal() {
   const container = document.getElementById('devicesListContainer');
   if (!modal || !container) return;
 
+  const npCoverEl = document.getElementById('devicesNowPlayingCover');
+  const npTitleEl = document.getElementById('devicesNowPlayingTitle');
+  const npArtistEl = document.getElementById('devicesNowPlayingArtist');
+  if (npCoverEl) {
+    npCoverEl.src = state.playingThumb || state.playingCover || DEFAULT_ALBUM_COVER;
+  }
+  if (npTitleEl) {
+    npTitleEl.textContent = state.playingTrackTitle || 'Salida de audio';
+  }
+  if (npArtistEl) {
+    npArtistEl.textContent = state.playingArtist || 'Elige dónde escuchar';
+  }
+
   modal.classList.add('open');
   container.innerHTML = `
     <div class="devices-loading-shimmer">
@@ -2067,7 +2428,7 @@ function renderDevicesList(devices = []) {
 
   let html = '';
 
-  // 1. Active Device Card
+  // 1. Active Device Card (Apple Music monochrome selection + solid white check)
   if (activeDev) {
     const activeIcon = getDeviceTypeSvg(activeDev.type);
     html += `
@@ -2079,13 +2440,12 @@ function renderDevicesList(devices = []) {
           <div class="device-card-meta">
             <div class="device-card-name">${escapeHtml(activeDev.name)}</div>
             <div class="device-card-status">
-              <span class="pulse-dot"></span>
               <span>Reproduciendo aquí</span>
             </div>
           </div>
         </div>
         <div class="device-card-check">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1ed760" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="20 6 9 17 4 12"></polyline>
           </svg>
         </div>
@@ -2093,10 +2453,10 @@ function renderDevicesList(devices = []) {
     `;
   }
 
-  // 2. Section Heading: OTROS DISPOSITIVOS
+  // 2. Section Heading: ALTAVOCES Y TV
   if (otherDevs.length > 0) {
     html += `
-      <div class="devices-section-heading">OTROS DISPOSITIVOS</div>
+      <div class="devices-section-heading">ALTAVOCES Y TV</div>
       <div class="devices-other-list">
     `;
     otherDevs.forEach(d => {
@@ -2110,13 +2470,11 @@ function renderDevicesList(devices = []) {
             </div>
             <div class="device-other-meta">
               <div class="device-other-name">${escapeHtml(d.name)}</div>
-              <div class="device-other-sub">${label} • Spotify Connect</div>
+              <div class="device-other-sub">${label}</div>
             </div>
           </div>
           <div class="device-other-right">
-            <svg class="device-other-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 18 15 12 9 6"></polyline>
-            </svg>
+            <span class="device-radio-ring" aria-hidden="true"></span>
           </div>
         </div>
       `;
