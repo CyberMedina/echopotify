@@ -428,15 +428,69 @@ body.theme-dark .mini-ctrl-btn:hover {
   background: rgba(255, 255, 255, 0.12);
 }
 
-/* Search bar & Chips Dark Mode */
+/* Search bar, Filter Pills & Results Dark Mode */
 body.theme-dark .search-bar-wrap {
   background: rgba(33, 36, 42, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 
+body.theme-dark .search-bar-icon {
+  color: rgba(245, 246, 248, 0.62);
+}
+
 body.theme-dark .search-input::placeholder {
   color: rgba(245, 246, 248, 0.38);
+}
+
+body.theme-dark .search-clear-btn {
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.78);
+}
+
+body.theme-dark .search-clear-btn:hover {
+  background: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+
+body.theme-dark .search-filter-pill {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+body.theme-dark .search-filter-pill:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+body.theme-dark .search-filter-pill.active {
+  background: #ffffff;
+  color: #141619;
+  border-color: transparent;
+}
+
+body.theme-dark .search-top-result-card {
+  background: rgba(33, 36, 42, 0.74);
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35);
+}
+
+body.theme-dark .search-top-result-card:hover {
+  background: rgba(45, 49, 58, 0.86);
+}
+
+body.theme-dark .search-type-badge {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+body.theme-dark .search-track-row + .search-track-row::before {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+body.theme-dark .search-track-row:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 body.theme-dark .recent-chip {

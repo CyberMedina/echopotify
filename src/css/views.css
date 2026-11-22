@@ -623,7 +623,8 @@ body.artist-view-active .mini-ctrl-btn {
    ========================================================================== */
 #view-artist {
   background: transparent;
-  overflow: hidden; /* Screen remains fixed: NO full-page scroll */
+  overflow: hidden;
+  /* Screen remains fixed: NO full-page scroll */
   height: 100%;
   padding: 18px 48px 0 48px;
   display: flex;
@@ -887,7 +888,8 @@ body.artist-view-active .mini-ctrl-btn {
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   padding-right: 6px;
-  padding-bottom: 170px; /* clearance for bottom dock */
+  padding-bottom: 170px;
+  /* clearance for bottom dock */
 }
 
 .artist-tracklist::-webkit-scrollbar {
@@ -1035,7 +1037,8 @@ body.artist-view-active .mini-ctrl-btn {
   overflow-y: hidden;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 90px; /* clearance for bottom dock */
+  padding-bottom: 90px;
+  /* clearance for bottom dock */
 }
 
 .artist-albums-rail::-webkit-scrollbar {
@@ -1390,7 +1393,14 @@ body.album-dark-active .mini-like-btn.liked {
   margin-bottom: 20px;
 }
 
+.search-bar-icon {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
 .search-input {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   border: none;
   background: transparent;
@@ -1403,6 +1413,413 @@ body.album-dark-active .mini-like-btn.liked {
 
 .search-input::placeholder {
   color: rgba(23, 26, 29, 0.42);
+}
+
+.search-clear-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(23, 26, 29, 0.10);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+
+.search-clear-btn:hover {
+  background: rgba(23, 26, 29, 0.16);
+  color: var(--text-primary);
+}
+
+.search-clear-btn:active {
+  transform: scale(0.92);
+}
+
+.search-clear-btn.hidden,
+.search-browse-state.hidden,
+.search-results-state.hidden {
+  display: none !important;
+}
+
+/* Search Results Filter Pills */
+.search-filter-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.search-filter-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.search-filter-pill {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 26, 29, 0.10);
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.12s ease;
+}
+
+.search-filter-pill:hover {
+  background: rgba(255, 255, 255, 0.80);
+  color: var(--text-primary);
+}
+
+.search-filter-pill:active {
+  transform: scale(0.95);
+}
+
+.search-filter-pill.active {
+  background: #171a1d;
+  color: #ffffff;
+  border-color: transparent;
+}
+
+/* Search Two-Column Hero (Top Result + Songs) */
+.search-top-grid {
+  display: grid;
+  grid-template-columns: minmax(290px, 0.82fr) 1.38fr;
+  gap: 22px;
+  margin-bottom: 24px;
+  align-items: stretch;
+}
+
+.search-sub-heading {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin: 0 0 12px 0;
+}
+
+.search-top-result-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 224px;
+  padding: 20px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.64);
+  border: 1px solid rgba(255, 255, 255, 0.60);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  transition: background 0.18s ease, transform 0.16s ease, box-shadow 0.18s ease;
+}
+
+.search-top-result-card:hover {
+  background: rgba(255, 255, 255, 0.84);
+  transform: translateY(-2px);
+}
+
+.search-top-result-card:active {
+  transform: scale(0.99);
+}
+
+.search-top-art {
+  width: 96px;
+  height: 96px;
+  border-radius: 14px;
+  object-fit: cover;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  background: rgba(23, 26, 29, 0.08);
+}
+
+.search-top-art.is-artist {
+  border-radius: 50%;
+}
+
+.search-top-title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  margin-top: 14px;
+  padding-right: 54px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-top-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding-right: 54px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+
+.search-top-sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-type-badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(23, 26, 29, 0.08);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.search-top-play-btn {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  background: #1ed760;
+  color: #0c120e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 20px rgba(30, 215, 96, 0.32);
+  cursor: pointer;
+  transition: transform 0.14s ease, filter 0.14s ease;
+}
+
+.search-top-play-btn:hover {
+  transform: scale(1.06);
+  filter: brightness(1.05);
+}
+
+.search-top-play-btn:active {
+  transform: scale(0.94);
+}
+
+/* Search Songs Vertical List */
+.search-tracks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.search-track-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.14s ease, transform 0.12s ease;
+}
+
+.search-track-row+.search-track-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 68px;
+  right: 10px;
+  height: 1px;
+  background: rgba(23, 26, 29, 0.07);
+  pointer-events: none;
+}
+
+.search-track-row:hover {
+  background: rgba(23, 26, 29, 0.06);
+}
+
+.search-track-row:active {
+  transform: scale(0.992);
+}
+
+.search-track-thumb {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14);
+}
+
+.search-track-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-track-title {
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-track-artist {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-track-dur {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+/* Search Rails (Artists / Albums / Playlists) */
+.search-section {
+  margin-bottom: 24px;
+}
+
+.search-cards-rail {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+}
+
+.search-cards-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.search-artist-card {
+  flex: 0 0 144px;
+  width: 144px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.16s ease;
+}
+
+.search-artist-card:hover {
+  transform: translateY(-3px);
+}
+
+.search-artist-card:active {
+  transform: scale(0.96);
+}
+
+.search-artist-avatar-wrap {
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(23, 26, 29, 0.08);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
+}
+
+.search-artist-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.search-artist-card .media-card-title {
+  width: 100%;
+  text-align: center;
+}
+
+.search-rail-card {
+  flex: 0 0 154px;
+  width: 154px;
+}
+
+.search-empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-secondary);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.search-skeleton-heading {
+  height: 18px;
+  border-radius: 6px;
+  margin-bottom: 14px;
+}
+
+.search-skeleton-card {
+  pointer-events: none;
+}
+
+.search-skeleton-top-title {
+  height: 22px;
+  width: 66%;
+  border-radius: 8px;
+  margin-top: 14px;
+}
+
+.search-skeleton-top-sub {
+  height: 14px;
+  width: 44%;
+  border-radius: 6px;
+  margin-top: 10px;
+}
+
+.search-skeleton-track-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  height: 62px;
+  pointer-events: none;
+}
+
+.search-skeleton-thumb {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.search-skeleton-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.search-skeleton-line {
+  height: 14px;
+  border-radius: 6px;
+}
+
+.search-skeleton-line-sm {
+  height: 11px;
+  border-radius: 5px;
+}
+
+.search-skeleton-dur {
+  width: 34px;
+  height: 12px;
+  border-radius: 5px;
+  flex-shrink: 0;
 }
 
 /* Recent Searches Chips */
@@ -1713,4 +2130,3 @@ body.album-dark-active .mini-like-btn.liked {
   font-size: 13px;
   margin-left: 3px;
 }
-

@@ -20,9 +20,9 @@
   <link rel="dns-prefetch" href="https://i.scdn.co" />
   <link rel="dns-prefetch" href="https://mosaic.scdn.co" />
   <link rel="stylesheet" href="src/css/base.css?v=7.0" />
-  <link rel="stylesheet" href="src/css/views.css?v=7.0" />
+  <link rel="stylesheet" href="src/css/views.css?v=7.2" />
   <link rel="stylesheet" href="src/css/now-playing.css?v=8.8" />
-  <link rel="stylesheet" href="src/css/theme-modals.css?v=8.4" />
+  <link rel="stylesheet" href="src/css/theme-modals.css?v=8.5" />
   <script src="https://cdn.html.games.alexa.a2z.com/alexa-html/latest/alexa-html.js"></script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 </head>
@@ -283,9 +283,9 @@
       <section class="screen-view" id="view-search">
         <header class="top-header">
           <div>
-            <h1 class="page-title">Search</h1>
+            <h1 class="page-title">Buscar</h1>
           </div>
-          <button class="profile-btn" title="Profile">
+          <button class="profile-btn" title="Perfil">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
               <circle cx="12" cy="7" r="4"></circle>
@@ -295,83 +295,101 @@
 
         <!-- Search Input Pill -->
         <div class="search-bar-wrap">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <svg class="search-bar-icon" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
-          <input type="text" class="search-input" id="searchInput" placeholder="Search for artists, songs, or albums..." />
+          <input type="text" class="search-input" id="searchInput" placeholder="Artistas, canciones, álbumes o playlists..." autocomplete="off" />
+          <button type="button" class="search-clear-btn hidden" id="searchClearBtn" aria-label="Limpiar búsqueda" title="Limpiar">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
         </div>
 
-        <!-- Recent Searches -->
-        <div class="section-block">
-          <div class="section-header">
-            <h2 class="section-title">Recent searches</h2>
-            <button class="section-link" id="clearRecentBtn">
-              Clear all
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            </button>
+        <!-- State A: Explore & Recent Searches -->
+        <div class="search-browse-state" id="searchBrowseState">
+          <div class="section-block" id="recentSearchesBlock">
+            <div class="section-header">
+              <h2 class="section-title">Búsquedas recientes</h2>
+              <button type="button" class="section-link" id="clearRecentBtn">
+                Limpiar
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+            </div>
+            <div class="recent-chips-row" id="recentSearchesRow"></div>
           </div>
-          <div class="recent-chips-row" id="recentSearchesRow"></div>
+
+          <div class="section-block">
+            <div class="section-header">
+              <h2 class="section-title">Explorar categorías</h2>
+            </div>
+            <div class="category-grid-4">
+              <div class="category-card cat-playlists" data-nav="library">
+                <div class="cat-icon-circle">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+                </div>
+                <div class="cat-text-wrap">
+                  <div class="cat-title">Playlists</div>
+                  <div class="cat-sub">Seleccionadas para ti</div>
+                </div>
+              </div>
+
+              <div class="category-card cat-albums" data-nav="library" data-filter="albums">
+                <div class="cat-icon-circle">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" class="vinyl-hole" fill="#f0dfd1"/></svg>
+                </div>
+                <div class="cat-text-wrap">
+                  <div class="cat-title">Álbumes</div>
+                  <div class="cat-sub">Descubre nueva música</div>
+                </div>
+              </div>
+
+              <div class="category-card cat-artists" data-nav="library" data-filter="artists">
+                <div class="cat-icon-circle">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+                </div>
+                <div class="cat-text-wrap">
+                  <div class="cat-title">Artistas</div>
+                  <div class="cat-sub">Tus artistas favoritos</div>
+                </div>
+              </div>
+
+              <div class="category-card cat-madeforyou" data-nav="library" data-filter="liked">
+                <div class="cat-icon-circle">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                </div>
+                <div class="cat-text-wrap">
+                  <div class="cat-title">Tus me gusta</div>
+                  <div class="cat-sub">Canciones guardadas</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-block" style="margin-bottom:0;">
+            <div class="section-header">
+              <h2 class="section-title">Escuchado recientemente</h2>
+              <button type="button" class="section-link" data-nav="library">
+                Ver todo
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+            </div>
+            <div class="grid-4-cols" id="searchRecentlyPlayedGrid"></div>
+          </div>
         </div>
 
-        <!-- Browse by Category -->
-        <div class="section-block">
-          <div class="section-header">
-            <h2 class="section-title">Browse by category</h2>
+        <!-- State B: Live Search Results -->
+        <div class="search-results-state hidden" id="searchResultsState">
+          <div class="search-filter-pills" id="searchFilterPills">
+            <button type="button" class="search-filter-pill active" data-search-filter="all">Todo</button>
+            <button type="button" class="search-filter-pill" data-search-filter="tracks">Canciones</button>
+            <button type="button" class="search-filter-pill" data-search-filter="artists">Artistas</button>
+            <button type="button" class="search-filter-pill" data-search-filter="albums">Álbumes</button>
+            <button type="button" class="search-filter-pill" data-search-filter="playlists">Playlists</button>
           </div>
-          <div class="category-grid-4">
-            <div class="category-card cat-playlists" data-nav="library">
-              <div class="cat-icon-circle">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
-              </div>
-              <div class="cat-text-wrap">
-                <div class="cat-title">Playlists</div>
-                <div class="cat-sub">Curated for you</div>
-              </div>
-            </div>
-
-            <div class="category-card cat-albums" data-nav="library" data-filter="albums">
-              <div class="cat-icon-circle">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" class="vinyl-hole" fill="#f0dfd1"/></svg>
-              </div>
-              <div class="cat-text-wrap">
-                <div class="cat-title">Albums</div>
-                <div class="cat-sub">Discover new music</div>
-              </div>
-            </div>
-
-            <div class="category-card cat-artists" data-nav="library" data-filter="artists">
-              <div class="cat-icon-circle">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
-              </div>
-              <div class="cat-text-wrap">
-                <div class="cat-title">Artists</div>
-                <div class="cat-sub">Your favorite artists</div>
-              </div>
-            </div>
-
-            <div class="category-card cat-madeforyou" data-nav="library" data-filter="liked">
-              <div class="cat-icon-circle">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-              </div>
-              <div class="cat-text-wrap">
-                <div class="cat-title">Made for you</div>
-                <div class="cat-sub">Personalized playlists</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Recently played bottom row -->
-        <div class="section-block" style="margin-bottom:0;">
-          <div class="section-header">
-            <h2 class="section-title">Recently played</h2>
-            <button class="section-link" data-nav="library">
-              See all
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            </button>
-          </div>
-          <div class="grid-4-cols" id="searchRecentlyPlayedGrid"></div>
+          <div class="search-results-container" id="searchResultsContainer"></div>
         </div>
       </section>
 
@@ -868,13 +886,13 @@
   <script src="src/js/services/lyrics.js?v=7.8"></script>
 
   <!-- UI Views & Renderers -->
-  <script src="src/js/views/catalog.js?v=7.8"></script>
+  <script src="src/js/views/catalog.js?v=7.9"></script>
   <script src="src/js/views/details.js?v=7.0"></script>
   <script src="src/js/views/player.js?v=9.0"></script>
 
   <!-- Controllers & Bootstrap -->
   <script src="src/js/controllers/navigation.js?v=8.0"></script>
-  <script src="src/js/controllers/events.js?v=9.2"></script>
+  <script src="src/js/controllers/events.js?v=9.4"></script>
   <script src="src/js/main.js?v=7.6"></script>
 </body>
 </html>

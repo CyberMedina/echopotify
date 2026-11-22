@@ -727,15 +727,81 @@ function renderHome(jumpCards, recentCards, banners, topArtists, savedAlbums) {
   }
 }
 
+const RECENT_SEARCHES_STORAGE_KEY = 'sp_recent_searches_v1';
+
+function hydrateSavedSearchEntities(items) {
+  if (!Array.isArray(items)) return;
+  items.forEach(item => {
+    if (!item || !item.entityId || liveCatalog.entities[item.entityId]) return;
+    if (item.type === 'artist') {
+      liveCatalog.entities[item.entityId] = {
+        id: item.entityId,
+        spotifyId: item.spotifyId || String(item.entityId).replace(/^art_/, ''),
+        type: 'artist',
+        uri: item.uri || '',
+        title: item.label || 'Artista',
+        name: item.label || 'Artista',
+        cover: item.avatar || '',
+        coverLarge: item.avatar || '',
+        tracks: null
+      };
+    } else if (item.type === 'album' || item.type === 'playlist') {
+      liveCatalog.entities[item.entityId] = {
+        id: item.entityId,
+        spotifyId: item.spotifyId || String(item.entityId).replace(/^(alb_|pl_)/, ''),
+        type: item.type,
+        uri: item.uri || '',
+        title: item.label || '',
+        artist: item.subtitle || '',
+        cover: item.avatar || DEFAULT_ALBUM_COVER,
+        coverLarge: item.avatar || DEFAULT_ALBUM_COVER,
+        tracks: null
+      };
+    }
+  });
+}
+
+function getPersistedRecentSearches() {
+  try {
+    const raw = safeStorage.getItem(RECENT_SEARCHES_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        hydrateSavedSearchEntities(parsed);
+        return parsed;
+      }
+    }
+  } catch (e) {}
+  return Array.isArray(liveCatalog.recentSearches) ? liveCatalog.recentSearches : [];
+}
+
 function renderSearch(recentCards) {
+  const persisted = getPersistedRecentSearches();
+  const chips = (persisted && persisted.length > 0)
+    ? persisted
+    : (Array.isArray(liveCatalog.recentSearches) ? liveCatalog.recentSearches : []);
+  liveCatalog.recentSearches = chips;
+
+  const recentBlock = document.getElementById('recentSearchesBlock');
+  if (recentBlock) {
+    recentBlock.style.display = chips.length > 0 ? '' : 'none';
+  }
   const chipsRow = document.getElementById('recentSearchesRow');
   if (chipsRow) {
-    chipsRow.innerHTML = liveCatalog.recentSearches.map(chip => `
-      <div class="recent-chip" ${chip.entityId ? `data-open-entity="${chip.entityId}"` : `data-search-query="${chip.query || chip.label}"`}>
-        ${renderOptImg(chip.avatar, chip.label, `chip-avatar ${chip.square ? 'square' : ''}`)}
-        <span class="chip-label">${chip.label}</span>
-      </div>
-    `).join('');
+    chipsRow.innerHTML = chips.map(chip => {
+      const safeLabel = (chip.label || '').replace(/"/g, '&quot;');
+      const actionAttr = chip.entityId
+        ? `data-open-entity="${chip.entityId}"`
+        : (chip.playUri
+          ? `data-play-direct-uri="${chip.playUri}" data-title="${safeLabel}" data-artist="${(chip.subtitle || '').replace(/"/g, '&quot;')}" data-cover="${chip.avatar || ''}" data-thumb="${chip.avatar || ''}"`
+          : `data-search-query="${(chip.query || chip.label || '').replace(/"/g, '&quot;')}"`);
+      return `
+        <div class="recent-chip" ${actionAttr}>
+          ${renderOptImg(chip.avatar || DEFAULT_ALBUM_COVER, chip.label || '', `chip-avatar ${chip.square ? 'square' : ''}`)}
+          <span class="chip-label">${chip.label}</span>
+        </div>
+      `;
+    }).join('');
     hydrateImages(chipsRow);
   }
 

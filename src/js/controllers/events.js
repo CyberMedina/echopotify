@@ -5,8 +5,13 @@
 
 
 document.addEventListener('click', async (e) => {
+  const topPlayTrigger = e.target.closest('.search-top-play-btn[data-play-direct-uri]');
+  if (topPlayTrigger) {
+    e.stopPropagation();
+  }
+
   // 1. Open Entity Card (Album, Playlist, Artist, Liked Songs)
-  const entityTrigger = e.target.closest('[data-open-entity]');
+  const entityTrigger = topPlayTrigger ? null : e.target.closest('[data-open-entity]');
   if (entityTrigger) {
     const entityId = entityTrigger.getAttribute('data-open-entity');
     openEntityDetail(entityId);
@@ -1892,81 +1897,582 @@ document.querySelectorAll('.category-card').forEach(card => {
   });
 });
 
-// Live Spotify Catalog Search Input
+// Live Spotify Catalog Search Input & Two-State UI
 let searchDebounce = null;
-document.getElementById('searchInput').addEventListener('input', (e) => {
-  const q = e.target.value.trim();
-  clearTimeout(searchDebounce);
-  if (!q) {
-    renderSearch();
+let searchReqSeq = 0;
+let activeSearchFilter = 'all';
+let lastSearchPayload = null;
+
+function saveRecentSearchItem(entry) {
+  if (!entry || !entry.label) return;
+  try {
+    const key = typeof RECENT_SEARCHES_STORAGE_KEY === 'string' ? RECENT_SEARCHES_STORAGE_KEY : 'sp_recent_searches_v1';
+    const current = Array.isArray(liveCatalog.recentSearches) ? [...liveCatalog.recentSearches] : [];
+    const entryId = entry.entityId || entry.playUri || entry.query || entry.label;
+    const filtered = current.filter(item => {
+      if (!item) return false;
+      const itemId = item.entityId || item.playUri || item.query || item.label;
+      return itemId !== entryId && (item.label || '').toLowerCase() !== entry.label.toLowerCase();
+    });
+    const nextList = [entry, ...filtered].slice(0, 8);
+    liveCatalog.recentSearches = nextList;
+    safeStorage.setItem(key, JSON.stringify(nextList));
+  } catch (e) {}
+}
+
+function buildSearchLoadingSkeletonHTML() {
+  const rowWidths = [
+    ['56%', '34%'],
+    ['68%', '42%'],
+    ['48%', '30%'],
+    ['62%', '38%']
+  ];
+  const rowsHtml = rowWidths.map(([tw, aw]) => `
+    <div class="search-skeleton-track-row">
+      <div class="search-skeleton-thumb skeleton-shimmer"></div>
+      <div class="search-skeleton-meta">
+        <div class="search-skeleton-line skeleton-shimmer" style="width: ${tw};"></div>
+        <div class="search-skeleton-line-sm skeleton-shimmer" style="width: ${aw};"></div>
+      </div>
+      <div class="search-skeleton-dur skeleton-shimmer"></div>
+    </div>
+  `).join('');
+
+  return `
+    <div class="search-top-grid">
+      <div>
+        <div class="search-skeleton-heading skeleton-shimmer" style="width: 150px;"></div>
+        <div class="search-top-result-card search-skeleton-card" aria-hidden="true">
+          <div class="search-top-art skeleton-shimmer"></div>
+          <div>
+            <div class="search-skeleton-top-title skeleton-shimmer"></div>
+            <div class="search-skeleton-top-sub skeleton-shimmer"></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="search-skeleton-heading skeleton-shimmer" style="width: 110px;"></div>
+        <div class="search-tracks-list">${rowsHtml}</div>
+      </div>
+    </div>
+    <div class="search-section">
+      <div class="search-skeleton-heading skeleton-shimmer" style="width: 110px;"></div>
+      <div class="grid-4-cols">${buildSkeletonCardsHTML(4, true)}</div>
+    </div>
+  `;
+}
+
+function formatTrackDurShort(ms) {
+  if (!ms || ms <= 0) return '';
+  const totalSec = Math.round(ms / 1000);
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+}
+
+function buildSearchTrackRowHTML(t) {
+  const imgs = (t.album && Array.isArray(t.album.images)) ? t.album.images : [];
+  const thumbImg = imgs.length > 0 ? getSpotifyImage(imgs, 'small') : DEFAULT_ALBUM_COVER;
+  const coverImg = imgs.length > 0 ? getSpotifyImage(imgs, 'large') : thumbImg;
+  const artistStr = Array.isArray(t.artists) ? t.artists.map(a => a.name).join(', ') : '';
+  const durSec = t.duration_ms ? Math.round(t.duration_ms / 1000) : '';
+  const isLiked = t.id ? liveCatalog.likedTrackIds.has(t.id) : false;
+  const safeTitle = (t.name || '').replace(/"/g, '&quot;');
+  const safeArtist = artistStr.replace(/"/g, '&quot;');
+  return `
+    <div class="search-track-row"
+         data-play-direct-uri="${t.uri}"
+         data-search-save="1"
+         data-search-type="track"
+         data-search-label="${safeTitle}"
+         data-search-sub="${safeArtist}"
+         data-search-avatar="${thumbImg}"
+         data-search-square="1"
+         data-title="${safeTitle}"
+         data-artist="${safeArtist}"
+         data-cover="${coverImg}"
+         data-thumb="${thumbImg}"
+         data-duration="${durSec}">
+      ${renderOptImg(thumbImg, safeTitle, 'search-track-thumb')}
+      <div class="search-track-meta">
+        <div class="search-track-title">${t.name}</div>
+        <div class="search-track-artist">${artistStr}</div>
+      </div>
+      <span class="search-track-dur">${formatTrackDurShort(t.duration_ms)}</span>
+      <button type="button" class="track-row-like-btn ${isLiked ? 'liked' : ''}" data-track-id="${t.id || ''}" data-track-title="${safeTitle}" data-track-artist="${safeArtist}" data-track-cover="${coverImg}" title="${isLiked ? 'Eliminar de Tus me gusta' : 'Guardar en Tus me gusta'}">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="${isLiked ? '#1ed760' : 'none'}" stroke="${isLiked ? '#1ed760' : 'currentColor'}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+        </svg>
+      </button>
+    </div>
+  `;
+}
+
+function buildSearchArtistCardHTML(ar, extraCls = '') {
+  const entityId = `art_${ar.id}`;
+  const avatar = (ar.images && ar.images.length > 0) ? (getSpotifyImage(ar.images, 'medium') || DEFAULT_SPOTIFY_COVER) : DEFAULT_SPOTIFY_COVER;
+  const avatarLarge = (ar.images && ar.images.length > 0) ? (getSpotifyImage(ar.images, 'large') || avatar) : avatar;
+  if (!liveCatalog.entities[entityId]) {
+    liveCatalog.entities[entityId] = {
+      id: entityId,
+      spotifyId: ar.id,
+      type: 'artist',
+      uri: ar.uri,
+      title: ar.name,
+      name: ar.name,
+      cover: avatar,
+      coverLarge: avatarLarge,
+      tracks: null
+    };
+  }
+  const safeName = (ar.name || '').replace(/"/g, '&quot;');
+  return `
+    <div class="search-artist-card ${extraCls}"
+         data-open-entity="${entityId}"
+         data-search-save="1"
+         data-search-type="artist"
+         data-search-spotify-id="${ar.id}"
+         data-search-uri="${ar.uri || ''}"
+         data-search-label="${safeName}"
+         data-search-sub="Artista"
+         data-search-avatar="${avatar}"
+         data-search-square="0">
+      <div class="search-artist-avatar-wrap">
+        ${renderOptImg(avatar, safeName, 'search-artist-avatar')}
+      </div>
+      <div class="media-card-title">${ar.name}</div>
+      <div class="media-card-subtitle">Artista</div>
+    </div>
+  `;
+}
+
+function buildSearchAlbumCardHTML(al, extraCls = '') {
+  const entityId = `alb_${al.id}`;
+  const cover = (al.images && al.images.length > 0) ? getSpotifyImage(al.images, 'medium') : DEFAULT_ALBUM_COVER;
+  const coverLarge = (al.images && al.images.length > 0) ? getSpotifyImage(al.images, 'large') : cover;
+  const artistName = al.artists ? al.artists.map(x => x.name).join(', ') : '';
+  const year = (al.release_date || '').slice(0, 4);
+  if (!liveCatalog.entities[entityId]) {
+    liveCatalog.entities[entityId] = {
+      id: entityId,
+      spotifyId: al.id,
+      type: 'album',
+      uri: al.uri,
+      title: al.name,
+      artist: artistName,
+      meta: `Álbum • ${year}`,
+      cover,
+      coverLarge,
+      tracks: null
+    };
+  }
+  const safeTitle = (al.name || '').replace(/"/g, '&quot;');
+  const safeSub = (year ? `${year} • ${artistName}` : artistName).replace(/"/g, '&quot;');
+  return `
+    <div class="media-card ${extraCls}"
+         data-open-entity="${entityId}"
+         data-search-save="1"
+         data-search-type="album"
+         data-search-spotify-id="${al.id}"
+         data-search-uri="${al.uri || ''}"
+         data-search-label="${safeTitle}"
+         data-search-sub="${artistName.replace(/"/g, '&quot;')}"
+         data-search-avatar="${cover}"
+         data-search-square="1">
+      <div class="media-card-cover-wrap">
+        ${renderOptImg(cover, safeTitle, 'media-card-cover')}
+      </div>
+      <div class="media-card-title">${al.name}</div>
+      <div class="media-card-subtitle">${safeSub}</div>
+    </div>
+  `;
+}
+
+function buildSearchPlaylistCardHTML(pl, extraCls = '') {
+  const entityId = `pl_${pl.id}`;
+  const cover = (pl.images && pl.images.length > 0) ? getSpotifyImage(pl.images, 'medium') : DEFAULT_PLAYLIST_COVER;
+  const coverLarge = (pl.images && pl.images.length > 0) ? getSpotifyImage(pl.images, 'large') : cover;
+  const ownerName = (pl.owner && pl.owner.display_name) ? pl.owner.display_name : 'Spotify';
+  if (!liveCatalog.entities[entityId]) {
+    liveCatalog.entities[entityId] = {
+      id: entityId,
+      spotifyId: pl.id,
+      type: 'playlist',
+      uri: pl.uri,
+      title: pl.name,
+      artist: `De ${ownerName}`,
+      meta: `Playlist • ${ownerName}`,
+      cover,
+      coverLarge,
+      tracks: null
+    };
+  }
+  const safeTitle = (pl.name || '').replace(/"/g, '&quot;');
+  const safeOwner = ownerName.replace(/"/g, '&quot;');
+  return `
+    <div class="media-card ${extraCls}"
+         data-open-entity="${entityId}"
+         data-search-save="1"
+         data-search-type="playlist"
+         data-search-spotify-id="${pl.id}"
+         data-search-uri="${pl.uri || ''}"
+         data-search-label="${safeTitle}"
+         data-search-sub="De ${safeOwner}"
+         data-search-avatar="${cover}"
+         data-search-square="1">
+      <div class="media-card-cover-wrap">
+        ${renderOptImg(cover, safeTitle, 'media-card-cover')}
+      </div>
+      <div class="media-card-title">${pl.name}</div>
+      <div class="media-card-subtitle">De ${ownerName}</div>
+    </div>
+  `;
+}
+
+function buildTopResultCardHTML(query, tracks, artists, albums, playlists) {
+  const qLow = (query || '').trim().toLowerCase();
+  const topArtist = artists[0] || null;
+  const topTrack = tracks[0] || null;
+  const topAlbum = albums[0] || null;
+  const topPlaylist = playlists[0] || null;
+
+  const artistNameLow = (topArtist && topArtist.name ? topArtist.name.toLowerCase() : '');
+  const artistStrongMatch = Boolean(topArtist && (artistNameLow === qLow || (qLow.length >= 3 && artistNameLow.startsWith(qLow))));
+
+  const playSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-left:2px;"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>`;
+
+  if (artistStrongMatch || (!topTrack && topArtist)) {
+    const entityId = `art_${topArtist.id}`;
+    const avatar = (topArtist.images && topArtist.images.length > 0) ? (getSpotifyImage(topArtist.images, 'medium') || DEFAULT_SPOTIFY_COVER) : DEFAULT_SPOTIFY_COVER;
+    const avatarLarge = (topArtist.images && topArtist.images.length > 0) ? (getSpotifyImage(topArtist.images, 'large') || avatar) : avatar;
+    if (!liveCatalog.entities[entityId]) {
+      liveCatalog.entities[entityId] = {
+        id: entityId,
+        spotifyId: topArtist.id,
+        type: 'artist',
+        uri: topArtist.uri,
+        title: topArtist.name,
+        name: topArtist.name,
+        cover: avatar,
+        coverLarge: avatarLarge,
+        tracks: null
+      };
+    }
+    const safeName = (topArtist.name || '').replace(/"/g, '&quot;');
+    const artistPlayUri = topTrack ? topTrack.uri : '';
+    const playBtnHtml = artistPlayUri
+      ? `<button type="button" class="search-top-play-btn" data-play-direct-uri="${artistPlayUri}" data-title="${(topTrack.name || '').replace(/"/g, '&quot;')}" data-artist="${(topTrack.artists ? topTrack.artists.map(a => a.name).join(', ') : safeName).replace(/"/g, '&quot;')}" data-cover="${avatarLarge}" data-thumb="${avatar}" aria-label="Reproducir">${playSvg}</button>`
+      : '';
+    return `
+      <div class="search-top-result-card"
+           data-open-entity="${entityId}"
+           data-search-save="1"
+           data-search-type="artist"
+           data-search-spotify-id="${topArtist.id}"
+           data-search-uri="${topArtist.uri || ''}"
+           data-search-label="${safeName}"
+           data-search-sub="Artista"
+           data-search-avatar="${avatar}"
+           data-search-square="0">
+        ${renderOptImg(avatar, safeName, 'search-top-art is-artist')}
+        <div>
+          <div class="search-top-title">${topArtist.name}</div>
+          <div class="search-top-meta"><span class="search-type-badge">Artista</span></div>
+        </div>
+        ${playBtnHtml}
+      </div>
+    `;
+  }
+
+  if (topTrack) {
+    const imgs = (topTrack.album && Array.isArray(topTrack.album.images)) ? topTrack.album.images : [];
+    const thumbImg = imgs.length > 0 ? getSpotifyImage(imgs, 'medium') : DEFAULT_ALBUM_COVER;
+    const coverImg = imgs.length > 0 ? getSpotifyImage(imgs, 'large') : thumbImg;
+    const artistStr = Array.isArray(topTrack.artists) ? topTrack.artists.map(a => a.name).join(', ') : '';
+    const durSec = topTrack.duration_ms ? Math.round(topTrack.duration_ms / 1000) : '';
+    const safeTitle = (topTrack.name || '').replace(/"/g, '&quot;');
+    const safeArtist = artistStr.replace(/"/g, '&quot;');
+    return `
+      <div class="search-top-result-card"
+           data-play-direct-uri="${topTrack.uri}"
+           data-search-save="1"
+           data-search-type="track"
+           data-search-label="${safeTitle}"
+           data-search-sub="${safeArtist}"
+           data-search-avatar="${thumbImg}"
+           data-search-square="1"
+           data-title="${safeTitle}"
+           data-artist="${safeArtist}"
+           data-cover="${coverImg}"
+           data-thumb="${thumbImg}"
+           data-duration="${durSec}">
+        ${renderOptImg(thumbImg, safeTitle, 'search-top-art')}
+        <div>
+          <div class="search-top-title">${topTrack.name}</div>
+          <div class="search-top-meta">
+            <span class="search-type-badge">Canción</span>
+            <span class="search-top-sub">${artistStr}</span>
+          </div>
+        </div>
+        <button type="button" class="search-top-play-btn" aria-label="Reproducir">${playSvg}</button>
+      </div>
+    `;
+  }
+
+  const fallback = topAlbum || topPlaylist;
+  if (!fallback) return '';
+  const isAlb = Boolean(topAlbum);
+  const entityId = isAlb ? `alb_${fallback.id}` : `pl_${fallback.id}`;
+  const cover = (fallback.images && fallback.images.length > 0) ? getSpotifyImage(fallback.images, 'medium') : DEFAULT_ALBUM_COVER;
+  const coverLarge = (fallback.images && fallback.images.length > 0) ? getSpotifyImage(fallback.images, 'large') : cover;
+  const sub = isAlb
+    ? (fallback.artists ? fallback.artists.map(x => x.name).join(', ') : '')
+    : ((fallback.owner && fallback.owner.display_name) || 'Spotify');
+  if (!liveCatalog.entities[entityId]) {
+    liveCatalog.entities[entityId] = {
+      id: entityId,
+      spotifyId: fallback.id,
+      type: isAlb ? 'album' : 'playlist',
+      uri: fallback.uri,
+      title: fallback.name,
+      artist: sub,
+      meta: `${isAlb ? 'Álbum' : 'Playlist'} • ${sub}`,
+      cover,
+      coverLarge,
+      tracks: null
+    };
+  }
+  const safeTitle = (fallback.name || '').replace(/"/g, '&quot;');
+  return `
+    <div class="search-top-result-card"
+         data-open-entity="${entityId}"
+         data-search-save="1"
+         data-search-type="${isAlb ? 'album' : 'playlist'}"
+         data-search-spotify-id="${fallback.id}"
+         data-search-uri="${fallback.uri || ''}"
+         data-search-label="${safeTitle}"
+         data-search-sub="${sub.replace(/"/g, '&quot;')}"
+         data-search-avatar="${cover}"
+         data-search-square="1">
+      ${renderOptImg(cover, safeTitle, 'search-top-art')}
+      <div>
+        <div class="search-top-title">${fallback.name}</div>
+        <div class="search-top-meta">
+          <span class="search-type-badge">${isAlb ? 'Álbum' : 'Playlist'}</span>
+          <span class="search-top-sub">${sub}</span>
+        </div>
+      </div>
+      <button type="button" class="search-top-play-btn" data-play-direct-uri="${fallback.uri}" data-title="${safeTitle}" data-artist="${sub.replace(/"/g, '&quot;')}" data-cover="${coverLarge}" data-thumb="${cover}" aria-label="Reproducir">${playSvg}</button>
+    </div>
+  `;
+}
+
+function renderSearchResults(payload, filter = 'all') {
+  const container = document.getElementById('searchResultsContainer');
+  if (!container || !payload) return;
+
+  const { query, tracks, artists, albums, playlists } = payload;
+  const hasAny = tracks.length > 0 || artists.length > 0 || albums.length > 0 || playlists.length > 0;
+  if (!hasAny) {
+    container.innerHTML = `<div class="search-empty-state">No se encontraron resultados para «${escapeHtml(query)}»</div>`;
     return;
   }
 
-  searchDebounce = setTimeout(async () => {
-    document.getElementById('recentSearchesRow').innerHTML = buildSkeletonChipsHTML(5);
-    document.getElementById('searchRecentlyPlayedGrid').innerHTML = buildSkeletonCardsHTML(4, true);
-    const res = await spotifyFetch(`/search?q=${encodeURIComponent(q)}&type=track,album,artist&limit=8`);
-    if (!res) return;
+  let html = '';
 
-    const chipsRow = document.getElementById('recentSearchesRow');
-    if (res.tracks && Array.isArray(res.tracks.items)) {
-      chipsRow.innerHTML = res.tracks.items.map(t => {
-        const imgs = (t.album && Array.isArray(t.album.images)) ? t.album.images : [];
-        const thumbImg = imgs.length > 0 ? getSpotifyImage(imgs, 'small') : DEFAULT_ALBUM_COVER;
-        const coverImg = imgs.length > 0 ? getSpotifyImage(imgs, 'large') : thumbImg;
-        const artist = t.artists.map(a => a.name).join(', ');
-        const durSec = t.duration_ms ? Math.round(t.duration_ms / 1000) : '';
-        return `
-          <div class="recent-chip" data-play-direct-uri="${t.uri}" data-title="${t.name.replace(/"/g, '&quot;')}" data-artist="${artist.replace(/"/g, '&quot;')}" data-thumb="${thumbImg}" data-cover="${coverImg}" data-duration="${durSec}">
-            ${renderOptImg(thumbImg, t.name, 'chip-avatar square')}
-            <span class="chip-label">${t.name} — ${t.artists[0].name}</span>
-          </div>
-        `;
-      }).join('');
-      hydrateImages(chipsRow);
+  if (filter === 'all') {
+    const topCardHtml = buildTopResultCardHTML(query, tracks, artists, albums, playlists);
+    const songsHtml = tracks.slice(0, 5).map(buildSearchTrackRowHTML).join('');
+    if (topCardHtml || songsHtml) {
+      html += `
+        <div class="search-top-grid">
+          ${topCardHtml ? `<div><h3 class="search-sub-heading">Mejor resultado</h3>${topCardHtml}</div>` : ''}
+          ${songsHtml ? `<div><h3 class="search-sub-heading">Canciones</h3><div class="search-tracks-list">${songsHtml}</div></div>` : ''}
+        </div>
+      `;
+    }
+    if (artists.length > 0) {
+      html += `
+        <div class="search-section">
+          <h3 class="search-sub-heading">Artistas</h3>
+          <div class="search-cards-rail">${artists.slice(0, 8).map(a => buildSearchArtistCardHTML(a)).join('')}</div>
+        </div>
+      `;
+    }
+    if (albums.length > 0) {
+      html += `
+        <div class="search-section">
+          <h3 class="search-sub-heading">Álbumes</h3>
+          <div class="search-cards-rail">${albums.slice(0, 8).map(al => buildSearchAlbumCardHTML(al, 'search-rail-card')).join('')}</div>
+        </div>
+      `;
+    }
+    if (playlists.length > 0) {
+      html += `
+        <div class="search-section" style="margin-bottom:0;">
+          <h3 class="search-sub-heading">Playlists</h3>
+          <div class="search-cards-rail">${playlists.slice(0, 8).map(pl => buildSearchPlaylistCardHTML(pl, 'search-rail-card')).join('')}</div>
+        </div>
+      `;
+    }
+  } else if (filter === 'tracks') {
+    html = tracks.length > 0
+      ? `<div class="search-tracks-list">${tracks.slice(0, 10).map(buildSearchTrackRowHTML).join('')}</div>`
+      : `<div class="search-empty-state">No se encontraron canciones</div>`;
+  } else if (filter === 'artists') {
+    html = artists.length > 0
+      ? `<div class="search-cards-rail" style="flex-wrap:wrap;">${artists.slice(0, 10).map(a => buildSearchArtistCardHTML(a)).join('')}</div>`
+      : `<div class="search-empty-state">No se encontraron artistas</div>`;
+  } else if (filter === 'albums') {
+    html = albums.length > 0
+      ? `<div class="grid-4-cols">${albums.slice(0, 8).map(al => buildSearchAlbumCardHTML(al)).join('')}</div>`
+      : `<div class="search-empty-state">No se encontraron álbumes</div>`;
+  } else if (filter === 'playlists') {
+    html = playlists.length > 0
+      ? `<div class="grid-4-cols">${playlists.slice(0, 8).map(pl => buildSearchPlaylistCardHTML(pl)).join('')}</div>`
+      : `<div class="search-empty-state">No se encontraron playlists</div>`;
+  }
+
+  container.innerHTML = html;
+  hydrateImages(container);
+  if (tracks.length > 0 && typeof checkAndCacheLikedTracks === 'function') {
+    checkAndCacheLikedTracks(tracks);
+  }
+}
+
+function setSearchViewMode(isResults) {
+  const browseEl = document.getElementById('searchBrowseState');
+  const resultsEl = document.getElementById('searchResultsState');
+  const clearBtn = document.getElementById('searchClearBtn');
+  if (browseEl) browseEl.classList.toggle('hidden', isResults);
+  if (resultsEl) resultsEl.classList.toggle('hidden', !isResults);
+  if (clearBtn) clearBtn.classList.toggle('hidden', !isResults);
+}
+
+const searchInputEl = document.getElementById('searchInput');
+if (searchInputEl) {
+  searchInputEl.addEventListener('input', (e) => {
+    const q = (e.target.value || '').trim();
+    clearTimeout(searchDebounce);
+    if (!q) {
+      searchReqSeq++;
+      lastSearchPayload = null;
+      setSearchViewMode(false);
+      renderSearch();
+      return;
     }
 
-    if (res.albums && Array.isArray(res.albums.items)) {
-      const searchGrid = document.getElementById('searchRecentlyPlayedGrid');
-      searchGrid.innerHTML = res.albums.items.slice(0, 8).map(a => {
-        const entityId = `alb_${a.id}`;
-        const cover = (a.images && a.images.length > 0) ? getSpotifyImage(a.images, 'medium') : DEFAULT_ALBUM_COVER;
-        const coverLarge = (a.images && a.images.length > 0) ? getSpotifyImage(a.images, 'large') : cover;
-        const artistName = a.artists ? a.artists.map(x => x.name).join(', ') : '';
-        if (!liveCatalog.entities[entityId]) {
-          liveCatalog.entities[entityId] = {
-            id: entityId,
-            spotifyId: a.id,
-            type: 'album',
-            uri: a.uri,
-            title: a.name,
-            artist: artistName,
-            meta: `Album • ${(a.release_date || '').slice(0, 4)}`,
-            cover: cover,
-            coverLarge: coverLarge,
-            tracks: null
-          };
-        }
-        return `
-          <div class="media-card" data-open-entity="${entityId}">
-            <div class="media-card-cover-wrap">
-              ${renderOptImg(cover, a.name, 'media-card-cover')}
-            </div>
-            <div class="media-card-title">${a.name}</div>
-            <div class="media-card-subtitle">${artistName}</div>
-          </div>
-        `;
-      }).join('');
-      hydrateImages(searchGrid);
+    setSearchViewMode(true);
+    const resultsContainer = document.getElementById('searchResultsContainer');
+    if (resultsContainer) {
+      resultsContainer.innerHTML = buildSearchLoadingSkeletonHTML();
     }
-  }, 320);
-});
+
+    const reqSeq = ++searchReqSeq;
+    searchDebounce = setTimeout(async () => {
+      const res = await spotifyFetch(`/search?q=${encodeURIComponent(q)}&type=track,album,artist,playlist&limit=10`);
+      if (!res || reqSeq !== searchReqSeq) return;
+
+      const rawTracks = (res.tracks && Array.isArray(res.tracks.items)) ? res.tracks.items.filter(t => t && t.uri && !t.uri.startsWith('spotify:local:')) : [];
+      const dedupTracks = [];
+      const seenTracks = new Set();
+      for (const t of rawTracks) {
+        const primaryArtist = (Array.isArray(t.artists) && t.artists[0] && t.artists[0].name) ? t.artists[0].name : '';
+        const key = `${(t.name || '').trim().toLowerCase()}|${primaryArtist.trim().toLowerCase()}`;
+        if (seenTracks.has(key)) continue;
+        seenTracks.add(key);
+        dedupTracks.push(t);
+      }
+
+      lastSearchPayload = {
+        query: q,
+        tracks: dedupTracks,
+        artists: (res.artists && Array.isArray(res.artists.items)) ? res.artists.items.filter(Boolean) : [],
+        albums: (res.albums && Array.isArray(res.albums.items)) ? res.albums.items.filter(Boolean) : [],
+        playlists: (res.playlists && Array.isArray(res.playlists.items)) ? res.playlists.items.filter(Boolean) : []
+      };
+      renderSearchResults(lastSearchPayload, activeSearchFilter);
+    }, 300);
+  });
+}
+
+const searchClearBtnEl = document.getElementById('searchClearBtn');
+if (searchClearBtnEl) {
+  searchClearBtnEl.addEventListener('click', (e) => {
+    e.stopPropagation();
+    searchReqSeq++;
+    clearTimeout(searchDebounce);
+    lastSearchPayload = null;
+    activeSearchFilter = 'all';
+    document.querySelectorAll('#searchFilterPills .search-filter-pill').forEach(p => {
+      p.classList.toggle('active', p.getAttribute('data-search-filter') === 'all');
+    });
+    if (searchInputEl) {
+      searchInputEl.value = '';
+      if (typeof searchInputEl.focus === 'function') searchInputEl.focus();
+    }
+    setSearchViewMode(false);
+    renderSearch();
+  });
+}
+
+const searchFilterPillsEl = document.getElementById('searchFilterPills');
+if (searchFilterPillsEl) {
+  searchFilterPillsEl.querySelectorAll('.search-filter-pill').forEach(pill => {
+    pill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const nextFilter = pill.getAttribute('data-search-filter') || 'all';
+      activeSearchFilter = nextFilter;
+      searchFilterPillsEl.querySelectorAll('.search-filter-pill').forEach(p => p.classList.toggle('active', p === pill));
+      if (lastSearchPayload) {
+        renderSearchResults(lastSearchPayload, activeSearchFilter);
+      }
+    });
+  });
+}
+
+const searchResultsContainerEl = document.getElementById('searchResultsContainer');
+if (searchResultsContainerEl) {
+  searchResultsContainerEl.addEventListener('click', (e) => {
+    if (e.target.closest('.track-row-like-btn')) return;
+    const item = e.target.closest('[data-search-save="1"]');
+    if (!item) return;
+    const type = item.getAttribute('data-search-type') || '';
+    const label = item.getAttribute('data-search-label') || '';
+    const sub = item.getAttribute('data-search-sub') || '';
+    const avatar = item.getAttribute('data-search-avatar') || '';
+    const square = item.getAttribute('data-search-square') === '1';
+    const entityId = item.getAttribute('data-open-entity') || '';
+    const playUri = item.getAttribute('data-play-direct-uri') || '';
+    const spotifyId = item.getAttribute('data-search-spotify-id') || '';
+    const uri = item.getAttribute('data-search-uri') || '';
+    saveRecentSearchItem({
+      label,
+      subtitle: sub,
+      avatar,
+      square,
+      type,
+      entityId: entityId || undefined,
+      playUri: playUri || undefined,
+      spotifyId: spotifyId || undefined,
+      uri: uri || undefined,
+      query: label
+    });
+  });
+}
 
 // Clear Recent Searches
-document.getElementById('clearRecentBtn').addEventListener('click', () => {
-  document.getElementById('searchInput').value = '';
-  renderSearch();
-});
+const clearRecentBtnEl = document.getElementById('clearRecentBtn');
+if (clearRecentBtnEl) {
+  clearRecentBtnEl.addEventListener('click', () => {
+    liveCatalog.recentSearches = [];
+    const key = typeof RECENT_SEARCHES_STORAGE_KEY === 'string' ? RECENT_SEARCHES_STORAGE_KEY : 'sp_recent_searches_v1';
+    safeStorage.setItem(key, JSON.stringify([]));
+    if (searchInputEl) searchInputEl.value = '';
+    setSearchViewMode(false);
+    renderSearch();
+  });
+}
 
 // Profile Modal Controls
 document.querySelectorAll('.profile-btn').forEach(btn => {
