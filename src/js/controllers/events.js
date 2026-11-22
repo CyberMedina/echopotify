@@ -118,12 +118,6 @@ document.addEventListener('click', async (e) => {
     state.contextUpcomingTracks = upcomingSlice;
     const cleanId = cleanTrackId(trackId || trackUri);
 
-    lockUserPlaybackIntent('track_switch', {
-      targetId: cleanId || trackId,
-      targetTitle: title,
-      targetIsPlaying: true
-    });
-
     applyTrackToUI({ id: cleanId || trackId || trackUri || title, uri: trackUri, name: title, artist, album, thumb, cover, coverLarge: cover, duration }, 0, true);
     openNowPlaying();
 
@@ -456,12 +450,6 @@ function handleArtistTrackSelect(item) {
   state.contextUpcomingTracks = upcoming;
   const cleanId = cleanTrackId(trackId || trackUri);
 
-  lockUserPlaybackIntent('track_switch', {
-    targetId: cleanId || trackId,
-    targetTitle: trackTitle,
-    targetIsPlaying: true
-  });
-
   applyTrackToUI({
     id: cleanId || trackId || trackUri || trackTitle,
     uri: trackUri,
@@ -479,7 +467,7 @@ function handleArtistTrackSelect(item) {
   // Reproducción nativa de Spotify: Usar contexto de artista con offset de URI (evita error 403 Restriction Violated)
   const spotifyArtistId = artist.spotifyId || (typeof state.selectedArtistId === 'string' && /^[0-9A-Za-z]{22}$/.test(state.selectedArtistId) ? state.selectedArtistId : null);
   if (spotifyArtistId && trackUri) {
-    playSpotifyContext(`spotify:artist:${spotifyArtistId}`, { uri: trackUri }, upcoming).then(res => {
+    playSpotifyContext(`spotify:artist:${spotifyArtistId}`, { uri: trackUri }, upcoming, { suppressErrorUI: true }).then(res => {
       if (res && res.error) {
         const uris = tracks.slice(idx).map(t => t.uri).filter(Boolean);
         if (uris.length > 0) {
@@ -645,6 +633,7 @@ miniPlayer.addEventListener('click', (e) => {
 });
 
 async function togglePlayPause() {
+  activateWebPlayerAudio();
   state.isPlaying = !state.isPlaying;
   const cmdSeq = lockUserPlaybackIntent('play_pause', {
     durationMs: 3200,
@@ -654,12 +643,21 @@ async function togglePlayPause() {
 
   if (isLocalWebPlayerActive()) {
     try {
-      if (state.isPlaying && typeof webPlayer.resume === 'function') {
-        await webPlayer.resume();
-        return;
-      } else if (!state.isPlaying && typeof webPlayer.pause === 'function') {
+      if (!state.isPlaying && typeof webPlayer.pause === 'function') {
         await webPlayer.pause();
         return;
+      }
+      if (state.isPlaying && typeof webPlayer.getCurrentState === 'function') {
+        const localState = await webPlayer.getCurrentState();
+        if (cmdSeq !== playbackActionSeq) return;
+        if (localState && localState.track_window && localState.track_window.current_track && typeof webPlayer.resume === 'function') {
+          await webPlayer.resume();
+          return;
+        }
+        if (state.playingTrackUri) {
+          await playSpotifyTrackUri(state.playingTrackUri, state.contextUpcomingTracks || []);
+          return;
+        }
       }
     } catch (e) { }
   }
@@ -668,7 +666,23 @@ async function togglePlayPause() {
     const devQ = await getTargetDeviceQuery();
     if (cmdSeq !== playbackActionSeq) return;
     if (state.isPlaying) {
-      await spotifyFetch(`/me/player/play${devQ}`, { method: 'PUT' });
+      const res = await spotifyFetch(`/me/player/play${devQ}`, { method: 'PUT' });
+      if (cmdSeq !== playbackActionSeq) return;
+      if (!res || res.error) {
+        const status = (res && (res._status || (res.error && res.error.status))) || 0;
+        if (status === 404 && state.playingTrackUri) {
+          await playSpotifyTrackUri(state.playingTrackUri, state.contextUpcomingTracks || []);
+          return;
+        }
+        const devId = await resolvePlaybackDeviceId();
+        if (cmdSeq !== playbackActionSeq) return;
+        if (devId && (await transferPlaybackToDevice(devId, true, { silent: true }))) {
+          setTimeout(pollSpotifyCurrentPlayback, 700);
+          return;
+        }
+        state.isPlaying = false;
+        updatePlayPauseIcons();
+      }
     } else {
       await spotifyFetch(`/me/player/pause${devQ}`, { method: 'PUT' });
     }

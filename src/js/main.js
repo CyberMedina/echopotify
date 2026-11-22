@@ -323,8 +323,17 @@ function logoutUser() {
   if (webPlayer) {
     try { webPlayer.disconnect(); } catch (e) {}
     webPlayer = null;
-    webPlayerDeviceId = null;
   }
+  webPlayerDeviceId = null;
+  webPlayerTransferredOnce = false;
+  webPlayerAudioActivated = false;
+  if (typeof resetWebPlayerReadyPromise === 'function') {
+    resetWebPlayerReadyPromise();
+  }
+  spotifyAuth.activeDeviceId = null;
+  spotifyAuth.activeDeviceName = '';
+  spotifyAuth.activeDeviceType = '';
+  state.lastConfirmedApiDeviceId = null;
 
   const audio = document.getElementById('nativeAudioPlayer');
   if (audio) {

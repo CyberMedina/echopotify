@@ -551,7 +551,7 @@ async function pollSpotifyCurrentPlayback(opts = {}) {
         const isPlaying = !localState.paused;
         updateActiveDeviceBadgeUI({
           id: webPlayerDeviceId,
-          name: spotifyAuth.activeDeviceName || 'SpotiEcho Web Player',
+          name: 'SpotiEcho Web Player',
           type: 'Computer',
           is_active: true
         });
@@ -572,12 +572,22 @@ async function pollSpotifyCurrentPlayback(opts = {}) {
 
   if (pb && pb.item) {
     const isPlaying = Boolean(pb.is_playing);
-    // Solo adoptar el dispositivo remoto si está reproduciendo activamente (no si quedó pausado de una sesión vieja en TV/teléfono)
-    if (pb.device && pb.device.id && (isPlaying || !webPlayerDeviceId || pb.device.id === webPlayerDeviceId)) {
-      spotifyAuth.activeDeviceId = pb.device.id;
-      spotifyAuth.activeDeviceName = pb.device.name;
-      spotifyAuth.activeDeviceType = pb.device.type;
-      updateActiveDeviceBadgeUI(pb.device);
+    // Solo adoptar el dispositivo remoto si está reproduciendo activamente (no si quedó pausado de una sesión vieja en TV/teléfono o pestaña cerrada)
+    if (pb.device && pb.device.id) {
+      const isPausedGhostEcho = !isPlaying && pb.device.id !== webPlayerDeviceId && (pb.device.name || '').includes('SpotiEcho');
+      const shouldAdoptDevice = !isPausedGhostEcho && (isPlaying || !webPlayerDeviceId || pb.device.id === webPlayerDeviceId);
+      if (shouldAdoptDevice) {
+        spotifyAuth.activeDeviceId = pb.device.id;
+        spotifyAuth.activeDeviceName = (pb.device.id === webPlayerDeviceId) ? 'SpotiEcho Web Player' : pb.device.name;
+        spotifyAuth.activeDeviceType = pb.device.type;
+        if (isPlaying) {
+          state.lastConfirmedApiDeviceId = pb.device.id;
+        }
+        updateActiveDeviceBadgeUI({
+          ...pb.device,
+          name: spotifyAuth.activeDeviceName
+        });
+      }
     }
     spotifyAuth.shuffleState = !!pb.shuffle_state;
     spotifyAuth.repeatState = pb.repeat_state || 'off';
