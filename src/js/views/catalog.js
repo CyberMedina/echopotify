@@ -390,7 +390,7 @@ async function loadAllRealSpotifyData() {
     // If nothing is currently playing yet, initialize Mini-Player & Now Playing with the user's most recent track!
     if (!state.playingTrackId && recentRes.items[0] && recentRes.items[0].track) {
       const lastTrack = recentRes.items[0].track;
-      applyTrackToUI(lastTrack, 0, false);
+      applyTrackToUI(lastTrack, 0, false, 'cache');
     }
   }
 

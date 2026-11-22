@@ -308,6 +308,7 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
   const isFirstTrack = !state.playingTrackId && Boolean(nextId || nextTitle);
   const trackChanged = isFirstTrack || (state.playingTrackId !== nextId) || (state.playingTrackTitle !== nextTitle);
   const shouldAnimateTransition = trackChanged && !isFirstTrack;
+  state.isCachedPlaceholderTrack = (source === 'cache');
 
   // Si es una acción directa del usuario para reproducir/cambiar canción, blindar el estado
   // para que ningún poll o evento rezagado de la canción anterior revierta la UI
@@ -341,10 +342,10 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
       duration: state.durationSec || 210,
       radioChannel: prevSessionEntry ? prevSessionEntry.radioChannel : null
     };
-    if (source !== 'user' && typeof EchoRadio.recordPlaybackOutcome === 'function') {
+    if (source !== 'user' && source !== 'cache' && typeof EchoRadio.recordPlaybackOutcome === 'function') {
       EchoRadio.recordPlaybackOutcome(prevTrackSnapshot, state.currentTimeSec || 0, state.durationSec || 210, 'change');
     }
-    if (typeof EchoRadio.recordLiveTransition === 'function') {
+    if (source !== 'cache' && typeof EchoRadio.recordLiveTransition === 'function') {
       EchoRadio.recordLiveTransition(prevTrackSnapshot, {
         id: nextId,
         uri: trackObj.uri || (nextId ? `spotify:track:${nextId}` : ''),
@@ -383,6 +384,27 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
   state.playingThumb = thumbUrl;
   state.durationSec = durationSec;
   state.playingTrackHasRealDuration = hasRealDuration;
+
+  if (
+    source !== 'cache' &&
+    nextTitle &&
+    (nextId || state.playingTrackUri) &&
+    !String(state.playingTrackUri || '').match(/^spotify:(album|playlist|artist):/) &&
+    typeof saveLastPlayedTrack === 'function'
+  ) {
+    saveLastPlayedTrack({
+      id: nextId,
+      uri: state.playingTrackUri,
+      name: nextTitle,
+      artist: artistName,
+      artists: artistsList,
+      album: albumName,
+      thumb: thumbUrl,
+      cover: coverUrl,
+      coverLarge: coverUrl,
+      duration: hasRealDuration ? durationSec : 0
+    });
+  }
 
   // Use hardware PCM clock when playing on Echo Show 8; only fall back to HTTP progress_ms for remote devices
   const usedHwClock = syncClockWithHardware(trackChanged);

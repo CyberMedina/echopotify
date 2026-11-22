@@ -91,6 +91,7 @@ const state = {
   isPlaying: false,
   isBuffering: false,
   bufferingStartedAt: 0,
+  isCachedPlaceholderTrack: false,
   durationSec: 0,
   currentTimeSec: 0,
   activeLineIndex: -1,
@@ -362,6 +363,39 @@ function prewarmImageUrls(urls) {
 // Persistent Instant-Load Cache for Home & Last Track (Stale-While-Revalidate)
 const HOME_CACHE_KEY = 'sp_home_cache_v7';
 const LEGACY_HOME_CACHE_KEY = 'sp_home_cache_v6';
+const LAST_TRACK_CACHE_KEY = 'sp_last_played_track';
+
+function saveLastPlayedTrack(trackData) {
+  try {
+    if (!trackData || (!trackData.id && !trackData.uri) || !trackData.name) return;
+    const rawUri = String(trackData.uri || '');
+    if (/^spotify:(album|playlist|artist):/.test(rawUri)) return;
+    safeStorage.setItem(LAST_TRACK_CACHE_KEY, JSON.stringify({
+      id: trackData.id || '',
+      uri: rawUri || (trackData.id ? `spotify:track:${trackData.id}` : ''),
+      name: trackData.name,
+      artist: trackData.artist || '',
+      artists: Array.isArray(trackData.artists) ? trackData.artists : [],
+      album: trackData.album || '',
+      thumb: trackData.thumb || '',
+      cover: trackData.cover || '',
+      coverLarge: trackData.coverLarge || trackData.cover || '',
+      duration: trackData.duration || 0,
+      savedAt: Date.now()
+    }));
+  } catch (e) { }
+}
+
+function loadLastPlayedTrack() {
+  try {
+    const raw = safeStorage.getItem(LAST_TRACK_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return (parsed && parsed.name && (parsed.id || parsed.uri)) ? parsed : null;
+  } catch (e) {
+    return null;
+  }
+}
 
 function renderUserProfile(profile) {
   if (!profile) return;

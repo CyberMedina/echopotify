@@ -1032,3 +1032,107 @@ test('11. Cold-start token refresh deduplicates getOAuthToken and device pill sh
   assert.equal(h.getEl('npDeviceIndicatorRow').classList.contains('has-device'), true);
 });
 
+test('12. Reload with stale cached track resumes live Spotify cloud session on cold togglePlayPause without overwriting it', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  const songB = {
+    id: 'song_b',
+    uri: 'spotify:track:song_b',
+    name: 'Real Active Song B',
+    duration_ms: 215000,
+    artists: [{ name: 'Artist B' }],
+    album: { name: 'Album B', images: [] }
+  };
+
+  h.setFetchHandler(async (url, init) => {
+    if (url.endsWith('/me/player') && (!init.method || init.method === 'GET')) {
+      return jsonResponse({
+        is_playing: false,
+        progress_ms: 83000,
+        device: { id: 'phone_1', name: 'Phone', type: 'Smartphone' },
+        item: songB
+      });
+    }
+    return emptyResponse(204);
+  });
+  h.setGetCurrentState(async () => null);
+
+  h.eval(`
+    initWebPlayer();
+    applyTrackToUI({
+      id: 'song_a',
+      uri: 'spotify:track:song_a',
+      name: 'Old Cached Song A',
+      artists: [{ name: 'Artist A' }],
+      duration_ms: 190000
+    }, 0, false, 'cache');
+  `);
+
+  assert.equal(h.eval('state.isCachedPlaceholderTrack'), true);
+  assert.equal(h.eval('state.playingTrackId'), 'song_a');
+
+  const togglePromise = h.eval('togglePlayPause()');
+  setTimeout(() => {
+    h.emitSdkEvent('ready', { device_id: 'web_dev_1' });
+  }, 30);
+
+  await togglePromise;
+  await h.flushMicrotasks();
+
+  const transferPlayCall = h.fetchCalls.find(c => c.url.endsWith('/me/player') && c.method === 'PUT');
+  assert.ok(transferPlayCall, 'expected PUT /me/player transfer with play: true');
+  assert.deepEqual(transferPlayCall.bodyJson, { device_ids: ['web_dev_1'], play: true });
+
+  const stalePlayCalls = h.fetchCalls.filter(c => c.url.includes('/me/player/play'));
+  assert.equal(stalePlayCalls.length, 0, 'must never overwrite cloud session with stale cached track via /me/player/play');
+
+  assert.equal(h.eval('state.playingTrackId'), 'song_b');
+  assert.equal(h.eval('state.isCachedPlaceholderTrack'), false);
+  assert.equal(Math.round(h.eval('state.currentTimeSec')), 83);
+});
+
+test('13. Real track playback persists to sp_last_played_track and cache/context loads do not clobber it', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  h.eval(`
+    applyTrackToUI({
+      id: 'song_real',
+      uri: 'spotify:track:song_real',
+      name: 'Real Persisted Song',
+      artists: [{ name: 'Real Artist' }],
+      album: { name: 'Real Album', images: [] },
+      duration_ms: 215000
+    }, 0, true, 'user');
+  `);
+  await h.flushMicrotasks();
+
+  const loaded1 = JSON.parse(h.eval('JSON.stringify(loadLastPlayedTrack())'));
+  assert.equal(loaded1.id, 'song_real');
+  assert.equal(loaded1.name, 'Real Persisted Song');
+  assert.equal(loaded1.duration, 215);
+
+  // Cache placeholder or context-only URI must not overwrite real saved track
+  h.eval(`
+    applyTrackToUI({
+      id: 'song_old',
+      uri: 'spotify:track:song_old',
+      name: 'Stale Cache Song',
+      artists: [{ name: 'Old Artist' }],
+      duration_ms: 180000
+    }, 0, false, 'cache');
+    applyTrackToUI({
+      id: 'alb_ctx',
+      uri: 'spotify:album:alb_ctx',
+      name: 'Album Title',
+      artists: [{ name: 'Album Artist' }]
+    }, 0, true, 'user');
+  `);
+
+  const loaded2 = JSON.parse(h.eval('JSON.stringify(loadLastPlayedTrack())'));
+  assert.equal(loaded2.id, 'song_real');
+  assert.equal(loaded2.name, 'Real Persisted Song');
+});
+
+

@@ -792,6 +792,62 @@ miniPlayer.addEventListener('click', (e) => {
   openNowPlaying();
 });
 
+async function tryResumeCloudOrFallbackOnLocalSdk(devId, cmdSeq, preloadedCloudPbPromise) {
+  let cloudPb = null;
+  try {
+    cloudPb = preloadedCloudPbPromise ? await preloadedCloudPbPromise : await spotifyFetch('/me/player');
+  } catch (e) { }
+  if (cmdSeq !== playbackActionSeq) return true;
+
+  const cloudItem = (cloudPb && cloudPb.item && cloudPb.item.uri) ? cloudPb.item : null;
+  const cloudCid = cloudItem ? cleanTrackId(cloudItem.id || cloudItem.uri) : '';
+  const currentCid = cleanTrackId(state.playingTrackId || state.playingTrackUri);
+  const shouldResumeCloud = Boolean(
+    cloudItem && (state.isCachedPlaceholderTrack || (cloudCid && currentCid && cloudCid === currentCid))
+  );
+
+  if (shouldResumeCloud) {
+    const progressSec = Math.max(0, (cloudPb.progress_ms || 0) / 1000);
+    applyTrackToUI(cloudItem, progressSec, true, 'poll');
+    const okTransfer = await transferPlaybackToDevice(devId, true, { silent: true });
+    if (cmdSeq !== playbackActionSeq) return true;
+    if (okTransfer) {
+      setTimeout(() => {
+        if (cmdSeq === playbackActionSeq && typeof pollSpotifyCurrentPlayback === 'function') {
+          pollSpotifyCurrentPlayback();
+        }
+      }, 900);
+      setTimeout(async () => {
+        try {
+          if (cmdSeq !== playbackActionSeq || !state.isPlaying || !isLocalWebPlayerActive()) return;
+          if (!webPlayer || typeof webPlayer.getCurrentState !== 'function') return;
+          const sdkState = await webPlayer.getCurrentState();
+          if (cmdSeq !== playbackActionSeq || !state.isPlaying) return;
+          if (sdkState && sdkState.track_window && sdkState.track_window.current_track) {
+            if (sdkState.paused) {
+              activateWebPlayerAudio();
+              if (typeof webPlayer.resume === 'function') {
+                await webPlayer.resume().catch(() => {});
+              }
+            } else if (typeof setPlaybackBuffering === 'function') {
+              setPlaybackBuffering(false);
+            }
+          }
+        } catch (e) { }
+      }, 1800);
+      return true;
+    }
+    await playSpotifyTrackUri(cloudItem.uri, []);
+    return true;
+  }
+
+  if (state.playingTrackUri) {
+    await playSpotifyTrackUri(state.playingTrackUri, state.contextUpcomingTracks || []);
+    return true;
+  }
+  return false;
+}
+
 async function togglePlayPause() {
   activateWebPlayerAudio();
   if (state.isPlaying && state.isBuffering && (Date.now() - (state.bufferingStartedAt || 0)) < 1200) {
@@ -827,8 +883,8 @@ async function togglePlayPause() {
           if (typeof setPlaybackBuffering === 'function') setPlaybackBuffering(false);
           return;
         }
-        if (state.playingTrackUri) {
-          await playSpotifyTrackUri(state.playingTrackUri, state.contextUpcomingTracks || []);
+        if (typeof setPlaybackBuffering === 'function') setPlaybackBuffering(true);
+        if (await tryResumeCloudOrFallbackOnLocalSdk(webPlayerDeviceId, cmdSeq, null)) {
           return;
         }
       }
@@ -838,6 +894,7 @@ async function togglePlayPause() {
   if (spotifyAuth.accessToken) {
     if (state.isPlaying) {
       if (typeof setPlaybackBuffering === 'function') setPlaybackBuffering(true);
+      const cloudPbPromise = spotifyFetch('/me/player').catch(() => null);
       const devId = await resolvePlaybackDeviceId();
       if (cmdSeq !== playbackActionSeq) return;
 
@@ -851,8 +908,7 @@ async function togglePlayPause() {
             return;
           }
         } catch (e) { }
-        if (state.playingTrackUri) {
-          await playSpotifyTrackUri(state.playingTrackUri, state.contextUpcomingTracks || []);
+        if (await tryResumeCloudOrFallbackOnLocalSdk(devId, cmdSeq, cloudPbPromise)) {
           return;
         }
       }

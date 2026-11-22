@@ -29,8 +29,10 @@ if (!hasAuth) {
   }
   renderHome(cachedHome.jumpCards, cachedHome.recentCards, cachedHome.banners, cachedHome.topArtists, cachedHome.savedAlbums);
   renderSearch(cachedHome.recentCards);
-  if (cachedHome.lastTrack && !state.playingTrackId) {
-    applyTrackToUI(cachedHome.lastTrack, 0, false);
+  const startupLastTrack = (typeof loadLastPlayedTrack === 'function' ? loadLastPlayedTrack() : null)
+    || (cachedHome && cachedHome.lastTrack ? cachedHome.lastTrack : null);
+  if (startupLastTrack && !state.playingTrackId) {
+    applyTrackToUI(startupLastTrack, 0, false, 'cache');
     const miniEl = document.getElementById('miniPlayer');
     if (miniEl) miniEl.style.display = 'flex';
   }
@@ -310,6 +312,7 @@ function logoutUser() {
   safeStorage.removeItem('sp_access_token');
   safeStorage.removeItem('sp_refresh_token');
   safeStorage.removeItem(HOME_CACHE_KEY);
+  if (typeof LAST_TRACK_CACHE_KEY !== 'undefined') safeStorage.removeItem(LAST_TRACK_CACHE_KEY);
   safeStorage.removeItem(PKCE_VERIFIER_KEY);
   if (typeof EchoRadio !== 'undefined' && typeof EchoRadio.clearOnLogout === 'function') {
     EchoRadio.clearOnLogout();
@@ -319,6 +322,7 @@ function logoutUser() {
   state.isPlaying = false;
   state.isBuffering = false;
   state.bufferingStartedAt = 0;
+  state.isCachedPlaceholderTrack = false;
   state.userSelectedDeviceId = null;
   state.pcmFlowing = false;
   state.playingTrackId = null;
