@@ -140,7 +140,7 @@ async function loadAllRealSpotifyData() {
       const entityId = `pl_${p.id}`;
       const cover = (p.images && p.images.length > 0) ? getSpotifyImage(p.images, 'medium') : DEFAULT_PLAYLIST_COVER;
       const coverLarge = (p.images && p.images.length > 0) ? getSpotifyImage(p.images, 'large') : cover;
-      const total = p.tracks ? p.tracks.total : 0;
+      const total = p.tracks ? p.tracks.total : (p.items ? p.items.total : 0);
       liveCatalog.entities[entityId] = {
         id: entityId,
         spotifyId: p.id,
@@ -148,6 +148,8 @@ async function loadAllRealSpotifyData() {
         uri: p.uri,
         title: p.name,
         artist: (p.owner && p.owner.display_name) ? p.owner.display_name : 'Spotify',
+        ownerId: (p.owner && p.owner.id) ? p.owner.id : '',
+        collaborative: Boolean(p.collaborative),
         meta: `Playlist • ${total} songs`,
         cover: cover,
         coverLarge: coverLarge,
@@ -447,6 +449,13 @@ async function loadAllRealSpotifyData() {
   liveCatalog.albums.slice(0, 12).forEach(a => { if (a && a.cover) urlsToPrewarm.push(a.cover); });
   liveCatalog.artists.slice(0, 12).forEach(ar => { if (ar && ar.cover) urlsToPrewarm.push(ar.cover); });
   prewarmImageUrls(urlsToPrewarm);
+
+  // Build Spotify-Native Local Recommendation Graph in background (zero startup impact)
+  if (typeof EchoRadio !== 'undefined' && typeof EchoRadio.initGraphFromCatalog === 'function') {
+    setTimeout(() => {
+      EchoRadio.initGraphFromCatalog(me, recentRes).catch(e => console.warn('[EchoRadio Graph Init]', e));
+    }, 900);
+  }
 }
 
 // --------------------------------------------------------------------------

@@ -676,6 +676,43 @@ async function togglePlayPause() {
 }
 
 async function skipNextTrack() {
+  // Record Spotify 30-second skip/satisfaction feedback BEFORE advancing
+  const playedBeforeSkip = state.currentTimeSec || 0;
+  const durBeforeSkip = state.durationSec || 210;
+  const curRadioEntry = (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionIndex >= 0)
+    ? state.autoplaySessionTracks[state.autoplaySessionIndex]
+    : null;
+  const skippedSnapshot = state.playingTrackId ? {
+    id: state.playingTrackId,
+    uri: state.playingTrackUri,
+    title: state.playingTrackTitle,
+    artist: state.playingArtist,
+    artists: state.playingArtists,
+    duration: durBeforeSkip,
+    radioChannel: curRadioEntry ? curRadioEntry.radioChannel : null
+  } : null;
+
+  if (skippedSnapshot && typeof EchoRadio !== 'undefined' && typeof EchoRadio.recordPlaybackOutcome === 'function') {
+    EchoRadio.recordPlaybackOutcome(skippedSnapshot, playedBeforeSkip, durBeforeSkip, 'skip');
+    // Fast skip (<10s) in Radio: immediately re-rank upcoming queue to steer away from skipped artist/vibe
+    if (
+      playedBeforeSkip < 10 &&
+      state.isAutoplayQueue &&
+      Array.isArray(state.autoplaySessionTracks) &&
+      typeof EchoRadio.reRankQueueAfterSkip === 'function'
+    ) {
+      const curIdx = Math.max(0, state.autoplaySessionIndex || 0);
+      const head = state.autoplaySessionTracks.slice(0, curIdx + 1);
+      const tail = state.autoplaySessionTracks.slice(curIdx + 1);
+      if (tail.length > 1) {
+        const steeredTail = EchoRadio.reRankQueueAfterSkip(skippedSnapshot, tail);
+        state.autoplaySessionTracks = head.concat(steeredTail);
+        state.liveQueueTracks = steeredTail;
+        state.contextUpcomingTracks = steeredTail;
+      }
+    }
+  }
+
   if (bridge && bridge.notifyTrackLoading) {
     bridge.notifyTrackLoading('');
     state.pcmFlowing = false;
@@ -707,13 +744,14 @@ async function skipNextTrack() {
         uri: nextTrack.uri,
         name: nextTrack.title,
         artist: nextTrack.artist,
+        artists: nextTrack.artists,
         album: nextTrack.album,
         thumb: nextTrack.thumb || nextTrack.cover,
         cover: nextTrack.cover,
         coverLarge: nextTrack.cover,
         duration: nextTrack.duration || 210
       }, 0, true);
-      if (remaining.length < 8 && typeof replenishAutoplayQueue === 'function') {
+      if (remaining.length < 5 && typeof replenishAutoplayQueue === 'function') {
         replenishAutoplayQueue();
       }
       const forwardUris = [nextTrack.uri, ...remaining.slice(0, 19).map(t => t.uri)].filter(Boolean);
@@ -832,6 +870,21 @@ async function skipPrevTrack() {
       if (cmdSeq === playbackActionSeq) pollSpotifyCurrentPlayback();
     }, 650);
   } else {
+    // Restarting a song after listening >= 40% is a strong positive replay signal
+    if (state.playingTrackId && typeof EchoRadio !== 'undefined' && typeof EchoRadio.recordPlaybackOutcome === 'function') {
+      const curRadioEntry = (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionIndex >= 0)
+        ? state.autoplaySessionTracks[state.autoplaySessionIndex]
+        : null;
+      EchoRadio.recordPlaybackOutcome({
+        id: state.playingTrackId,
+        uri: state.playingTrackUri,
+        title: state.playingTrackTitle,
+        artist: state.playingArtist,
+        artists: state.playingArtists,
+        duration: state.durationSec || 210,
+        radioChannel: curRadioEntry ? curRadioEntry.radioChannel : null
+      }, state.currentTimeSec || 0, state.durationSec || 210, 'replay');
+    }
     state.currentTimeSec = 0;
     lockUserPlaybackIntent('seek', {
       durationMs: 2200,

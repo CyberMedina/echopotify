@@ -311,6 +311,9 @@ function logoutUser() {
   safeStorage.removeItem('sp_refresh_token');
   safeStorage.removeItem(HOME_CACHE_KEY);
   safeStorage.removeItem(PKCE_VERIFIER_KEY);
+  if (typeof EchoRadio !== 'undefined' && typeof EchoRadio.clearOnLogout === 'function') {
+    EchoRadio.clearOnLogout();
+  }
   spotifyAuth.accessToken = '';
   spotifyAuth.refreshToken = '';
   state.isPlaying = false;

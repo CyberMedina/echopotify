@@ -322,6 +322,32 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
     });
   }
 
+  // Record natural playback outcome (30s rule / completion) & sequential transition before overwriting active track
+  if (trackChanged && !isFirstTrack && state.playingTrackId && typeof EchoRadio !== 'undefined') {
+    const prevSessionEntry = (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionIndex >= 0)
+      ? state.autoplaySessionTracks[state.autoplaySessionIndex]
+      : null;
+    const prevTrackSnapshot = {
+      id: state.playingTrackId,
+      uri: state.playingTrackUri,
+      title: state.playingTrackTitle,
+      artist: state.playingArtist,
+      artists: state.playingArtists,
+      duration: state.durationSec || 210,
+      radioChannel: prevSessionEntry ? prevSessionEntry.radioChannel : null
+    };
+    if (source !== 'user' && typeof EchoRadio.recordPlaybackOutcome === 'function') {
+      EchoRadio.recordPlaybackOutcome(prevTrackSnapshot, state.currentTimeSec || 0, state.durationSec || 210, 'change');
+    }
+    if (typeof EchoRadio.recordLiveTransition === 'function') {
+      EchoRadio.recordLiveTransition(prevTrackSnapshot, {
+        id: nextId,
+        uri: trackObj.uri || (nextId ? `spotify:track:${nextId}` : ''),
+        artists: artistsList
+      });
+    }
+  }
+
   state.playingTrackId = nextId;
   state.playingTrackUri = trackObj.uri || (nextId ? `spotify:track:${nextId}` : null);
   state.playingTrackTitle = nextTitle;
@@ -342,7 +368,7 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
       if (typeof recordAutoplayHistory === 'function') {
         recordAutoplayHistory(nextId || state.playingTrackUri);
       }
-      if (upcoming.length < 8 && typeof replenishAutoplayQueue === 'function') {
+      if (upcoming.length < 5 && typeof replenishAutoplayQueue === 'function') {
         replenishAutoplayQueue();
       }
     }
@@ -792,6 +818,19 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
     npTimeElapsed.textContent = formatTime(curIntSec);
     const remaining = Math.max(0, state.durationSec - curIntSec);
     npTimeRemaining.textContent = `-${formatTime(remaining)}`;
+
+    // Proactive 50% pre-calculation for uninterrupted Radio transitions
+    if (
+      state.isPlaying &&
+      state.isAutoplayQueue &&
+      !state.autoplayLoading &&
+      state.durationSec >= 30 &&
+      ratio >= 0.5 &&
+      (state.liveQueueTracks || []).length < 5 &&
+      typeof replenishAutoplayQueue === 'function'
+    ) {
+      replenishAutoplayQueue();
+    }
   }
 
   const cache = state.lyricDOMCache;
@@ -1021,10 +1060,14 @@ function renderQueuePanelUI() {
     if (npQueueHeading) npQueueHeading.textContent = state.isAutoplayQueue ? 'A continuación • Radio' : 'A continuación';
     if (npQueueSubheading) {
       if (state.isAutoplayQueue) {
-        const primaryArtist = state.playingArtist ? state.playingArtist.split(',')[0].trim() : '';
-        npQueueSubheading.textContent = primaryArtist
-          ? `Autoplay • Basado en ${primaryArtist} • Radio continua`
-          : `Autoplay • Radio continua`;
+        if (typeof EchoRadio !== 'undefined' && typeof EchoRadio.getSessionSubtitle === 'function') {
+          npQueueSubheading.textContent = EchoRadio.getSessionSubtitle();
+        } else {
+          const primaryArtist = state.playingArtist ? state.playingArtist.split(',')[0].trim() : '';
+          npQueueSubheading.textContent = primaryArtist
+            ? `Radio • Basado en ${primaryArtist} • Autoplay`
+            : `Radio • Autoplay personalizado`;
+        }
       } else {
         npQueueSubheading.textContent = `Siguiente en la lista • ${queue.length} canción${queue.length === 1 ? '' : 'es'}`;
       }
@@ -1119,7 +1162,7 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
     state.liveQueueTracks = state.autoplaySessionTracks.slice(idx + 1);
     state.contextUpcomingTracks = state.liveQueueTracks;
     state.queueLoading = false;
-    if (state.liveQueueTracks.length < 8 && !state.autoplayLoading && typeof replenishAutoplayQueue === 'function') {
+    if (state.liveQueueTracks.length < 5 && !state.autoplayLoading && typeof replenishAutoplayQueue === 'function') {
       replenishAutoplayQueue();
     }
     if (state.nowPlayingMode === 'queue') {
@@ -1175,7 +1218,7 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
     return;
   }
 
-  // Priority 2: Queue is empty -> Query API for musical discovery alternatives
+  // Priority 2: Queue is empty -> Query Spotify-native EchoRadio for musical discovery
   let discovered = [];
   if (typeof fetchSpotifyAutoplayTracks === 'function' && state.playingTrackId) {
     discovered = await fetchSpotifyAutoplayTracks({
@@ -1183,51 +1226,13 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
       uri: state.playingTrackUri,
       name: state.playingTrackTitle,
       artist: state.playingArtist,
-      artistId: state.playingArtistId
+      artists: state.playingArtists,
+      artistId: state.playingArtistId,
+      duration: state.durationSec || 210
     }, 8);
   }
-  const seenDisc = new Set([state.playingTrackId, state.playingTrackTitle]);
 
-  if (discovered.length === 0 && state.playingTrackId && /^[a-zA-Z0-9]{22}$/.test(state.playingTrackId)) {
-    const recRes = await spotifyFetch(`/recommendations?seed_tracks=${state.playingTrackId}&limit=6`);
-    if (recRes && Array.isArray(recRes.tracks)) {
-      recRes.tracks.forEach(t => {
-        const norm = normalizeApiTrack(t);
-        if (norm && !seenDisc.has(norm.id) && !seenDisc.has(norm.title)) {
-          seenDisc.add(norm.id);
-          seenDisc.add(norm.title);
-          discovered.push(norm);
-        }
-      });
-    }
-  }
-
-  if (discovered.length === 0 && state.playingArtistId) {
-    const artTop = await spotifyFetch(`/artists/${state.playingArtistId}/top-tracks?market=from_token`);
-    if (artTop && Array.isArray(artTop.tracks)) {
-      artTop.tracks.forEach(t => {
-        const norm = normalizeApiTrack(t);
-        if (norm && !seenDisc.has(norm.id) && !seenDisc.has(norm.title)) {
-          seenDisc.add(norm.id);
-          seenDisc.add(norm.title);
-          discovered.push(norm);
-        }
-      });
-    }
-  }
-
-  if (discovered.length === 0 && Array.isArray(liveCatalog.likedTracks) && liveCatalog.likedTracks.length > 0) {
-    liveCatalog.likedTracks.slice(0, 6).forEach(t => {
-      const norm = normalizeApiTrack(t);
-      if (norm && !seenDisc.has(norm.id) && !seenDisc.has(norm.title)) {
-        seenDisc.add(norm.id);
-        seenDisc.add(norm.title);
-        discovered.push(norm);
-      }
-    });
-  }
-
-  state.discoveryTracks = discovered.slice(0, 8);
+  state.discoveryTracks = Array.isArray(discovered) ? discovered.slice(0, 8) : [];
   state.queueLoading = false;
   renderQueuePanelUI();
   if (state.discoveryTracks.length > 0) {

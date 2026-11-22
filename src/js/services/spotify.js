@@ -470,30 +470,41 @@ async function playSpotifyTrackUri(trackUri, upcomingSlice = []) {
 
 
 // ==========================================================================
-// SPOTIFY AUTOPLAY / RADIO ALGORITHM (for single-track playback without queue)
+// SPOTIFY AUTOPLAY / RADIO ALGORITHM (delegates to Spotify-Native EchoRadio)
 // ==========================================================================
 function normalizeAutoplayTrack(t) {
   if (!t || (!t.id && !t.uri)) return null;
-  if (typeof normalizeApiTrack === 'function') {
-    return normalizeApiTrack(t);
-  }
-  const imgs = (t.album && Array.isArray(t.album.images)) ? t.album.images : [];
-  const cover = imgs[0] ? imgs[0].url : (t.cover || DEFAULT_ALBUM_COVER);
-  const thumb = imgs[imgs.length - 1] ? imgs[imgs.length - 1].url : (t.thumb || cover);
-  const artistStr = Array.isArray(t.artists)
-    ? t.artists.map(a => a.name).join(', ')
-    : (t.artist || 'Artista');
-  return {
-    id: cleanTrackId(t.id || t.uri),
-    uri: t.uri || (t.id ? `spotify:track:${t.id}` : ''),
-    title: t.name || t.title || 'Track',
-    artist: artistStr,
-    artists: Array.isArray(t.artists) ? t.artists : [],
-    album: (t.album && t.album.name) ? t.album.name : (t.album || ''),
-    cover,
-    thumb,
-    duration: t.duration_ms ? Math.round(t.duration_ms / 1000) : (t.duration || 210)
-  };
+  const base = (typeof normalizeApiTrack === 'function')
+    ? normalizeApiTrack(t)
+    : (() => {
+        const imgs = (t.album && Array.isArray(t.album.images)) ? t.album.images : [];
+        const cover = imgs[0] ? imgs[0].url : (t.cover || DEFAULT_ALBUM_COVER);
+        const thumb = imgs[imgs.length - 1] ? imgs[imgs.length - 1].url : (t.thumb || cover);
+        const artistStr = Array.isArray(t.artists)
+          ? t.artists.map(a => a.name).join(', ')
+          : (t.artist || 'Artista');
+        return {
+          id: cleanTrackId(t.id || t.uri),
+          uri: t.uri || (t.id ? `spotify:track:${t.id}` : ''),
+          title: t.name || t.title || 'Track',
+          artist: artistStr,
+          album: (t.album && t.album.name) ? t.album.name : (t.album || ''),
+          cover,
+          thumb,
+          duration: t.duration_ms ? Math.round(t.duration_ms / 1000) : (t.duration || 210)
+        };
+      })();
+  if (!base) return null;
+  // Preserve rich graph & BaRT metadata for EchoRadio scoring/feedback
+  base.artists = Array.isArray(t.artists) ? t.artists : (base.artists || []);
+  if (t.albumId) base.albumId = t.albumId;
+  else if (t.album && t.album.id) base.albumId = t.album.id;
+  if (t.year) base.year = t.year;
+  if (t.radioChannel) base.radioChannel = t.radioChannel;
+  if (t.radioReason) base.radioReason = t.radioReason;
+  if (typeof t.radioScore === 'number') base.radioScore = t.radioScore;
+  if (typeof t.isDiscovery === 'boolean') base.isDiscovery = t.isDiscovery;
+  return base;
 }
 
 function recordAutoplayHistory(trackIdOrUri) {
@@ -502,146 +513,24 @@ function recordAutoplayHistory(trackIdOrUri) {
   if (!Array.isArray(state.autoplayHistoryIds)) state.autoplayHistoryIds = [];
   if (!state.autoplayHistoryIds.includes(cid)) {
     state.autoplayHistoryIds.push(cid);
-    if (state.autoplayHistoryIds.length > 60) {
+    if (state.autoplayHistoryIds.length > 100) {
       state.autoplayHistoryIds.shift();
     }
   }
+  if (typeof EchoRadio !== 'undefined' && typeof EchoRadio.markHistoryId === 'function') {
+    EchoRadio.markHistoryId(cid);
+  }
 }
 
-async function fetchSpotifyAutoplayTracks(seedTrack, limit = 10) {
+async function fetchSpotifyAutoplayTracks(seedTrack, limit = 12) {
   if (!spotifyAuth.accessToken || !seedTrack) return [];
-
-  const seedId = cleanTrackId(seedTrack.id || seedTrack.uri);
-  let artistId = seedTrack.artistId || (Array.isArray(seedTrack.artists) && seedTrack.artists[0] && seedTrack.artists[0].id) || state.playingArtistId || null;
-  let artistName = seedTrack.artist || (Array.isArray(seedTrack.artists) && seedTrack.artists[0] && seedTrack.artists[0].name) || '';
-  const seedTitle = seedTrack.name || seedTrack.title || '';
-
-  const seenIds = new Set(Array.isArray(state.autoplayHistoryIds) ? state.autoplayHistoryIds : []);
-  const seenTitles = new Set();
-  if (seedId) seenIds.add(seedId);
-  if (seedTitle) seenTitles.add(seedTitle.toLowerCase());
-  (state.liveQueueTracks || []).forEach(t => {
-    if (t && t.id) seenIds.add(cleanTrackId(t.id));
-    if (t && t.title) seenTitles.add(t.title.toLowerCase());
-  });
-
-  const collected = [];
-  const pushTrack = (raw) => {
-    const norm = normalizeAutoplayTrack(raw);
-    if (!norm || !norm.uri || !norm.uri.startsWith('spotify:track:')) return false;
-    const cid = cleanTrackId(norm.id || norm.uri);
-    const titleKey = (norm.title || '').toLowerCase();
-    if ((cid && seenIds.has(cid)) || (titleKey && seenTitles.has(titleKey))) return false;
-    if (cid) seenIds.add(cid);
-    if (titleKey) seenTitles.add(titleKey);
-    collected.push(norm);
-    return true;
-  };
-
-  // 0. Enrich seed metadata (all featured artists)
-  let seedArtistsList = Array.isArray(seedTrack.artists) ? seedTrack.artists : [];
-  if (seedId && /^[0-9A-Za-z]{22}$/.test(seedId) && (seedArtistsList.length === 0 || !artistId)) {
-    const trackMeta = await spotifyFetch(`/tracks/${seedId}`).catch(() => null);
-    if (trackMeta && Array.isArray(trackMeta.artists) && trackMeta.artists.length > 0) {
-      seedArtistsList = trackMeta.artists;
-      artistId = trackMeta.artists[0].id || artistId;
-      if (!artistName) artistName = trackMeta.artists.map(a => a.name).join(', ');
+  if (typeof EchoRadio !== 'undefined' && typeof EchoRadio.generateRadioTracks === 'function') {
+    const generated = await EchoRadio.generateRadioTracks(seedTrack, limit);
+    if (Array.isArray(generated) && generated.length > 0) {
+      return generated.map(normalizeAutoplayTrack).filter(Boolean);
     }
   }
-  const extraArtistIds = seedArtistsList.map(a => a && a.id).filter(id => id && /^[0-9A-Za-z]{22}$/.test(id)).slice(0, 3);
-  if (artistId && /^[0-9A-Za-z]{22}$/.test(artistId) && !extraArtistIds.includes(artistId)) {
-    extraArtistIds.unshift(artistId);
-  }
-
-  // 1. Primary: Official Spotify Recommendations API
-  if (seedId && /^[0-9A-Za-z]{22}$/.test(seedId)) {
-    const recParams = new URLSearchParams({
-      seed_tracks: seedId,
-      limit: String(Math.min(25, limit + 5)),
-      market: 'from_token'
-    });
-    if (artistId && /^[0-9A-Za-z]{22}$/.test(artistId)) {
-      recParams.set('seed_artists', artistId);
-    }
-    const recRes = await spotifyFetch(`/recommendations?${recParams.toString()}`);
-    if (recRes && Array.isArray(recRes.tracks) && recRes.tracks.length > 0) {
-      recRes.tracks.forEach(pushTrack);
-    }
-  }
-
-  // 2. Fallback: Related Artists + Multi-Artist Top Tracks + Genre/Artist Radio Search
-  if (collected.length < limit) {
-    const pool = [];
-    const primaryArtists = extraArtistIds.slice(0, 3);
-    const [relRes, artRes, ...topResults] = await Promise.all([
-      (artistId && /^[0-9A-Za-z]{22}$/.test(artistId)) ? spotifyFetch(`/artists/${artistId}/related-artists`).catch(() => null) : Promise.resolve(null),
-      (artistId && /^[0-9A-Za-z]{22}$/.test(artistId)) ? spotifyFetch(`/artists/${artistId}`).catch(() => null) : Promise.resolve(null),
-      ...primaryArtists.map(aid => spotifyFetch(`/artists/${aid}/top-tracks?market=from_token`).catch(() => null))
-    ]);
-
-    const relatedArtists = (relRes && Array.isArray(relRes.artists)) ? relRes.artists.slice(0, 4) : [];
-    if (relatedArtists.length > 0) {
-      const relTopResults = await Promise.all(
-        relatedArtists.map(ra => spotifyFetch(`/artists/${ra.id}/top-tracks?market=from_token`).catch(() => null))
-      );
-      for (let round = 0; round < 3; round++) {
-        relTopResults.forEach(r => {
-          if (r && Array.isArray(r.tracks) && r.tracks[round]) {
-            pool.push(r.tracks[round]);
-          }
-        });
-      }
-    }
-
-    // Interleave top tracks from all featured artists on the seed track
-    for (let round = 0; round < 4; round++) {
-      topResults.forEach(r => {
-        if (r && Array.isArray(r.tracks) && r.tracks[round]) {
-          pool.push(r.tracks[round]);
-        }
-      });
-    }
-
-    // Apply collected pool before deciding if we need search expansion
-    pool.sort(() => Math.random() - 0.5).forEach(pushTrack);
-
-    // Search expansion by genre & artist names (works reliably on all Spotify apps + supports infinite offset)
-    if (collected.length < limit) {
-      const genres = (artRes && Array.isArray(artRes.genres)) ? artRes.genres : [];
-      const artistNames = artistName
-        ? artistName.split(',').map(s => s.trim()).filter(Boolean)
-        : [];
-      const searchQueries = [];
-      if (genres[0]) searchQueries.push(genres[0]);
-      if (genres[1]) searchQueries.push(genres[1]);
-      if (artistNames[0]) searchQueries.push(artistNames[0]);
-      if (artistNames[1]) searchQueries.push(artistNames[1]);
-      if (searchQueries.length === 0 && seedTitle) searchQueries.push(seedTitle.replace(/\(.*\)|\[.*\]/g, '').trim());
-
-      const searchResults = await Promise.all(
-        searchQueries.slice(0, 3).map((q, idx) => {
-          const offset = Math.floor(Math.random() * 3) * 10 + (idx * 5);
-          return spotifyFetch(`/search?q=${encodeURIComponent(q)}&type=track&limit=20&offset=${offset}&market=from_token`).catch(() => null);
-        })
-      );
-
-      const searchPool = [];
-      searchResults.forEach(sr => {
-        if (sr && sr.tracks && Array.isArray(sr.tracks.items)) {
-          searchPool.push(...sr.tracks.items);
-        }
-      });
-      searchPool.sort(() => Math.random() - 0.5).forEach(pushTrack);
-    }
-  }
-
-  // 3. Last-resort fallback: Liked tracks
-  if (collected.length < limit && typeof liveCatalog !== 'undefined' && Array.isArray(liveCatalog.likedTracks) && liveCatalog.likedTracks.length > 0) {
-    const shuffledLiked = [...liveCatalog.likedTracks].sort(() => Math.random() - 0.5);
-    shuffledLiked.forEach(pushTrack);
-  }
-
-  return collected.slice(0, limit);
+  return [];
 }
 
 async function enqueueTracksOnSpotify(tracks, devQ, cmdSeq, maxToQueue = 5) {
@@ -693,6 +582,9 @@ async function playSingleTrackWithAutoplay(seedTrack) {
   state.contextUpcomingTracks = [];
   state.liveQueueTracks = [];
   state.queueLoading = true;
+  if (typeof EchoRadio !== 'undefined' && typeof EchoRadio.resetSession === 'function') {
+    EchoRadio.resetSession(seedNorm || seedTrack);
+  }
   recordAutoplayHistory(cleanId || seedTrack.uri);
 
   if (bridge && bridge.notifyTrackLoading) {
@@ -704,12 +596,12 @@ async function playSingleTrackWithAutoplay(seedTrack) {
   const devQ = await getTargetDeviceQuery();
   if (cmdSeq !== playbackActionSeq) return null;
 
-  // Start playback immediately AND fetch algorithm recommendations in parallel
+  // Start playback immediately AND generate Spotify-native Radio queue (12 tracks) in parallel
   const playPromise = spotifyFetch(`/me/player/play${devQ}`, {
     method: 'PUT',
     body: JSON.stringify({ uris: [seedTrack.uri] })
   });
-  const autoplayPromise = fetchSpotifyAutoplayTracks(seedTrack, 15);
+  const autoplayPromise = fetchSpotifyAutoplayTracks(seedNorm || seedTrack, 12);
 
   const [playRes, autoplayTracks] = await Promise.all([playPromise, autoplayPromise]);
   if (cmdSeq !== playbackActionSeq) return playRes;
@@ -755,14 +647,16 @@ async function playSingleTrackWithAutoplay(seedTrack) {
 async function replenishAutoplayQueue() {
   if (!state.isAutoplayQueue || state.autoplayLoading || !spotifyAuth.accessToken) return;
   const currentQueue = state.liveQueueTracks || [];
-  if (currentQueue.length >= 8) return;
+  if (currentQueue.length >= 5) return;
 
   const session = Array.isArray(state.autoplaySessionTracks) ? state.autoplaySessionTracks : [];
-  const seed = session[session.length - 1] || currentQueue[currentQueue.length - 1] || {
+  const activeIdx = Math.max(0, state.autoplaySessionIndex || 0);
+  const seed = session[activeIdx] || session[session.length - 1] || currentQueue[currentQueue.length - 1] || {
     id: state.playingTrackId,
     uri: state.playingTrackUri,
     name: state.playingTrackTitle,
     artist: state.playingArtist,
+    artists: state.playingArtists,
     artistId: state.playingArtistId
   };
   if (!seed || (!seed.id && !seed.uri)) return;
@@ -786,6 +680,11 @@ async function replenishAutoplayQueue() {
         state.liveQueueTracks = state.autoplaySessionTracks.slice(idx + 1);
         state.contextUpcomingTracks = state.liveQueueTracks;
         if (typeof renderQueuePanelUI === 'function') renderQueuePanelUI();
+        // Keep Spotify's hardware queue topped up for uninterrupted playback
+        const devQ = await getTargetDeviceQuery();
+        if (cmdSeq === playbackActionSeq && state.isAutoplayQueue) {
+          enqueueTracksOnSpotify(fresh, devQ, cmdSeq, 4);
+        }
       }
     }
   } finally {

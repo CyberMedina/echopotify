@@ -137,6 +137,11 @@ async function toggleLikeTrack(trackIdInput, trackInfo = null) {
     updateLikeButtonsUI(nextLiked);
   }
 
+  // Notify EchoRadio online feedback (+1.5 on like, -0.5 on unlike)
+  if (typeof EchoRadio !== 'undefined' && typeof EchoRadio.recordLikeFeedback === 'function') {
+    EchoRadio.recordLikeFeedback(trackId, trackInfo, nextLiked);
+  }
+
   // Sync to Spotify Web API
   if (spotifyAuth.accessToken) {
     try {
