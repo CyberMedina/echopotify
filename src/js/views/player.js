@@ -296,6 +296,11 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
   const thumbUrl = imgs.length > 0
     ? (getSpotifyImage(imgs, 'small') || getSpotifyImage(imgs, 'medium') || coverUrl)
     : (trackObj.thumb || trackObj.cover || coverUrl);
+  const prevDurationSec = state.durationSec || 0;
+  const hasRealDuration = Boolean(
+    (trackObj.duration_ms && trackObj.duration_ms > 0) ||
+    (trackObj.duration && trackObj.duration > 0)
+  );
   const durationSec = trackObj.duration_ms ? Math.round(trackObj.duration_ms / 1000) : (trackObj.duration || 220);
 
   const nextTitle = (trackObj.name || trackObj.title || '').trim();
@@ -377,6 +382,7 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
   state.playingCover = coverUrl;
   state.playingThumb = thumbUrl;
   state.durationSec = durationSec;
+  state.playingTrackHasRealDuration = hasRealDuration;
 
   // Use hardware PCM clock when playing on Echo Show 8; only fall back to HTTP progress_ms for remote devices
   const usedHwClock = syncClockWithHardware(trackChanged);
@@ -442,11 +448,14 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
     // cuando hay animación activa para que el crossfade de portada y texto corra a 60fps puros en el Echo Show 8
     clearTimeout(trackWorkDeferTimer);
     const runSecondaryTrackWork = () => {
+      const primaryArtistForLyrics = (Array.isArray(trackObj.artists) && trackObj.artists[0] && trackObj.artists[0].name)
+        ? trackObj.artists[0].name
+        : (artistName ? artistName.split(',')[0].trim() : '');
       fetchSyncedLyricsForTrack(
         state.playingTrackTitle,
-        trackObj.artists ? trackObj.artists[0].name : artistName,
+        primaryArtistForLyrics,
         albumName,
-        durationSec
+        hasRealDuration ? durationSec : 0
       );
       fetchAndRenderQueueForCurrentTrack(trackObj);
       if (isValidSpotifyId) {
@@ -478,8 +487,17 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
     } else {
       runSecondaryTrackWork();
     }
-  } else if (!state.isPlaying) {
-    updateScrubberAndLyricsUI(false);
+  } else {
+    if (!state.isPlaying) {
+      updateScrubberAndLyricsUI(false);
+    }
+    if (!state.hasValidLyrics && !state.lyricsLoading && state.playingTrackTitle && typeof ensureLyricsLoadedForCurrentTrack === 'function') {
+      if (hasRealDuration && Math.abs(durationSec - prevDurationSec) > 4) {
+        ensureLyricsLoadedForCurrentTrack('duration_update');
+      } else if (isPlaying && source !== 'user') {
+        ensureLyricsLoadedForCurrentTrack(source);
+      }
+    }
   }
 }
 
@@ -1131,6 +1149,9 @@ function renderQueuePanelUI() {
 }
 
 async function fetchAndRenderQueueForCurrentTrack(trackObj) {
+  const reqTrackId = state.playingTrackId;
+  const reqActionSeq = playbackActionSeq;
+
   // Helper ligero: pre-calentar solo las próximas 3 canciones (portada HD + miniatura + paleta de color en caché)
   // sin saturar la red ni el decodificador de imágenes del Echo Show con 25 descargas simultáneas
   const prewarmUpcomingSlice = (tracksList) => {
@@ -1145,14 +1166,83 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
     }
   };
 
-  // If tracks are available from local context:
-  if (Array.isArray(state.contextUpcomingTracks) && state.contextUpcomingTracks.length > 0) {
+  const curCid = cleanTrackId(state.playingTrackId || state.playingTrackUri);
+  const curTitleLow = (state.playingTrackTitle || '').trim().toLowerCase();
+  const buildMergedQueue = (...lists) => {
+    const out = [];
+    const seen = new Set();
+    for (const list of lists) {
+      if (!Array.isArray(list)) continue;
+      for (const rawItem of list) {
+        const norm = (rawItem && rawItem.title && !rawItem.name && !rawItem.album?.images)
+          ? rawItem
+          : normalizeApiTrack(rawItem);
+        if (!norm) continue;
+        const cid = cleanTrackId(norm.id || norm.uri);
+        const tLow = (norm.title || '').trim().toLowerCase();
+        if ((curCid && cid === curCid) || (curTitleLow && tLow === curTitleLow)) continue;
+        const key = cid || `${tLow}|${(norm.artist || '').toLowerCase()}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(norm);
+        if (out.length >= 25) return out;
+      }
+    }
+    return out;
+  };
+
+  // Autoplay Radio session manages its own bidirectional queue without losing history
+  if (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionTracks.length > 0) {
+    const idx = Math.max(0, state.autoplaySessionIndex || 0);
+    state.liveQueueTracks = state.autoplaySessionTracks.slice(idx + 1);
+    state.contextUpcomingTracks = state.liveQueueTracks;
+    state.discoveryTracks = [];
+    state.queueLoading = false;
+    if (state.liveQueueTracks.length < 5 && !state.autoplayLoading && typeof replenishAutoplayQueue === 'function') {
+      replenishAutoplayQueue();
+    }
+    if (state.nowPlayingMode === 'queue') {
+      renderQueuePanelUI();
+    }
+    prewarmUpcomingSlice(state.liveQueueTracks);
+    updateNowPlayingRightPanelMode();
+    return;
+  }
+
+  // Priority 0: Exact in-memory next_tracks from active Web Playback SDK (0ms lag, respects real shuffle & Connect queue)
+  if (typeof isLocalWebPlayerActive === 'function' && isLocalWebPlayerActive() && typeof webPlayer.getCurrentState === 'function') {
+    try {
+      const localState = await webPlayer.getCurrentState();
+      if (reqActionSeq !== playbackActionSeq || reqTrackId !== state.playingTrackId) return;
+      if (localState && localState.track_window && Array.isArray(localState.track_window.next_tracks)) {
+        state.sdkNextTracks = buildMergedQueue(localState.track_window.next_tracks);
+      }
+    } catch (e) { }
+  }
+
+  // Seed initial liveQueueTracks before API call: prefer SDK next_tracks; use local contextUpcomingTracks only when aligned & not shuffled
+  if (Array.isArray(state.sdkNextTracks) && state.sdkNextTracks.length > 0) {
+    let alignedContext = [];
+    if (!spotifyAuth.shuffleState && Array.isArray(state.contextUpcomingTracks) && state.contextUpcomingTracks.length > 0) {
+      const firstSdkCid = cleanTrackId(state.sdkNextTracks[0].id || state.sdkNextTracks[0].uri);
+      const firstSdkTitle = (state.sdkNextTracks[0].title || '').trim().toLowerCase();
+      const matchPos = state.contextUpcomingTracks.findIndex(t =>
+        (firstSdkCid && cleanTrackId(t.id || t.uri) === firstSdkCid) ||
+        (firstSdkTitle && (t.title || t.name || '').trim().toLowerCase() === firstSdkTitle)
+      );
+      if (matchPos >= 0) {
+        alignedContext = state.contextUpcomingTracks.slice(matchPos + 1);
+      }
+    }
+    state.liveQueueTracks = buildMergedQueue(state.sdkNextTracks, alignedContext);
+  } else if (!spotifyAuth.shuffleState && Array.isArray(state.contextUpcomingTracks) && state.contextUpcomingTracks.length > 0) {
     const currentIdx = state.contextUpcomingTracks.findIndex(t => (t.id && t.id === state.playingTrackId) || (t.title && t.title === state.playingTrackTitle));
     const sliceStart = currentIdx >= 0 ? currentIdx + 1 : 0;
-    state.liveQueueTracks = state.contextUpcomingTracks
-      .slice(sliceStart)
-      .map(normalizeApiTrack)
-      .filter(t => t && t.title !== state.playingTrackTitle);
+    state.liveQueueTracks = buildMergedQueue(state.contextUpcomingTracks.slice(sliceStart));
+  }
+
+  if (state.liveQueueTracks.length > 0) {
+    state.discoveryTracks = [];
   }
   state.queueLoading = Boolean(spotifyAuth.accessToken);
 
@@ -1168,56 +1258,32 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
     return;
   }
 
-  // Autoplay Radio session manages its own bidirectional queue without losing history
-  if (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionTracks.length > 0) {
-    const idx = Math.max(0, state.autoplaySessionIndex || 0);
-    state.liveQueueTracks = state.autoplaySessionTracks.slice(idx + 1);
-    state.contextUpcomingTracks = state.liveQueueTracks;
-    state.queueLoading = false;
-    if (state.liveQueueTracks.length < 5 && !state.autoplayLoading && typeof replenishAutoplayQueue === 'function') {
-      replenishAutoplayQueue();
-    }
-    if (state.nowPlayingMode === 'queue') {
-      renderQueuePanelUI();
-    }
-    prewarmUpcomingSlice(state.liveQueueTracks);
-    updateNowPlayingRightPanelMode();
-    return;
-  }
-
   // Priority 1: Check real Spotify Player Queue (/me/player/queue)
   const qRes = await spotifyFetch('/me/player/queue');
+  if (reqActionSeq !== playbackActionSeq || reqTrackId !== state.playingTrackId) return;
+
   if (qRes && Array.isArray(qRes.queue) && qRes.queue.length > 0) {
-    const seen = new Set();
-    const apiQueue = [];
-    for (let i = 0; i < qRes.queue.length; i++) {
-      const norm = normalizeApiTrack(qRes.queue[i]);
-      if (!norm) continue;
-      // Skip duplicate of currently playing track
-      if (i === 0 && (norm.id === state.playingTrackId || norm.title === state.playingTrackTitle)) continue;
-      const key = norm.id || `${norm.title}|${norm.artist}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      apiQueue.push(norm);
-      if (apiQueue.length >= 25) break;
-    }
+    const apiQueue = buildMergedQueue(qRes.queue);
     if (apiQueue.length > 0) {
-      state.liveQueueTracks = apiQueue;
+      const usingLocalSdk = typeof isLocalWebPlayerActive === 'function' && isLocalWebPlayerActive();
+      const mergedQueue = (usingLocalSdk && Array.isArray(state.sdkNextTracks) && state.sdkNextTracks.length > 0)
+        ? buildMergedQueue(state.sdkNextTracks, apiQueue)
+        : apiQueue;
+      state.liveQueueTracks = mergedQueue;
+      state.discoveryTracks = [];
       state.queueLoading = false;
       if (state.nowPlayingMode === 'queue') {
         renderQueuePanelUI();
       }
-      prewarmUpcomingSlice(apiQueue);
+      prewarmUpcomingSlice(mergedQueue);
       updateNowPlayingRightPanelMode();
       return;
     }
   }
 
   if (state.liveQueueTracks.length > 0) {
+    state.discoveryTracks = [];
     state.queueLoading = false;
-    if (state.isAutoplayQueue && state.liveQueueTracks.length <= 2 && !state.autoplayLoading && typeof replenishAutoplayQueue === 'function') {
-      replenishAutoplayQueue();
-    }
     if (state.nowPlayingMode === 'queue') {
       renderQueuePanelUI();
     }
@@ -1242,6 +1308,7 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
       artistId: state.playingArtistId,
       duration: state.durationSec || 210
     }, 8);
+    if (reqActionSeq !== playbackActionSeq || reqTrackId !== state.playingTrackId) return;
   }
 
   state.discoveryTracks = Array.isArray(discovered) ? discovered.slice(0, 8) : [];
@@ -1263,6 +1330,7 @@ function updateNowPlayingRightPanelMode() {
   );
 
   let mode = state.nowPlayingMode || 'lyrics';
+  const prefersLyrics = state.userPrefersLyrics !== false;
 
   // 1. Validation & Auto-detection:
   if (state.userForcedCentered) {
@@ -1270,20 +1338,16 @@ function updateNowPlayingRightPanelMode() {
   } else if (!hasLyrics && !hasQueue) {
     // Song has no queue AND no lyrics -> automatically center!
     mode = 'centered';
-  } else if (mode === 'lyrics') {
-    if (!hasLyrics && hasQueue) {
-      mode = 'queue';
-    } else if (!hasLyrics && !hasQueue) {
-      mode = 'centered';
-    }
-  } else if (mode === 'queue') {
-    if (!hasQueue && hasLyrics) {
-      mode = 'lyrics';
-    } else if (!hasQueue && !hasLyrics) {
-      mode = 'centered';
-    }
-  } else if (mode !== 'centered') {
-    mode = hasLyrics ? 'lyrics' : (hasQueue ? 'queue' : 'centered');
+  } else if (state.hasValidLyrics && prefersLyrics && mode !== 'lyrics') {
+    mode = 'lyrics';
+  } else if (mode === 'centered') {
+    mode = (hasLyrics && prefersLyrics) ? 'lyrics' : (hasQueue ? 'queue' : 'lyrics');
+  } else if (mode === 'lyrics' && !hasLyrics && hasQueue) {
+    mode = 'queue';
+  } else if (mode === 'queue' && !hasQueue && hasLyrics) {
+    mode = 'lyrics';
+  } else if (mode !== 'lyrics' && mode !== 'queue') {
+    mode = (hasLyrics && prefersLyrics) ? 'lyrics' : (hasQueue ? 'queue' : 'centered');
   }
 
   state.nowPlayingMode = mode;
@@ -1316,6 +1380,7 @@ function updateNowPlayingRightPanelMode() {
   // 5. Update Active Sub-Mode Contents
   if (showLyrics) {
     if (state.hasValidLyrics) {
+      if (lyricsScrollTrack) lyricsScrollTrack.classList.remove('lyrics-fade-out');
       requestAnimationFrame(() => {
         cacheLyricLineOffsets();
         updateScrubberAndLyricsUI(true);

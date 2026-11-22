@@ -275,6 +275,10 @@ async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durat
   // (Compare against the key the loaded lyrics belong to; playingTrackTitle is already updated by the caller.)
   if (state.hasValidLyrics && state.activeLyrics && state.activeLyrics.length > 0 && state.loadedLyricsKey === cacheKey) {
     lyrLog(`skip "${cacheKey}": already loaded`);
+    state.lyricsLoading = false;
+    if (lyricsScrollTrack) lyricsScrollTrack.classList.remove('lyrics-fade-out');
+    updateNowPlayingRightPanelMode();
+    updateScrubberAndLyricsUI(true);
     return;
   }
 
@@ -332,6 +336,7 @@ async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durat
         if (wordParsed && wordParsed.length > 0) {
           lyrLog(`#${fetchId} OK REAL APPLE MUSIC WORD-SYNC ${wordParsed.length} lines in ${Date.now() - tStart}ms`);
           lyricsMemoryCache.set(cacheKey, wordParsed);
+          state.lyricsLoading = false;
           state.hasValidLyrics = true;
           state.loadedLyricsKey = cacheKey;
           state.activeLyrics = wordParsed;
@@ -406,8 +411,14 @@ async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durat
   }
 
   // Ensure this is still the active fetch and track hasn't changed
-  if (fetchId !== lyricFetchSeq || state.playingTrackTitle !== trackName) {
-    lyrLog(`#${fetchId} stale at end (now playing "${state.playingTrackTitle}"), dropped`);
+  if (fetchId !== lyricFetchSeq) {
+    lyrLog(`#${fetchId} stale seq at end (now playing "${state.playingTrackTitle}"), dropped`);
+    return;
+  }
+  const currentCleanTitle = (state.playingTrackTitle || '').replace(/\s*\(.*?\)\s*/g, '').replace(/\s*-\s*.*$/, '').trim() || state.playingTrackTitle;
+  if (currentCleanTitle.toLowerCase() !== cleanTrack.toLowerCase() && state.playingTrackTitle !== trackName) {
+    lyrLog(`#${fetchId} stale track at end (now playing "${state.playingTrackTitle}"), dropped`);
+    state.lyricsLoading = false;
     return;
   }
 
@@ -439,5 +450,39 @@ async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durat
   state.activeLineIndex = -1;
   if (lyricsScrollTrack) lyricsScrollTrack.innerHTML = '';
   updateNowPlayingRightPanelMode();
+}
+
+const lyricsAutoRetryMap = new Set();
+
+function ensureLyricsLoadedForCurrentTrack(reason = 'auto') {
+  if (!state.playingTrackTitle || state.lyricsLoading) return;
+  const trackName = state.playingTrackTitle;
+  const artistName = (Array.isArray(state.playingArtists) && state.playingArtists[0] && state.playingArtists[0].name)
+    ? state.playingArtists[0].name
+    : (state.playingArtist ? state.playingArtist.split(',')[0].trim() : '');
+  const cleanTrack = trackName.replace(/\s*\(.*?\)\s*/g, '').replace(/\s*-\s*.*$/, '').trim() || trackName;
+  const cleanArtist = (artistName || '').replace(/\s*,\s*.*$/, '').trim() || artistName;
+  const cacheKey = `${cleanArtist.toLowerCase()}::${cleanTrack.toLowerCase()}`;
+
+  if (state.hasValidLyrics && state.loadedLyricsKey === cacheKey && Array.isArray(state.activeLyrics) && state.activeLyrics.length > 0) {
+    if (lyricsScrollTrack) lyricsScrollTrack.classList.remove('lyrics-fade-out');
+    if (typeof updateNowPlayingRightPanelMode === 'function') updateNowPlayingRightPanelMode();
+    if (typeof updateScrubberAndLyricsUI === 'function') updateScrubberAndLyricsUI(true);
+    return;
+  }
+
+  if (reason !== 'manual') {
+    const bucket = reason === 'duration_update' ? 'dur' : 'auto';
+    const retryKey = `${cacheKey}::${bucket}`;
+    if (lyricsAutoRetryMap.has(retryKey)) return;
+    lyricsAutoRetryMap.add(retryKey);
+    if (lyricsAutoRetryMap.size > 80) {
+      const oldestKey = lyricsAutoRetryMap.values().next().value;
+      if (oldestKey) lyricsAutoRetryMap.delete(oldestKey);
+    }
+  }
+
+  const dur = state.playingTrackHasRealDuration ? (state.durationSec || 0) : 0;
+  fetchSyncedLyricsForTrack(trackName, artistName, state.playingAlbumTitle || '', dur);
 }
 

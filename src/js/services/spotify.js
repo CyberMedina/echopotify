@@ -176,6 +176,14 @@ async function waitForWebPlayerReady(timeoutMs = 2500) {
   return resolved || webPlayerDeviceId || null;
 }
 
+function clearAutoplayRadioSession() {
+  state.isAutoplayQueue = false;
+  state.autoplayLoading = false;
+  state.autoplaySessionTracks = [];
+  state.autoplaySessionIndex = -1;
+  state.discoveryTracks = [];
+}
+
 function isLocalWebPlayerActive() {
   return Boolean(
     webPlayer &&
@@ -204,6 +212,47 @@ function handleWebPlayerStateChanged(sdkState) {
   }
   spotifyAuth.shuffleState = Boolean(sdkState.shuffle);
   spotifyAuth.repeatState = sdkState.repeat_mode === 2 ? 'track' : (sdkState.repeat_mode === 1 ? 'context' : 'off');
+
+  const curCleanId = cleanTrackId(cur.id || cur.uri);
+  const curTitleLow = (cur.name || '').trim().toLowerCase();
+  const rawNext = Array.isArray(sdkState.track_window.next_tracks) ? sdkState.track_window.next_tracks : [];
+  const normFn = (typeof normalizeApiTrack === 'function') ? normalizeApiTrack : normalizeAutoplayTrack;
+  const sdkNext = [];
+  const seenSdkKeys = new Set();
+  for (let i = 0; i < rawNext.length; i++) {
+    const nt = normFn(rawNext[i]);
+    if (!nt) continue;
+    const ntCid = cleanTrackId(nt.id || nt.uri);
+    const ntTitleLow = (nt.title || '').trim().toLowerCase();
+    if ((curCleanId && ntCid === curCleanId) || (curTitleLow && ntTitleLow === curTitleLow)) continue;
+    const key = ntCid || `${ntTitleLow}|${(nt.artist || '').toLowerCase()}`;
+    if (seenSdkKeys.has(key)) continue;
+    seenSdkKeys.add(key);
+    sdkNext.push(nt);
+  }
+  state.sdkNextTracks = sdkNext;
+
+  if (!state.isAutoplayQueue && sdkNext.length > 0) {
+    const merged = [...sdkNext];
+    const seenMerged = new Set(seenSdkKeys);
+    if (!spotifyAuth.shuffleState && Array.isArray(state.liveQueueTracks)) {
+      for (const lt of state.liveQueueTracks) {
+        if (!lt) continue;
+        const cid = cleanTrackId(lt.id || lt.uri);
+        const tLow = (lt.title || '').trim().toLowerCase();
+        if ((curCleanId && cid === curCleanId) || (curTitleLow && tLow === curTitleLow)) continue;
+        const key = cid || `${tLow}|${(lt.artist || '').toLowerCase()}`;
+        if (seenMerged.has(key)) continue;
+        seenMerged.add(key);
+        merged.push(lt);
+        if (merged.length >= 25) break;
+      }
+    }
+    state.liveQueueTracks = merged.slice(0, 25);
+    if (state.nowPlayingMode === 'queue' && typeof renderQueuePanelUI === 'function') {
+      renderQueuePanelUI();
+    }
+  }
 
   const rawSec = Math.max(0, (sdkState.position || 0) / 1000);
   const incomingIsPlaying = !sdkState.paused;
@@ -545,6 +594,16 @@ async function executeSpotifyPlay(playBody, cmdSeq, opts = {}) {
     }
   }
 
+  // Asegurar estado explícito de Shuffle antes de iniciar contexto/lista (evita reproducir álbumes en aleatorio residual)
+  if (typeof opts.setShuffle === 'boolean' && Boolean(spotifyAuth.shuffleState) !== opts.setShuffle) {
+    const shufDevParam = targetDeviceId ? `&device_id=${targetDeviceId}` : '';
+    await spotifyFetch(`/me/player/shuffle?state=${opts.setShuffle ? 'true' : 'false'}${shufDevParam}`, {
+      method: 'PUT'
+    }).catch(() => null);
+    spotifyAuth.shuffleState = opts.setShuffle;
+    if (cmdSeq !== playbackActionSeq) return null;
+  }
+
   let playRes = await spotifyFetch(`/me/player/play${buildDevQuery(targetDeviceId)}`, {
     method: 'PUT',
     body: JSON.stringify(playBody)
@@ -647,9 +706,9 @@ async function executeSpotifyPlay(playBody, cmdSeq, opts = {}) {
 async function playSpotifyContext(contextUri, offsetPosition = 0, upcomingSlice = [], opts = {}) {
   activateWebPlayerAudio();
   const cmdSeq = playbackActionSeq;
+  if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
   state.singleTrackPlayback = false;
-  state.isAutoplayQueue = false;
-  state.autoplayLoading = false;
+  state.sdkNextTracks = [];
   state.contextUpcomingTracks = Array.isArray(upcomingSlice) ? upcomingSlice : [];
   if (bridge && bridge.notifyTrackLoading) {
     bridge.notifyTrackLoading('');
@@ -662,7 +721,11 @@ async function playSpotifyContext(contextUri, offsetPosition = 0, upcomingSlice 
   } else if (typeof offsetPosition === 'number' && offsetPosition >= 0) {
     body.offset = { position: offsetPosition };
   }
-  const playRes = await executeSpotifyPlay(body, cmdSeq, opts);
+  const explicitShuffle = (typeof opts.setShuffle === 'boolean')
+    ? opts.setShuffle
+    : (!opts.preserveShuffle && spotifyAuth.shuffleState ? false : undefined);
+  const playOpts = (typeof explicitShuffle === 'boolean') ? { ...opts, setShuffle: explicitShuffle } : opts;
+  const playRes = await executeSpotifyPlay(body, cmdSeq, playOpts);
   if (cmdSeq !== playbackActionSeq || !playRes) return null;
   if (playRes.error) {
     console.warn('[Spotify Play Context Error]', playRes.error);
@@ -684,27 +747,31 @@ async function playSpotifyUris(urisArray, upcomingSlice = [], opts = {}) {
   const safeUris = cleanUris.slice(0, 80);
 
   state.singleTrackPlayback = safeUris.length === 1;
-  if (!state.isAutoplayQueue || (Array.isArray(urisArray) && urisArray.length > 1 && (!upcomingSlice || upcomingSlice.length === 0))) {
-    state.isAutoplayQueue = false;
-    state.autoplayLoading = false;
+  if (!opts || !opts.keepAutoplaySession) {
+    if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
   }
+  state.sdkNextTracks = [];
   state.contextUpcomingTracks = Array.isArray(upcomingSlice) ? upcomingSlice : [];
   if (bridge && bridge.notifyTrackLoading) {
     bridge.notifyTrackLoading('');
     state.pcmFlowing = false;
     state.currentTimeSec = 0;
   }
+  const explicitShuffle = (typeof opts.setShuffle === 'boolean')
+    ? opts.setShuffle
+    : (!opts.preserveShuffle && spotifyAuth.shuffleState ? false : undefined);
+  const basePlayOpts = (typeof explicitShuffle === 'boolean') ? { ...opts, setShuffle: explicitShuffle } : opts;
   let playRes = await executeSpotifyPlay(
     { uris: safeUris },
     cmdSeq,
-    safeUris.length > 1 ? { ...opts, suppressErrorUI: true } : opts
+    safeUris.length > 1 ? { ...basePlayOpts, suppressErrorUI: true } : basePlayOpts
   );
   if (cmdSeq !== playbackActionSeq || !playRes) return null;
 
   // Si Spotify rechaza la lista masiva (p. ej. 403 Restriction Violated), reintentar inmediatamente con el URI individual de la pista
   if (playRes.error && safeUris.length > 1 && safeUris[0]) {
     console.warn('[Spotify Play Uris Error, retrying single URI]', playRes.error);
-    playRes = await executeSpotifyPlay({ uris: [safeUris[0]] }, cmdSeq, opts);
+    playRes = await executeSpotifyPlay({ uris: [safeUris[0]] }, cmdSeq, basePlayOpts);
     if (cmdSeq !== playbackActionSeq || !playRes) return null;
   }
 
@@ -839,6 +906,8 @@ async function playSingleTrackWithAutoplay(seedTrack) {
   state.autoplaySessionIndex = 0;
   state.contextUpcomingTracks = [];
   state.liveQueueTracks = [];
+  state.sdkNextTracks = [];
+  state.discoveryTracks = [];
   state.queueLoading = true;
   if (typeof EchoRadio !== 'undefined' && typeof EchoRadio.resetSession === 'function') {
     EchoRadio.resetSession(seedNorm || seedTrack);

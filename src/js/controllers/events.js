@@ -28,12 +28,31 @@ document.addEventListener('click', async (e) => {
     const artist = directPlay.getAttribute('data-artist') || '';
     const cover = directPlay.getAttribute('data-cover') || state.playingCover;
     const thumb = directPlay.getAttribute('data-thumb') || cover;
+    const rawDur = parseInt(directPlay.getAttribute('data-duration'), 10);
+    const duration = (Number.isFinite(rawDur) && rawDur > 0) ? rawDur : 0;
     const isContextUri = uri.startsWith('spotify:playlist:') || uri.startsWith('spotify:album:');
     state.singleTrackPlayback = false;
-    state.isAutoplayQueue = !isContextUri;
-    state.contextUpcomingTracks = [];
+    if (isContextUri) {
+      if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
+      state.sdkNextTracks = [];
+      state.liveQueueTracks = [];
+      state.contextUpcomingTracks = [];
+    } else {
+      state.isAutoplayQueue = true;
+      state.sdkNextTracks = [];
+      state.contextUpcomingTracks = [];
+    }
     const cleanId = cleanTrackId(uri);
-    applyTrackToUI({ id: cleanId || uri, uri, name: title, artist, thumb, cover, coverLarge: cover, duration_ms: 210000 }, 0, true);
+    applyTrackToUI({
+      id: cleanId || uri,
+      uri,
+      name: title,
+      artist,
+      thumb,
+      cover,
+      coverLarge: cover,
+      duration: duration || undefined
+    }, 0, true);
     openNowPlaying();
     if (uri) {
       if (isContextUri) {
@@ -52,7 +71,8 @@ document.addEventListener('click', async (e) => {
           name: title,
           artist,
           thumb,
-          cover
+          cover,
+          duration: duration || undefined
         }).then(res => {
           if (res && res.error) {
             console.warn('[Spotify Playback Error]', res.error);
@@ -110,24 +130,49 @@ document.addEventListener('click', async (e) => {
     const album = trackRow.getAttribute('data-track-album');
     const cover = trackRow.getAttribute('data-track-cover');
     const thumb = trackRow.getAttribute('data-track-thumb') || cover;
-    const duration = parseInt(trackRow.getAttribute('data-track-duration'), 10) || 210;
+    const rawDur = parseInt(trackRow.getAttribute('data-track-duration'), 10);
+    const duration = (Number.isFinite(rawDur) && rawDur > 0) ? rawDur : 0;
 
-    const entity = liveCatalog.entities[entityId];
+    const entity = liveCatalog.entities[entityId] || liveCatalog.entities[state.selectedEntityId];
     const upcomingSlice = (entity && Array.isArray(entity.tracks)) ? entity.tracks.slice(idx + 1) : [];
+    if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
+    state.sdkNextTracks = [];
     state.singleTrackPlayback = false;
     state.contextUpcomingTracks = upcomingSlice;
+    state.liveQueueTracks = (typeof normalizeApiTrack === 'function')
+      ? upcomingSlice.map(normalizeApiTrack).filter(Boolean)
+      : upcomingSlice;
     const cleanId = cleanTrackId(trackId || trackUri);
 
-    applyTrackToUI({ id: cleanId || trackId || trackUri || title, uri: trackUri, name: title, artist, album, thumb, cover, coverLarge: cover, duration }, 0, true);
+    applyTrackToUI({
+      id: cleanId || trackId || trackUri || title,
+      uri: trackUri,
+      name: title,
+      artist,
+      album,
+      thumb,
+      cover,
+      coverLarge: cover,
+      duration: duration || undefined
+    }, 0, true);
     openNowPlaying();
 
     if (entity && entity.uri && (entity.type === 'album' || entity.type === 'playlist')) {
-      playSpotifyContext(entity.uri, idx, upcomingSlice);
+      playSpotifyContext(entity.uri, trackUri ? { uri: trackUri } : idx, upcomingSlice);
     } else if (entity && Array.isArray(entity.tracks)) {
       const uris = entity.tracks.slice(idx).map(t => t.uri).filter(Boolean);
       if (uris.length > 0) playSpotifyUris(uris, upcomingSlice);
     } else if (trackUri) {
-      playSingleTrackWithAutoplay({ id: cleanId || trackId || trackUri, uri: trackUri, name: title, artist, album, thumb, cover, duration });
+      playSingleTrackWithAutoplay({
+        id: cleanId || trackId || trackUri,
+        uri: trackUri,
+        name: title,
+        artist,
+        album,
+        thumb,
+        cover,
+        duration: duration || undefined
+      });
     }
     return;
   }
@@ -144,11 +189,14 @@ document.addEventListener('click', async (e) => {
     const album = queueRow.getAttribute('data-track-album');
     const cover = queueRow.getAttribute('data-track-cover');
     const thumb = queueRow.getAttribute('data-track-thumb') || cover;
-    const duration = parseInt(queueRow.getAttribute('data-track-duration'), 10) || 210;
+    const rawDur = parseInt(queueRow.getAttribute('data-track-duration'), 10);
+    const duration = (Number.isFinite(rawDur) && rawDur > 0) ? rawDur : 0;
 
     const cleanId = cleanTrackId(trackId || trackUri);
+    state.sdkNextTracks = [];
     if (qSource === 'queue' && state.liveQueueTracks.length > qIdx) {
-      if (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionTracks.length > 0) {
+      const wasAutoplay = Boolean(state.isAutoplayQueue);
+      if (wasAutoplay && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionTracks.length > 0) {
         const baseIdx = Math.max(0, state.autoplaySessionIndex || 0);
         state.autoplaySessionIndex = Math.min(state.autoplaySessionTracks.length - 1, baseIdx + 1 + qIdx);
       }
@@ -156,19 +204,49 @@ document.addEventListener('click', async (e) => {
       state.singleTrackPlayback = false;
       state.liveQueueTracks = remaining;
       state.contextUpcomingTracks = remaining;
-      applyTrackToUI({ id: cleanId || trackId || trackUri || title, uri: trackUri, name: title, artist, album, thumb, cover, coverLarge: cover, duration }, 0, true);
+      applyTrackToUI({
+        id: cleanId || trackId || trackUri || title,
+        uri: trackUri,
+        name: title,
+        artist,
+        album,
+        thumb,
+        cover,
+        coverLarge: cover,
+        duration: duration || undefined
+      }, 0, true);
       const uris = [trackUri, ...remaining.slice(0, 19).map(t => t.uri)].filter(Boolean);
-      if (uris.length > 0) playSpotifyUris(uris, remaining);
-      if (state.isAutoplayQueue && remaining.length < 8 && typeof replenishAutoplayQueue === 'function') {
+      if (uris.length > 0) playSpotifyUris(uris, remaining, { keepAutoplaySession: wasAutoplay });
+      if (wasAutoplay && remaining.length < 8 && typeof replenishAutoplayQueue === 'function') {
         replenishAutoplayQueue();
       }
     } else {
       state.singleTrackPlayback = false;
       state.isAutoplayQueue = true;
       state.contextUpcomingTracks = [];
-      applyTrackToUI({ id: cleanId || trackId || trackUri || title, uri: trackUri, name: title, artist, album, thumb, cover, coverLarge: cover, duration }, 0, true);
+      state.discoveryTracks = [];
+      applyTrackToUI({
+        id: cleanId || trackId || trackUri || title,
+        uri: trackUri,
+        name: title,
+        artist,
+        album,
+        thumb,
+        cover,
+        coverLarge: cover,
+        duration: duration || undefined
+      }, 0, true);
       if (trackUri) {
-        playSingleTrackWithAutoplay({ id: cleanId || trackId || trackUri, uri: trackUri, name: title, artist, album, thumb, cover, duration });
+        playSingleTrackWithAutoplay({
+          id: cleanId || trackId || trackUri,
+          uri: trackUri,
+          name: title,
+          artist,
+          album,
+          thumb,
+          cover,
+          duration: duration || undefined
+        });
       }
     }
     return;
@@ -266,25 +344,82 @@ if (viewAlbumEl) {
   });
 }
 
-// Album "Play" Pill Button
-document.getElementById('albumPlayAllBtn').addEventListener('click', () => {
+// Album "Play" & "Shuffle" Pill Buttons
+function startAlbumOrPlaylistPlayback(shuffled = false) {
   const entity = liveCatalog.entities[state.selectedEntityId];
   if (!entity) return;
-  const upcomingSlice = (entity && Array.isArray(entity.tracks)) ? entity.tracks.slice(1) : [];
+
+  if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
+  state.sdkNextTracks = [];
   state.singleTrackPlayback = false;
-  state.contextUpcomingTracks = upcomingSlice;
-  if (entity.tracks && entity.tracks[0]) {
-    const t = entity.tracks[0];
-    const cleanId = cleanTrackId(t.id || t.uri);
-    applyTrackToUI({ id: cleanId || t.id || t.title, uri: t.uri, name: t.title, artist: t.artist || entity.artist, album: entity.title, thumb: t.thumb || t.cover || entity.cover, cover: t.cover || entity.cover, coverLarge: t.coverLarge || entity.coverLarge || t.cover || entity.cover, duration: t.duration }, 0, true);
+
+  const tracks = Array.isArray(entity.tracks) ? entity.tracks : [];
+
+  if (!shuffled) {
+    const upcomingSlice = tracks.length > 0 ? tracks.slice(1) : [];
+    state.contextUpcomingTracks = upcomingSlice;
+    state.liveQueueTracks = (typeof normalizeApiTrack === 'function')
+      ? upcomingSlice.map(normalizeApiTrack).filter(Boolean)
+      : upcomingSlice;
+    if (tracks[0]) {
+      const t = tracks[0];
+      const cleanId = cleanTrackId(t.id || t.uri);
+      applyTrackToUI({
+        id: cleanId || t.id || t.title,
+        uri: t.uri,
+        name: t.title,
+        artist: t.artist || entity.artist,
+        album: entity.title,
+        thumb: t.thumb || t.cover || entity.cover,
+        cover: t.cover || entity.cover,
+        coverLarge: t.coverLarge || entity.coverLarge || t.cover || entity.cover,
+        duration: t.duration
+      }, 0, true);
+    }
+    openNowPlaying();
+    if (entity.uri && (entity.type === 'album' || entity.type === 'playlist')) {
+      playSpotifyContext(entity.uri, 0, upcomingSlice, { preserveShuffle: false });
+    } else if (tracks.length > 0) {
+      const uris = tracks.map(t => t.uri).filter(Boolean);
+      if (uris.length > 0) playSpotifyUris(uris, upcomingSlice);
+    }
+    return;
   }
-  openNowPlaying();
+
+  // Modo Aleatorio
   if (entity.uri && (entity.type === 'album' || entity.type === 'playlist')) {
-    playSpotifyContext(entity.uri, 0, upcomingSlice);
-  } else if (entity.tracks) {
-    const uris = entity.tracks.map(t => t.uri).filter(Boolean);
-    if (uris.length > 0) playSpotifyUris(uris, upcomingSlice);
+    state.contextUpcomingTracks = [];
+    state.liveQueueTracks = [];
+    openNowPlaying();
+    playSpotifyContext(entity.uri, undefined, [], { preserveShuffle: true, setShuffle: true });
+  } else if (tracks.length > 0) {
+    const shuffledTracks = [...tracks].sort(() => Math.random() - 0.5);
+    const first = shuffledTracks[0];
+    const remaining = shuffledTracks.slice(1);
+    state.contextUpcomingTracks = remaining;
+    state.liveQueueTracks = (typeof normalizeApiTrack === 'function')
+      ? remaining.map(normalizeApiTrack).filter(Boolean)
+      : remaining;
+    const cleanId = cleanTrackId(first.id || first.uri);
+    applyTrackToUI({
+      id: cleanId || first.id || first.title,
+      uri: first.uri,
+      name: first.title,
+      artist: first.artist || entity.artist,
+      album: entity.title,
+      thumb: first.thumb || first.cover || entity.cover,
+      cover: first.cover || entity.cover,
+      coverLarge: first.coverLarge || entity.coverLarge || first.cover || entity.cover,
+      duration: first.duration
+    }, 0, true);
+    openNowPlaying();
+    const uris = shuffledTracks.map(t => t.uri).filter(Boolean);
+    if (uris.length > 0) playSpotifyUris(uris, remaining);
   }
+}
+
+document.getElementById('albumPlayAllBtn').addEventListener('click', () => {
+  startAlbumOrPlaylistPlayback(false);
 });
 
 // Artist View Navigation & Buttons
@@ -323,6 +458,8 @@ if (artistPlayBtn) {
     const tracks = (artist && artist.tracks) ? artist.tracks : [];
     if (!tracks || tracks.length === 0) return;
     const first = tracks[0];
+    if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
+    state.sdkNextTracks = [];
     state.singleTrackPlayback = false;
     state.contextUpcomingTracks = tracks.slice(1).map(t => ({
       id: t.id || t.uri,
@@ -335,6 +472,9 @@ if (artistPlayBtn) {
       coverLarge: t.coverLarge || t.cover || artist.cover,
       duration: t.duration || 210
     }));
+    state.liveQueueTracks = (typeof normalizeApiTrack === 'function')
+      ? state.contextUpcomingTracks.map(normalizeApiTrack).filter(Boolean)
+      : state.contextUpcomingTracks;
     const cleanFirstId = cleanTrackId(first.id || first.uri);
     applyTrackToUI({
       id: cleanFirstId || first.id || first.uri,
@@ -366,6 +506,8 @@ if (artistShuffleBtn) {
     if (!tracks || tracks.length === 0) return;
     const shuffled = [...tracks].sort(() => Math.random() - 0.5);
     const first = shuffled[0];
+    if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
+    state.sdkNextTracks = [];
     state.singleTrackPlayback = false;
     state.contextUpcomingTracks = shuffled.slice(1).map(t => ({
       id: t.id || t.uri,
@@ -378,6 +520,9 @@ if (artistShuffleBtn) {
       coverLarge: t.coverLarge || t.cover || artist.cover,
       duration: t.duration || 210
     }));
+    state.liveQueueTracks = (typeof normalizeApiTrack === 'function')
+      ? state.contextUpcomingTracks.map(normalizeApiTrack).filter(Boolean)
+      : state.contextUpcomingTracks;
     const cleanFirstId = cleanTrackId(first.id || first.uri);
     applyTrackToUI({
       id: cleanFirstId || first.id || first.uri,
@@ -391,7 +536,7 @@ if (artistShuffleBtn) {
       duration: first.duration || 210
     }, 0, true);
     openNowPlaying();
-    const uris = tracks.map(t => t.uri).filter(Boolean);
+    const uris = shuffled.map(t => t.uri).filter(Boolean);
     if (uris.length > 0) {
       playSpotifyUris(uris, state.contextUpcomingTracks);
     } else if (first.uri) {
@@ -446,8 +591,13 @@ function handleArtistTrackSelect(item) {
     duration: t.duration || 210
   }));
 
+  if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
+  state.sdkNextTracks = [];
   state.singleTrackPlayback = false;
   state.contextUpcomingTracks = upcoming;
+  state.liveQueueTracks = (typeof normalizeApiTrack === 'function')
+    ? upcoming.map(normalizeApiTrack).filter(Boolean)
+    : upcoming;
   const cleanId = cleanTrackId(trackId || trackUri);
 
   applyTrackToUI({
@@ -539,6 +689,15 @@ if (artistTracklistEl) {
 // Dedicated Lyrics Button Click Handler (Apple Music style)
 if (npToggleLyricsBtn) {
   bindTouchButton(npToggleLyricsBtn, (e) => {
+    if (!state.hasValidLyrics && !state.lyricsLoading && state.playingTrackTitle && typeof ensureLyricsLoadedForCurrentTrack === 'function') {
+      state.userPrefersLyrics = true;
+      state.userForcedCentered = false;
+      state.nowPlayingMode = 'lyrics';
+      ensureLyricsLoadedForCurrentTrack('manual');
+      updateNowPlayingRightPanelMode();
+      return;
+    }
+
     const hasLyrics = Boolean(state.hasValidLyrics || state.lyricsLoading);
     if (!hasLyrics) return;
 
@@ -547,6 +706,7 @@ if (npToggleLyricsBtn) {
       state.userForcedCentered = true;
     } else {
       state.nowPlayingMode = 'lyrics';
+      state.userPrefersLyrics = true;
       state.userForcedCentered = false;
     }
     updateNowPlayingRightPanelMode();
@@ -561,6 +721,7 @@ if (npToggleQueueBtn) {
       state.userForcedCentered = true;
     } else {
       state.nowPlayingMode = 'queue';
+      state.userPrefersLyrics = false;
       state.userForcedCentered = false;
       if (spotifyAuth.accessToken) fetchAndRenderQueueForCurrentTrack();
     }
@@ -621,9 +782,8 @@ if (npQueueSeeAllBtn) {
 }
 
 // Album Shuffle Button
-document.getElementById('albumShuffleBtn').addEventListener('click', async () => {
-  await spotifyFetch('/me/player/shuffle?state=true', { method: 'PUT' });
-  document.getElementById('albumPlayAllBtn').click();
+document.getElementById('albumShuffleBtn').addEventListener('click', () => {
+  startAlbumOrPlaylistPlayback(true);
 });
 
 // Mini-Player Click -> Opens Apple Music Now Playing Overlay
@@ -640,6 +800,10 @@ async function togglePlayPause() {
     targetIsPlaying: state.isPlaying
   });
   updatePlayPauseIcons();
+
+  if (state.isPlaying && !state.hasValidLyrics && !state.lyricsLoading && state.playingTrackTitle && typeof ensureLyricsLoadedForCurrentTrack === 'function') {
+    ensureLyricsLoadedForCurrentTrack('play');
+  }
 
   if (isLocalWebPlayerActive()) {
     try {
@@ -708,7 +872,7 @@ async function skipNextTrack() {
 
   if (skippedSnapshot && typeof EchoRadio !== 'undefined' && typeof EchoRadio.recordPlaybackOutcome === 'function') {
     EchoRadio.recordPlaybackOutcome(skippedSnapshot, playedBeforeSkip, durBeforeSkip, 'skip');
-    // Fast skip (<10s) in Radio: immediately re-rank upcoming queue to steer away from skipped artist/vibe
+    // Fast skip (<10s) in Radio: preserve visible #1 and only re-rank #2+ so UI Queue #1 matches what plays
     if (
       playedBeforeSkip < 10 &&
       state.isAutoplayQueue &&
@@ -718,11 +882,12 @@ async function skipNextTrack() {
       const curIdx = Math.max(0, state.autoplaySessionIndex || 0);
       const head = state.autoplaySessionTracks.slice(0, curIdx + 1);
       const tail = state.autoplaySessionTracks.slice(curIdx + 1);
-      if (tail.length > 1) {
-        const steeredTail = EchoRadio.reRankQueueAfterSkip(skippedSnapshot, tail);
-        state.autoplaySessionTracks = head.concat(steeredTail);
-        state.liveQueueTracks = steeredTail;
-        state.contextUpcomingTracks = steeredTail;
+      if (tail.length > 2) {
+        const steeredRest = EchoRadio.reRankQueueAfterSkip(skippedSnapshot, tail.slice(1));
+        const nextTail = [tail[0], ...steeredRest];
+        state.autoplaySessionTracks = head.concat(nextTail);
+        state.liveQueueTracks = nextTail;
+        state.contextUpcomingTracks = nextTail;
       }
     }
   }
@@ -733,13 +898,6 @@ async function skipNextTrack() {
     state.currentTimeSec = 0;
   }
 
-  // Usar liveQueueTracks o contextUpcomingTracks para transición optimista en 0ms sin esperar la red
-  const queueSource = (Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > 0)
-    ? state.liveQueueTracks
-    : (Array.isArray(state.contextUpcomingTracks) && state.contextUpcomingTracks.length > 0
-      ? state.contextUpcomingTracks.map(normalizeApiTrack).filter(Boolean)
-      : []);
-
   if (state.isAutoplayQueue && Array.isArray(state.autoplaySessionTracks) && state.autoplaySessionTracks.length > 0) {
     const nextIdx = (typeof state.autoplaySessionIndex === 'number' && state.autoplaySessionIndex >= 0)
       ? state.autoplaySessionIndex + 1
@@ -748,6 +906,7 @@ async function skipNextTrack() {
       state.autoplaySessionIndex = nextIdx;
       const nextTrack = state.autoplaySessionTracks[nextIdx];
       const remaining = state.autoplaySessionTracks.slice(nextIdx + 1);
+      state.sdkNextTracks = [];
       state.liveQueueTracks = remaining;
       state.contextUpcomingTracks = remaining;
       if (typeof recordAutoplayHistory === 'function') {
@@ -770,19 +929,34 @@ async function skipNextTrack() {
       }
       const forwardUris = [nextTrack.uri, ...remaining.slice(0, 19).map(t => t.uri)].filter(Boolean);
       if (forwardUris.length > 0) {
-        await playSpotifyUris(forwardUris, remaining);
+        await playSpotifyUris(forwardUris, remaining, { keepAutoplaySession: true });
       }
       return;
     }
   }
+
+  // Usar cola real del SDK primero (si el Web Player local está activo), luego liveQueueTracks, y contextUpcomingTracks solo sin Shuffle
+  const usingLocalSdk = typeof isLocalWebPlayerActive === 'function' && isLocalWebPlayerActive();
+  const queueSource = (usingLocalSdk && Array.isArray(state.sdkNextTracks) && state.sdkNextTracks.length > 0)
+    ? state.sdkNextTracks
+    : (Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > 0)
+      ? state.liveQueueTracks
+      : (!spotifyAuth.shuffleState && Array.isArray(state.contextUpcomingTracks) && state.contextUpcomingTracks.length > 0
+        ? state.contextUpcomingTracks.map(normalizeApiTrack).filter(Boolean)
+        : []);
 
   let pickedNextTrack = null;
   let pickedRemaining = [];
   if (queueSource.length > 0) {
     pickedNextTrack = queueSource[0];
     pickedRemaining = queueSource.slice(1);
+    if (Array.isArray(state.sdkNextTracks) && state.sdkNextTracks.length > 0) {
+      state.sdkNextTracks = state.sdkNextTracks.slice(1);
+    }
     state.liveQueueTracks = pickedRemaining;
-    state.contextUpcomingTracks = pickedRemaining;
+    if (!spotifyAuth.shuffleState) {
+      state.contextUpcomingTracks = pickedRemaining;
+    }
     if (typeof recordAutoplayHistory === 'function') {
       recordAutoplayHistory(pickedNextTrack.id || pickedNextTrack.uri);
     }
@@ -791,6 +965,7 @@ async function skipNextTrack() {
       uri: pickedNextTrack.uri,
       name: pickedNextTrack.title,
       artist: pickedNextTrack.artist,
+      artists: pickedNextTrack.artists,
       album: pickedNextTrack.album,
       thumb: pickedNextTrack.thumb || pickedNextTrack.cover,
       cover: pickedNextTrack.cover,
@@ -799,6 +974,25 @@ async function skipNextTrack() {
     }, 0, true);
     if (state.isAutoplayQueue && pickedRemaining.length < 8 && typeof replenishAutoplayQueue === 'function') {
       replenishAutoplayQueue();
+    }
+  } else if (Array.isArray(state.discoveryTracks) && state.discoveryTracks.length > 0) {
+    const nextDiscovery = state.discoveryTracks[0];
+    state.discoveryTracks = state.discoveryTracks.slice(1);
+    if (nextDiscovery && nextDiscovery.uri) {
+      applyTrackToUI({
+        id: cleanTrackId(nextDiscovery.id || nextDiscovery.uri) || nextDiscovery.title,
+        uri: nextDiscovery.uri,
+        name: nextDiscovery.title,
+        artist: nextDiscovery.artist,
+        artists: nextDiscovery.artists,
+        album: nextDiscovery.album,
+        thumb: nextDiscovery.thumb || nextDiscovery.cover,
+        cover: nextDiscovery.cover,
+        coverLarge: nextDiscovery.cover,
+        duration: nextDiscovery.duration || 0
+      }, 0, true);
+      await playSingleTrackWithAutoplay(nextDiscovery);
+      return;
     }
   } else {
     lockUserPlaybackIntent('track_switch', {
@@ -822,7 +1016,7 @@ async function skipNextTrack() {
     if (nextRes && nextRes.error && state.isAutoplayQueue && pickedNextTrack && pickedNextTrack.uri) {
       const fallbackUris = [pickedNextTrack.uri, ...pickedRemaining.map(t => t.uri)].filter(Boolean);
       if (fallbackUris.length > 0) {
-        await playSpotifyUris(fallbackUris, pickedRemaining);
+        await playSpotifyUris(fallbackUris, pickedRemaining, { keepAutoplaySession: true });
       }
     }
     setTimeout(() => {
@@ -843,6 +1037,7 @@ async function skipPrevTrack() {
       state.autoplaySessionIndex = prevIdx;
       const prevTrack = state.autoplaySessionTracks[prevIdx];
       const remaining = state.autoplaySessionTracks.slice(prevIdx + 1);
+      state.sdkNextTracks = [];
       state.liveQueueTracks = remaining;
       state.contextUpcomingTracks = remaining;
       applyTrackToUI({
@@ -850,6 +1045,7 @@ async function skipPrevTrack() {
         uri: prevTrack.uri,
         name: prevTrack.title,
         artist: prevTrack.artist,
+        artists: prevTrack.artists,
         album: prevTrack.album,
         thumb: prevTrack.thumb || prevTrack.cover,
         cover: prevTrack.cover,
@@ -858,7 +1054,7 @@ async function skipPrevTrack() {
       }, 0, true);
       const forwardUris = [prevTrack.uri, ...remaining.slice(0, 19).map(t => t.uri)].filter(Boolean);
       if (forwardUris.length > 0) {
-        await playSpotifyUris(forwardUris, remaining);
+        await playSpotifyUris(forwardUris, remaining, { keepAutoplaySession: true });
       }
       return;
     }
@@ -1102,8 +1298,9 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
         const thumbImg = imgs.length > 0 ? getSpotifyImage(imgs, 'small') : DEFAULT_ALBUM_COVER;
         const coverImg = imgs.length > 0 ? getSpotifyImage(imgs, 'large') : thumbImg;
         const artist = t.artists.map(a => a.name).join(', ');
+        const durSec = t.duration_ms ? Math.round(t.duration_ms / 1000) : '';
         return `
-          <div class="recent-chip" data-play-direct-uri="${t.uri}" data-title="${t.name.replace(/"/g, '&quot;')}" data-artist="${artist.replace(/"/g, '&quot;')}" data-thumb="${thumbImg}" data-cover="${coverImg}">
+          <div class="recent-chip" data-play-direct-uri="${t.uri}" data-title="${t.name.replace(/"/g, '&quot;')}" data-artist="${artist.replace(/"/g, '&quot;')}" data-thumb="${thumbImg}" data-cover="${coverImg}" data-duration="${durSec}">
             ${renderOptImg(thumbImg, t.name, 'chip-avatar square')}
             <span class="chip-label">${t.name} — ${t.artists[0].name}</span>
           </div>

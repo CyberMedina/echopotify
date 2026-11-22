@@ -186,6 +186,20 @@ function openNowPlaying(opts = {}) {
     }
   }
 
+  if (typeof updateNowPlayingRightPanelMode === 'function') {
+    updateNowPlayingRightPanelMode();
+  }
+
+  if (state.hasValidLyrics && lyricsScrollTrack) {
+    lyricsScrollTrack.classList.remove('lyrics-fade-out');
+    requestAnimationFrame(() => {
+      cacheLyricLineOffsets();
+      updateScrubberAndLyricsUI(true);
+    });
+  } else if (state.playingTrackTitle && !state.hasValidLyrics && !state.lyricsLoading && typeof ensureLyricsLoadedForCurrentTrack === 'function') {
+    ensureLyricsLoadedForCurrentTrack('open_np');
+  }
+
   cacheLyricLineOffsets();
   updateScrubberAndLyricsUI(true);
 }

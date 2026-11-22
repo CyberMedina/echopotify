@@ -660,7 +660,7 @@ function renderHome(jumpCards, recentCards, banners, topArtists, savedAlbums) {
         recentGrid.dataset.sig = sig;
         recentGrid.innerHTML = finalRecent.slice(0, 8).map(item => {
           const actionAttr = item.uri
-            ? `data-play-direct-uri="${item.uri}" data-title="${(item.title || '').replace(/"/g, '&quot;')}" data-artist="${(item.subtitle || '').replace(/"/g, '&quot;')}" data-cover="${item.coverLarge || item.cover}" data-thumb="${item.thumb || item.cover}"`
+            ? `data-play-direct-uri="${item.uri}" data-title="${(item.title || '').replace(/"/g, '&quot;')}" data-artist="${(item.subtitle || '').replace(/"/g, '&quot;')}" data-cover="${item.coverLarge || item.cover}" data-thumb="${item.thumb || item.cover}" data-duration="${item.durationMs ? Math.round(item.durationMs / 1000) : ''}"`
             : `data-open-entity="${item.entityId}"`;
           return `
             <div class="media-card" ${actionAttr}>
@@ -742,7 +742,7 @@ function renderSearch(recentCards) {
   if (finalSearchRecent.length > 0 && searchRecentGrid) {
     searchRecentGrid.innerHTML = finalSearchRecent.slice(0, 4).map(item => {
       const actionAttr = item.uri
-        ? `data-play-direct-uri="${item.uri}" data-title="${(item.title || '').replace(/"/g, '&quot;')}" data-artist="${(item.subtitle || '').replace(/"/g, '&quot;')}" data-cover="${item.coverLarge || item.cover}" data-thumb="${item.thumb || item.cover}"`
+        ? `data-play-direct-uri="${item.uri}" data-title="${(item.title || '').replace(/"/g, '&quot;')}" data-artist="${(item.subtitle || '').replace(/"/g, '&quot;')}" data-cover="${item.coverLarge || item.cover}" data-thumb="${item.thumb || item.cover}" data-duration="${item.durationMs ? Math.round(item.durationMs / 1000) : ''}"`
         : `data-open-entity="${item.entityId || item.id}"`;
       return `
         <div class="media-card" ${actionAttr}>
@@ -869,8 +869,9 @@ function renderLibrary(filter = 'all') {
       ? `<span class="pin-badge">📌</span>`
       : (item.djCard ? `<span class="dj-ai-badge">AI</span>` : '');
 
+    const rawLibDur = item.durationMs ? Math.round(item.durationMs / 1000) : (item.duration || '');
     const actionAttr = item.playUri
-      ? `data-play-direct-uri="${item.playUri}" data-title="${item.title.replace(/"/g, '&quot;')}" data-artist="${item.sub.replace(/"/g, '&quot;')}" data-cover="${item.coverLarge || item.cover || ''}" data-thumb="${item.thumb || item.cover || ''}"`
+      ? `data-play-direct-uri="${item.playUri}" data-title="${item.title.replace(/"/g, '&quot;')}" data-artist="${item.sub.replace(/"/g, '&quot;')}" data-cover="${item.coverLarge || item.cover || ''}" data-thumb="${item.thumb || item.cover || ''}" data-duration="${rawLibDur}"`
       : `data-open-entity="${item.id}"`;
 
     return `
