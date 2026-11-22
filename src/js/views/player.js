@@ -1485,9 +1485,21 @@ function setPlaybackBuffering(isBuffering) {
   }
 }
 
+function updateRepeatButtonUI() {
+  const repBtn = typeof document !== 'undefined' ? document.getElementById('npRepeatBtn') : null;
+  if (!repBtn) return;
+  const mode = spotifyAuth.repeatState || 'off';
+  const isActive = mode !== 'off';
+  repBtn.classList.toggle('active', isActive);
+  repBtn.title = mode === 'track'
+    ? 'Repetir canción actual (activo)'
+    : (mode === 'context' ? 'Repetir en bucle (activo)' : 'Repetir en bucle');
+}
+
 function updatePlayPauseIcons() {
   if (npQueueEq) npQueueEq.classList.toggle('playing', !!state.isPlaying);
   if (npCoverStage) npCoverStage.classList.toggle('is-paused', !state.isPlaying);
+  updateRepeatButtonUI();
   if (state.lyricsManualScrolling) {
     if (!state.isPlaying) {
       clearTimeout(lyricsSnapBackTimer);

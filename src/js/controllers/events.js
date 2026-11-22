@@ -1283,6 +1283,21 @@ bindTouchButton(npPlayPauseBtn, togglePlayPause);
 bindTouchButton(npNextBtn, skipNextTrack);
 bindTouchButton(npPrevBtn, skipPrevTrack);
 
+const npRepeatBtn = document.getElementById('npRepeatBtn');
+if (npRepeatBtn) {
+  bindTouchButton(npRepeatBtn, async () => {
+    const current = spotifyAuth.repeatState || 'off';
+    const nextState = current === 'off' ? 'context' : (current === 'context' ? 'track' : 'off');
+    spotifyAuth.repeatState = nextState;
+    if (typeof updateRepeatButtonUI === 'function') updateRepeatButtonUI();
+    if (spotifyAuth.accessToken) {
+      const devQ = await getTargetDeviceQuery();
+      const sep = devQ ? '&' : '?';
+      await spotifyFetch(`/me/player/repeat${devQ}${sep}state=${nextState}`, { method: 'PUT' });
+    }
+  });
+}
+
 // Click on Artist in Now Playing -> Open specific artist screen (handles multiple artists)
 if (npTrackArtist) {
   npTrackArtist.addEventListener('click', (e) => {

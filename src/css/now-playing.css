@@ -503,28 +503,32 @@ body.np-fully-open .ambient-bg {
 
 /* --------------------------------------------------------------------------
    CENTERED IMMERSIVE MODE (Panel closed / No lyrics / No queue)
-   Horizontal landscape hero layout inspired by UX mockup
+   0px Geometric & Optical Centering — Cover Art + Controls Row
    -------------------------------------------------------------------------- */
 @keyframes npImmersiveReveal {
   0% {
     opacity: 0.25;
-    transform: translate3d(0, 2px, 0) scale(0.985);
+    transform: translate3d(0, 10px, 0) scale(0.985);
   }
   100% {
     opacity: 1;
-    transform: translate3d(0, -12px, 0) scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
   }
+}
+
+.np-main-grid.centered-layout {
+  padding: 0 36px;
 }
 
 .np-main-grid.centered-layout .np-left-player {
   width: min(824px, calc(100% - 120px));
   display: grid;
   grid-template-columns: 296px minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  column-gap: 48px;
-  row-gap: 42px;
+  grid-template-rows: auto;
+  column-gap: 52px;
+  row-gap: 0;
   align-items: center;
-  transform: translate3d(0, -12px, 0);
+  transform: translate3d(0, 0, 0);
   animation: npImmersiveReveal 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -561,6 +565,7 @@ body.np-fully-open .ambient-bg {
 
 .np-main-grid.centered-layout .np-controls-stack {
   justify-content: center;
+  padding-top: 2px;
 }
 
 .np-main-grid.centered-layout .np-meta-row {
@@ -576,7 +581,8 @@ body.np-fully-open .ambient-bg {
 
 .np-main-grid.centered-layout .np-track-artist {
   font-size: 21.5px;
-  margin-top: 5px;
+  line-height: 1.22;
+  margin-top: 4px;
   color: rgba(255, 255, 255, 0.68);
 }
 
@@ -602,7 +608,7 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-main-grid.centered-layout .np-scrubber-wrap {
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
 .np-main-grid.centered-layout .np-slider-track {
@@ -615,23 +621,24 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-main-grid.centered-layout .np-time-row {
-  margin-top: 10px;
+  margin-top: 9px;
   font-size: 13.5px;
+  line-height: 1;
   color: rgba(255, 255, 255, 0.56);
 }
 
 .np-main-grid.centered-layout .np-transport-row {
-  margin: 4px 0 0 0;
+  margin: 0;
 }
 
 .np-main-grid.centered-layout .np-transport-btn {
-  width: 58px;
-  height: 58px;
+  width: 52px;
+  height: 52px;
 }
 
 .np-main-grid.centered-layout .np-transport-btn.play-pause-main {
-  width: 68px;
-  height: 68px;
+  width: 56px;
+  height: 56px;
 }
 
 .np-main-grid.centered-layout .np-transport-btn.play-pause-main svg {
