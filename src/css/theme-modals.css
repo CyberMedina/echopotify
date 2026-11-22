@@ -1429,7 +1429,7 @@ body:not(.theme-dark) .modal-action-chevron {
    SPOTIFY CONNECT: AUDIO OUTPUT FLYOUT MODAL & SELECTOR PILL
    ========================================================================== */
 
-/* Device Trigger Button integrated inside Transport Controls Row */
+/* Device Trigger Button integrated inside Transport Controls Row (Apple Music monochrome) */
 .np-device-indicator-row {
   position: relative;
   display: inline-flex;
@@ -1440,14 +1440,13 @@ body:not(.theme-dark) .modal-action-chevron {
   padding: 0;
   margin: 0;
   border-radius: 50%;
-  border: 1px solid transparent;
+  border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.65);
   cursor: pointer;
   transition: transform 0.14s cubic-bezier(0.22, 1, 0.36, 1),
               color 0.18s ease,
-              background 0.18s ease,
-              border-color 0.18s ease;
+              background 0.18s ease;
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -1466,15 +1465,30 @@ body:not(.theme-dark) .modal-action-chevron {
 }
 
 .np-device-indicator-row.has-device {
-  color: #1ed760;
-  background: rgba(30, 215, 96, 0.16);
-  border-color: rgba(30, 215, 96, 0.22);
+  color: rgba(255, 255, 255, 0.72);
+  background: transparent;
 }
 
 .np-device-indicator-row.has-device:hover {
-  color: #1ed760;
-  background: rgba(30, 215, 96, 0.24);
-  border-color: rgba(30, 215, 96, 0.34);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.np-device-indicator-row.is-external-device {
+  color: #ffffff;
+}
+
+.np-device-indicator-row.is-external-device::after {
+  content: '';
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
 .np-device-indicator-row .np-device-icon-badge {

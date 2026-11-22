@@ -1955,7 +1955,7 @@ function setDeviceConnectingUI(mode = 'connecting') {
     if (npDeviceOverline) npDeviceOverline.textContent = 'CONECTANDO AUDIO';
     if (npDeviceName) npDeviceName.textContent = 'Conectando SpotiEcho…';
     if (npDevRow) {
-      npDevRow.classList.remove('has-device');
+      npDevRow.classList.remove('has-device', 'is-external-device');
       npDevRow.classList.add('is-connecting');
       npDevRow.title = 'Conectando SpotiEcho Web Player…';
     }
@@ -1963,7 +1963,7 @@ function setDeviceConnectingUI(mode = 'connecting') {
     if (npDeviceOverline) npDeviceOverline.textContent = 'SALIDA DE AUDIO';
     if (npDeviceName) npDeviceName.textContent = 'Elegir dispositivo';
     if (npDevRow) {
-      npDevRow.classList.remove('is-connecting');
+      npDevRow.classList.remove('is-connecting', 'is-external-device');
       npDevRow.title = 'Salida de audio: Elegir dispositivo';
     }
   }
@@ -1993,8 +1993,14 @@ function updateActiveDeviceBadgeUI(device) {
   }
   const npDevRow = document.getElementById('npDeviceIndicatorRow');
   if (npDevRow) {
+    const isLocalDevice = Boolean(
+      (webPlayerDeviceId && device.id && device.id === webPlayerDeviceId) ||
+      (spotifyAuth.engineDeviceId && device.id && device.id === spotifyAuth.engineDeviceId) ||
+      (name && name.toLowerCase().includes('spotiecho'))
+    );
     npDevRow.classList.remove('is-connecting');
     npDevRow.classList.add('has-device');
+    npDevRow.classList.toggle('is-external-device', !isLocalDevice);
     npDevRow.title = `Escuchando en: ${name} (toca para cambiar)`;
     if (device.type) {
       const oldIcon = npDevRow.querySelector('.np-device-icon');
