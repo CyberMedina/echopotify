@@ -275,7 +275,7 @@ function closeNowPlaying(opts = {}) {
     if (isInsideReservedScrollArea(el, clientX)) return true;
     if (!el || !el.closest) return false;
     // 1. Scrubber track & volume track (interacción precisa de seek)
-    if (el.closest('#npScrubberTrack') || el.closest('#npVolumeTrack')) return true;
+    if (el.closest('.np-scrubber-wrap') || el.closest('#npScrubberTrack') || el.closest('#npVolumeTrack')) return true;
     // 2. Botones de transporte (play, pause, next, prev, shuffle, repeat)
     if (el.closest('.np-transport-btn')) return true;
     // 3. Botones dock inferiores (Letra / Cola), favoritos y selector de dispositivo

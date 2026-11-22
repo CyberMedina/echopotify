@@ -574,30 +574,64 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-main-grid.centered-layout .np-meta-row {
-  margin-bottom: 26px;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 16px;
+  row-gap: 2px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.np-main-grid.centered-layout .np-meta-text-col {
+  display: contents;
+}
+
+.np-main-grid.centered-layout .np-meta-text-col > div {
+  transition: opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.np-main-grid.centered-layout .np-meta-text-col.track-meta-out > div {
+  opacity: 0;
+  transform: translate3d(0, -6px, 0);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.np-main-grid.centered-layout .np-meta-text-col.track-meta-in-prep > div {
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  transition: none !important;
 }
 
 .np-main-grid.centered-layout .np-track-title {
-  font-size: 36px;
-  line-height: 1.12;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  font-size: 33px;
+  line-height: 1.15;
   letter-spacing: -0.028em;
 }
 
 .np-main-grid.centered-layout .np-track-artist {
-  font-size: 21.5px;
+  grid-column: 1;
+  grid-row: 2;
+  align-self: start;
+  font-size: 21px;
   line-height: 1.22;
-  margin-top: 4px;
+  margin-top: 0;
   color: rgba(255, 255, 255, 0.68);
 }
 
 .np-main-grid.centered-layout .np-meta-actions {
-  gap: 12px;
+  grid-column: 2;
+  grid-row: 2;
+  gap: 10px;
 }
 
 .np-main-grid.centered-layout .np-circle-btn {
-  width: 46px;
-  height: 46px;
+  width: 42px;
+  height: 42px;
   background: rgba(255, 255, 255, 0.13);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -724,6 +758,54 @@ body.np-fully-open .ambient-bg {
   user-select: none;
 }
 
+.np-track-title.is-marquee,
+.np-track-artist.is-marquee {
+  text-overflow: clip;
+  padding-left: 8px;
+  margin-left: -8px;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0px,
+    #000000 8px,
+    #000000 calc(100% - 24px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0px,
+    #000000 8px,
+    #000000 calc(100% - 24px),
+    transparent 100%
+  );
+}
+
+.np-marquee-track {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 48px;
+  white-space: nowrap;
+  will-change: transform;
+  animation: npAppleMarquee var(--marquee-duration, 12s) linear infinite;
+}
+
+.np-marquee-item {
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.now-playing-overlay:not(.open) .np-marquee-track {
+  animation-play-state: paused !important;
+}
+
+@keyframes npAppleMarquee {
+  0%, 20% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(var(--marquee-shift, -50%), 0, 0);
+  }
+}
+
 .np-artist-link {
   color: rgba(255, 255, 255, 0.78);
   cursor: pointer;
@@ -777,7 +859,12 @@ body.np-fully-open .ambient-bg {
 /* Apple Music Pill Scrubber Bar (Matches Justin Bieber 'Sorry' screenshot) */
 .np-scrubber-wrap {
   width: 100%;
-  margin-bottom: 10px;
+  padding: 10px 0 2px 0;
+  margin: -10px 0 10px 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
 }
 
 .np-slider-track {
@@ -788,6 +875,10 @@ body.np-fully-open .ambient-bg {
   background: rgba(255, 255, 255, 0.22);
   cursor: pointer;
   overflow: hidden;
+  transform-origin: center center;
+  transition: transform 0.24s cubic-bezier(0.22, 1.35, 0.36, 1),
+    background-color 0.18s ease;
+  will-change: transform;
 }
 
 .np-slider-fill {
@@ -820,6 +911,23 @@ body.np-fully-open .ambient-bg {
   font-weight: 600;
   color: rgba(255, 255, 255, 0.46);
   font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), color 0.18s ease;
+}
+
+.np-scrubber-wrap.is-scrubbing .np-slider-track {
+  transform: scaleY(1.85);
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.np-scrubber-wrap.is-scrubbing .np-slider-fill {
+  background: #ffffff !important;
+  transition: none;
+}
+
+.np-scrubber-wrap.is-scrubbing .np-time-row {
+  color: rgba(255, 255, 255, 0.92);
+  transform: translate3d(0, 3px, 0);
 }
 
 /* Apple Music Buffering Scrubber: liquid translucent shimmer + locked scrubbing until real audio flows */

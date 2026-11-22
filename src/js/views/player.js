@@ -228,6 +228,68 @@ async function navigateToArtist(artistIdOrRef, artistName) {
   await openArtistDetail(targetId, cleanName);
 }
 
+let npMarqueeRafId = null;
+let npMarqueeSettleTimer = null;
+
+function applyAppleMarqueeToElement(el) {
+  if (!el || typeof el.clientWidth !== 'number' || typeof el.scrollWidth !== 'number') return;
+
+  if (el.classList.contains('is-marquee') && el.dataset && el.dataset.marqueeBaseHtml !== undefined) {
+    el.innerHTML = el.dataset.marqueeBaseHtml;
+  }
+  el.classList.remove('is-marquee');
+  if (el.style && typeof el.style.removeProperty === 'function') {
+    el.style.removeProperty('--marquee-shift');
+    el.style.removeProperty('--marquee-duration');
+  }
+
+  const containerW = el.clientWidth;
+  const contentW = el.scrollWidth;
+  if (containerW <= 0 || contentW <= containerW + 2) {
+    if (el.dataset) delete el.dataset.marqueeBaseHtml;
+    return;
+  }
+
+  const baseHtml = el.innerHTML;
+  if (el.dataset) el.dataset.marqueeBaseHtml = baseHtml;
+  el.innerHTML = `<span class="np-marquee-track"><span class="np-marquee-item">${baseHtml}</span><span class="np-marquee-item" aria-hidden="true">${baseHtml}</span></span>`;
+
+  const firstItem = (typeof el.querySelector === 'function') ? el.querySelector('.np-marquee-item') : null;
+  const shiftPx = ((firstItem && firstItem.offsetWidth) || contentW) + 48;
+  const durationSec = Math.max(7.5, Math.min(26, (shiftPx / 38) + 2.6)).toFixed(2);
+
+  if (el.style && typeof el.style.setProperty === 'function') {
+    el.style.setProperty('--marquee-shift', `-${shiftPx}px`);
+    el.style.setProperty('--marquee-duration', `${durationSec}s`);
+  }
+  el.classList.add('is-marquee');
+}
+
+function scheduleNowPlayingMarqueeRefresh(waitForTransition = false) {
+  const probe = npTrackTitle || npTrackArtist;
+  if (!probe || typeof probe.clientWidth !== 'number') return;
+
+  if (npMarqueeRafId && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(npMarqueeRafId);
+  }
+  clearTimeout(npMarqueeSettleTimer);
+
+  const runMeasure = () => {
+    applyAppleMarqueeToElement(npTrackTitle);
+    applyAppleMarqueeToElement(npTrackArtist);
+  };
+
+  if (typeof requestAnimationFrame === 'function') {
+    npMarqueeRafId = requestAnimationFrame(runMeasure);
+  } else {
+    runMeasure();
+  }
+
+  if (waitForTransition) {
+    npMarqueeSettleTimer = setTimeout(runMeasure, 540);
+  }
+}
+
 function transitionTrackMetadataUI(newTitle, newArtist, thumbUrl, animateSwap) {
   const titleChanged = state.lastRenderedTitle !== newTitle;
   const artistChanged = state.lastRenderedArtistLine !== newArtist;
@@ -242,7 +304,11 @@ function transitionTrackMetadataUI(newTitle, newArtist, thumbUrl, animateSwap) {
   const applyValues = () => {
     if (titleChanged) {
       miniPlayerTitle.textContent = newTitle;
-      npTrackTitle.textContent = newTitle;
+      if (npTrackTitle) {
+        npTrackTitle.classList.remove('is-marquee');
+        if (npTrackTitle.dataset) delete npTrackTitle.dataset.marqueeBaseHtml;
+        npTrackTitle.textContent = newTitle;
+      }
       if (npQueueCurrentTitle) {
         npQueueCurrentTitle.textContent = newTitle;
       }
@@ -252,8 +318,15 @@ function transitionTrackMetadataUI(newTitle, newArtist, thumbUrl, animateSwap) {
       // In mini-player: plain text, cannot access artist from mini-player
       miniPlayerArtist.textContent = newArtist;
       // In Now Playing & Queue: interactive artist links (supports 1 or multiple artists)
+      if (npTrackArtist) {
+        npTrackArtist.classList.remove('is-marquee');
+        if (npTrackArtist.dataset) delete npTrackArtist.dataset.marqueeBaseHtml;
+      }
       renderArtistLinksInto(npTrackArtist, state.playingArtists, 'np-artist-link');
       if (npQueueCurrentArtist) renderArtistLinksInto(npQueueCurrentArtist, state.playingArtists, 'np-artist-link');
+    }
+    if (titleChanged || artistChanged) {
+      scheduleNowPlayingMarqueeRefresh(false);
     }
     if (thumbChanged && thumbUrl) {
       swapHeroImageAtomically(miniPlayerThumb, thumbUrl, thumbUrl);
@@ -1308,8 +1381,9 @@ const LYRIC_SYNC_LEAD_SEC = 0.04;
 
 function updateScrubberAndLyricsUI(forceScroll = false) {
   if (!forceScroll && !state.isNowPlayingOpen) return;
-  // Si hay una transición de portada en curso, ceder el 100% del hilo principal y GPU a la animación
+  // Si hay una transición de portada o scrub activo, ceder el control de UI sin peleas con el reloj
   if (!forceScroll && coverCrossfadeTimer) return;
+  if (!forceScroll && state.isScrubbing) return;
 
   const ratio = Math.min(1, Math.max(0, state.currentTimeSec / Math.max(1, state.durationSec)));
   if (forceScroll || Math.abs(ratio - state.lastScrubberRatio) >= 0.0035) {
@@ -2227,6 +2301,7 @@ function updateNowPlayingRightPanelMode() {
   if (npMainGrid) {
     npMainGrid.classList.toggle('centered-layout', isCentered);
   }
+  scheduleNowPlayingMarqueeRefresh(true);
 
   // 3. Toggle Right Column Sub-Panels (No display:none interruption)
   if (npRightLyrics) npRightLyrics.classList.toggle('hidden', !showLyrics);

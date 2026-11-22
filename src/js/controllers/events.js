@@ -374,8 +374,7 @@ document.addEventListener('click', async (e) => {
     updateScrubberAndLyricsUI(true);
     if (isLocalWebPlayerActive() && typeof webPlayer.seek === 'function') {
       try { webPlayer.seek(seekMs); } catch (err) { }
-    }
-    if (spotifyAuth.accessToken) {
+    } else if (spotifyAuth.accessToken) {
       spotifyFetch(`/me/player/seek?position_ms=${seekMs}`, { method: 'PUT' });
     }
   }
@@ -1818,32 +1817,114 @@ if (npFavBtn) {
   });
 }
 
-// Scrubber Seek
-npScrubberTrack.addEventListener('click', (e) => {
-  if (state.isBuffering) return;
-  const rect = npScrubberTrack.getBoundingClientRect();
-  const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-  state.currentTimeSec = ratio * state.durationSec;
-  const seekMs = Math.round(state.currentTimeSec * 1000);
-  lockUserPlaybackIntent('seek', {
-    durationMs: 2200,
-    targetSeekSec: state.currentTimeSec,
-    targetIsPlaying: state.isPlaying
+// Apple Music Interactive Scrubber Seek (Touch & Mouse Drag + Release Commit)
+if (npScrubberTrack) {
+  const scrubberWrap = (typeof npScrubberTrack.closest === 'function')
+    ? npScrubberTrack.closest('.np-scrubber-wrap')
+    : null;
+  const scrubberHitTarget = scrubberWrap || npScrubberTrack;
+  let scrubPreviewSec = 0;
+  let lastScrubEndAt = 0;
+
+  const ratioFromClientX = (clientX) => {
+    const rect = npScrubberTrack.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return 0;
+    return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  };
+
+  const commitScrubberSeek = (targetSec) => {
+    const clampedSec = Math.min(Math.max(0, state.durationSec || 0), Math.max(0, targetSec));
+    state.currentTimeSec = clampedSec;
+    const seekMs = Math.round(clampedSec * 1000);
+    lockUserPlaybackIntent('seek', {
+      durationMs: 2200,
+      targetSeekSec: clampedSec,
+      targetIsPlaying: state.isPlaying
+    });
+    if (bridge && bridge.notifyTrackSeeked) {
+      bridge.notifyTrackSeeked(seekMs);
+    }
+    if (typeof exitLyricsManualScroll === 'function') {
+      exitLyricsManualScroll({ skipSnapBack: true });
+    }
+    updateScrubberAndLyricsUI(true);
+    if (isLocalWebPlayerActive() && typeof webPlayer.seek === 'function') {
+      try { webPlayer.seek(seekMs); } catch (err) { }
+    } else if (spotifyAuth.accessToken) {
+      spotifyFetch(`/me/player/seek?position_ms=${seekMs}`, { method: 'PUT' });
+    }
+  };
+
+  const previewScrubAt = (clientX) => {
+    const ratio = ratioFromClientX(clientX);
+    const totalSec = Math.max(1, state.durationSec || 1);
+    scrubPreviewSec = ratio * totalSec;
+    if (npScrubberFill) {
+      npScrubberFill.style.transform = `scaleX(${ratio.toFixed(4)})`;
+    }
+    const previewIntSec = Math.floor(scrubPreviewSec);
+    if (typeof formatTime === 'function') {
+      if (npTimeElapsed) npTimeElapsed.textContent = formatTime(previewIntSec);
+      const remaining = Math.max(0, Math.floor(totalSec) - previewIntSec);
+      if (npTimeRemaining) npTimeRemaining.textContent = `-${formatTime(remaining)}`;
+    }
+  };
+
+  const startScrub = (clientX, ev) => {
+    if (state.isBuffering) return;
+    if (ev && ev.cancelable) ev.preventDefault();
+    if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+    state.isScrubbing = true;
+    if (scrubberWrap) scrubberWrap.classList.add('is-scrubbing');
+    previewScrubAt(clientX);
+  };
+
+  const endScrub = (cancelled = false) => {
+    if (!state.isScrubbing) return;
+    state.isScrubbing = false;
+    if (scrubberWrap) scrubberWrap.classList.remove('is-scrubbing');
+    lastScrubEndAt = Date.now();
+    if (cancelled) {
+      updateScrubberAndLyricsUI(true);
+      return;
+    }
+    commitScrubberSeek(scrubPreviewSec);
+  };
+
+  scrubberHitTarget.addEventListener('touchstart', (e) => {
+    if (!e.touches || e.touches.length !== 1) return;
+    startScrub(e.touches[0].clientX, e);
+  }, { passive: false });
+
+  scrubberHitTarget.addEventListener('mousedown', (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    startScrub(e.clientX, e);
   });
-  if (bridge && bridge.notifyTrackSeeked) {
-    bridge.notifyTrackSeeked(seekMs);
+
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('touchmove', (e) => {
+      if (!state.isScrubbing || !e.touches || e.touches.length !== 1) return;
+      if (e.cancelable) e.preventDefault();
+      previewScrubAt(e.touches[0].clientX);
+    }, { passive: false });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!state.isScrubbing) return;
+      previewScrubAt(e.clientX);
+    });
+
+    window.addEventListener('touchend', () => endScrub(false), { passive: true });
+    window.addEventListener('touchcancel', () => endScrub(true), { passive: true });
+    window.addEventListener('mouseup', () => endScrub(false));
   }
-  if (typeof exitLyricsManualScroll === 'function') {
-    exitLyricsManualScroll({ skipSnapBack: true });
-  }
-  updateScrubberAndLyricsUI(true);
-  if (isLocalWebPlayerActive() && typeof webPlayer.seek === 'function') {
-    try { webPlayer.seek(seekMs); } catch (err) { }
-  }
-  if (spotifyAuth.accessToken) {
-    spotifyFetch(`/me/player/seek?position_ms=${seekMs}`, { method: 'PUT' });
-  }
-});
+
+  // Fallback for direct programmatic clicks (avoid double-seek right after drag release)
+  npScrubberTrack.addEventListener('click', (e) => {
+    if (state.isBuffering || (Date.now() - lastScrubEndAt) < 350) return;
+    const targetSec = ratioFromClientX(e.clientX) * (state.durationSec || 0);
+    commitScrubberSeek(targetSec);
+  });
+}
 
 // Volume Bar (Hardware Echo Show Volume + Spotify Connect Volume)
 const npVolumeTrack = document.getElementById('npVolumeTrack');
