@@ -1,11 +1,11 @@
-# Spotify Echo Show 8 (1st Gen) — Apple Music Edition
-## Design System & Interactive Architecture (`1280x800`)
+# Spotify Echo Show 8 (3rd Gen) — Apple Music Edition
+## Design System & Interactive Architecture (`1024×640` lógico @ `1.25×` / ~200 DPI sobre panel físico `1280×800`)
 
 ### 1. Target Hardware & Performance Budget
-- **Device:** Amazon Echo Show 8 (1st Gen, codename `crown` / `lineage_crown`)
-- **OS:** LineageOS 18.1 (Android 11 / API 30, sin Google Play Services)
-- **Viewport nativo:** `1280 × 800 px` (formato horizontal 16:10)
-- **SoC / RAM:** MediaTek MT8163 (Quad-core Cortex-A53) + 1 GB RAM
+- **Device:** Amazon Echo Show 8 (3rd Gen — perfil APL `hubLandscapeMedium`, 8.0" 16:10)
+- **Resolución física:** `1280 × 800 px` (~189 PPI)
+- **Canvas lógico (`1.25×` / ~200 DPI):** `1024 × 640 px` (`--viewport-w: 1024px; --viewport-h: 640px`), escalado automáticamente vía `fitViewport()` (y compatible con navegador Silk si reporta `devicePixelRatio` 1.0 o 1.333)
+- **Márgenes y alineación:** Márgenes laterales unificados de `48px` lógicos (`60px` físicos), alineación a la izquierda en cabeceras, secciones, metadatos de tarjetas, listas de pistas y letras (siguiendo el eje vertical de lectura del Alexa Design System)
 - **Estrategia de renderizado 60 FPS (Zero-GPU-Lag):**
   - Prohibido usar `backdrop-filter: blur()` pesado en tiempo real sobre toda la pantalla.
   - **Adaptive Ambient Canvas (`32×32 px`):** Al cargar o cambiar una portada, se dibuja una sola vez en un `<canvas width="32" height="32">` con interpolación bilineal suavizada y se escala por hardware (`transform: scale3d`). Consume **0% de CPU/GPU** durante la reproducción.
@@ -40,46 +40,47 @@ Extrae los tonos profundos y saturados de la portada activa (ej. verde bosque `#
 
 ---
 
-### 3. Tipografía y Escala (`1280×800`)
-Familia principal: `'SF Pro Display', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
-- **Page Header (`Good morning`, `Search`, `Library`):** `42px`, `font-weight: 700`, `letter-spacing: -0.03em`
-- **Page Subtitle (`Your music, your mood.`):** `18px`, `font-weight: 400`, `color: var(--text-secondary)`
-- **Section Header (`Jump back in`, `Made for you`, etc.):** `20px`, `font-weight: 700`, `letter-spacing: -0.02em`
-- **Album Detail Title (`Lahai`):** `28px`, `font-weight: 700`, `letter-spacing: -0.02em`
-- **Card Title:** `15px`, `font-weight: 700`
-- **Card Subtitle:** `13px`, `font-weight: 500`, `color: var(--text-secondary)`
-- **Apple Music Lyrics (Columna Derecha):** `31px`, `font-weight: 700`, `line-height: 1.28`, `letter-spacing: -0.02em`
+### 3. Tipografía, Iconos y Escala (`1024×640` lógico @ `1.25×`)
+Familia principal: `-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', 'Segoe UI', Roboto, sans-serif`
+- **Page Header (`Good morning`, `Search`, `Library`):** `38px` lógicos (`47.5px` físicos), `font-weight: 700`, `letter-spacing: -0.03em`
+- **Page Subtitle (`Your music, your mood.`):** `16.5px` lógicos (`20.6px` físicos), `font-weight: 400`, `color: var(--text-secondary)`
+- **Section Header (`Jump back in`, `Made for you`, etc.):** `20px` lógicos (`25px` físicos), `font-weight: 700`, `letter-spacing: -0.02em`
+- **Album Detail Title:** `26px` lógicos (`32.5px` físicos), `font-weight: 700`, `letter-spacing: -0.025em`
+- **Card Title:** `15.5px` lógicos (`19.4px` físicos), `font-weight: 700`
+- **Card Subtitle:** `13.5px` lógicos (`16.9px` físicos), `font-weight: 500`, `color: var(--text-secondary)`
+- **Apple Music Lyrics (Columna Derecha):** `29px` lógicos (`36.25px` físicos), `font-weight: 700`, `line-height: 1.24`, `letter-spacing: -0.022em`
+- **Piso mínimo de texto:** `13px` lógicos (`16.25px` físicos) en tiempos/captions; badges desde `11–12px` lógicos (`13.75–15px` físicos)
+- **Targets táctiles:** `44–64px` lógicos (`55–80px` físicos, alineados a la guía de `64–72 dp` del Alexa Design System para Echo Show)
 
 ---
 
 ### 4. Especificación de las 5 Pantallas y Componentes Globales
 
 1. **Dock de Navegación Inferior (Global en vistas principales):**
-   - Centrado abajo (`bottom: 18px`), cápsula `290 × 62 px`, `border-radius: 999px`, fondo `--surface-glass-strong`.
-   - 3 ítems: `Home`, `Library`, `Search`.
+   - Centrado abajo (`bottom: 18px`), cápsula `396 × 70 px` lógicos (`495 × 87.5 px` físicos), `border-radius: 999px`, fondo `--glass-dock`.
+   - 3 ítems: `Home`, `Library`, `Search` (iconos `26×26 px`, etiqueta `13.5px`).
 2. **Mini-Player Compacto Unificado (Versión 1 aprobada):**
-   - Ubicado en la zona inferior derecha (`right: 52px`, `bottom: 94px`), ancho `560px`, alto `68px`, `border-radius: 20px`.
-   - Izquierda: Portada `48 × 48 px` (`border-radius: 10px`) + Título en bold (`15px`) + Artista (`13px`).
-   - Derecha: Botón `Play/Pause` (`⏸`) y `Next` (`⏭`). Al tocar el Mini-Player se expande la vista **Now Playing + Lyrics**.
+   - Ubicado en la zona inferior derecha (`right: 48px`, `bottom: 98px`), ancho `416px`, alto `68px`, `border-radius: 18px`.
+   - Izquierda: Portada `48 × 48 px` (`border-radius: 10px`) + Título en bold (`15.5px`) + Artista (`13.5px`).
+   - Derecha: Botones `Like`, `Play/Pause` y `Next` (`46 × 46 px` táctiles, iconos `22–24px`). Al tocar el Mini-Player se expande la vista **Now Playing + Lyrics**.
 3. **Pantalla 1 — Home:**
-   - Saludo + botón de perfil circular (`46 × 46 px`).
-   - `Jump back in`: 5 tarjetas cuadradas (`border-radius: 18px`).
-   - `Made for you`: 2 banners anchos con arte geométrico pastel (`Discover Weekly` en lavanda/azul y `Release Radar` en verde menta) con logo Spotify y botón circular blanco `▶`.
-   - `Recently played`: 5 tarjetas inferiores.
+   - Saludo + botón de perfil circular (`48 × 48 px`, icono `22×22`).
+   - `Jump back in` / `Favorite artists` / `Recently played` / `Saved albums`: carriles horizontales de **4 columnas** (`gap: 20px`).
+   - `Made for you`: 2 banners anchos (`height: 108px`) con arte y botón circular `▶` (`48 × 48 px`).
 4. **Pantalla 2 — Detalle de Álbum / Playlist:**
-   - Botón circular `<` arriba a la izquierda (`44 × 44 px`).
-   - Columna izquierda (`310px`): Portada cuadrada grande (`border-radius: 20px`), Título, Artista, Género/Año, y fila de acciones (`▶ Play` en píldora negra `170 × 48 px`, más botones circulares `🔀` y `+`).
-   - Columna derecha: Lista numerada de canciones con punto indicador `•`, separadores sutiles y menú `⋮`.
+   - Botón circular `<` arriba a la izquierda (`48 × 48 px`).
+   - Columna izquierda (`286px`): Portada cuadrada (`272 × 272 px`, `border-radius: 18px`), Título, Artista, Género/Año, y fila de acciones (`▶ Play` en píldora `height: 50px`, más botones circulares `50 × 50 px`).
+   - Columna derecha: Lista numerada (`height: 58px`) con botones `Like` y `⋮` (`46 × 46 px`).
 5. **Pantalla 3 — Search:**
-   - Barra buscadora en píldora a todo lo ancho (`height: 56px`, `border-radius: 999px`).
-   - `Recent searches`: Fila de chips en píldora con avatar circular (artistas) o cuadrado redondeado (álbum).
-   - `Browse by category`: 4 tarjetas con facetas geométricas pastel (`Playlists`, `Albums`, `Artists`, `Made for you`).
-   - `Recently played`: Fila de 5 tarjetas inferiores.
+   - Barra buscadora en píldora a todo lo ancho (`height: 54px`, `border-radius: 999px`).
+   - `Recent searches`: Fila de chips en píldora (`height: 50px`).
+   - `Browse by category`: 4 tarjetas (`height: 92px`) con iconos `22×22`.
+   - `Recently played`: Grilla de **4 columnas**.
 6. **Pantalla 4 — Library:**
-   - Barra superior de filtros: Segmented Control de 4 pestañas (`Playlists`, `Albums`, `Artists`, `Liked`) a la izquierda + botón lupa circular `🔍` y selector `Recently added ⌄` a la derecha.
-   - Grilla de 6 columnas × 2 filas (incluyendo la tarjeta especial `Liked Songs` con degradado violeta-azul y corazón blanco + soporte para pin verde `📌`).
+   - Barra superior de filtros: Segmented Control de 4 pestañas (`Playlists`, `Albums`, `Artists`, `Liked`, `height: 44px`) a la izquierda + botón lupa circular (`48 × 48 px`) y selector `Recently added ⌄` (`height: 48px`) a la derecha.
+   - Grilla de **5 columnas** (`gap: 18px / 20px`) incluyendo `Liked Songs` y `DJ Livi`.
 7. **Pantalla 5 — Now Playing + Lyrics (Apple Music Full Screen):**
-   - Botón cerrar `✕` arriba a la izquierda.
-   - Columna izquierda (`410px` centrada): Portada `360 × 360 px` con sombra profunda, título + `Artista — Álbum`, botones circulares `★` y `•••`, barra de progreso interactiva con tiempos (`0:25` / `-3:27`), controles Apple Music (`🔀`, `⏪`, `⏸`, `⏩`, `🔁`) y control de volumen inferior (`🔈 ——●——`).
-   - Columna derecha: Letras sincronizadas con scroll suave automático, desenfoque progresivo en extremos y **resaltado palabra por palabra (Karaoke Sync)** en el verso activo. Botón de comillas en la esquina inferior derecha.
+   - Grabber superior deslizable (`top: 4px`).
+   - Columna izquierda (`380px`): Portada `264 × 264 px` (`330 × 330 px` físicos en modo dividido, `350 × 350 px` en modo centrado) con sombra profunda, título (`24px`) + `Artista` (`18.5px`), botones circulares (`44 × 44 px`), barra de progreso interactiva (`8px` alto) con tiempos (`13px`), controles Apple Music (`46px` / `56px` / `64px`) y píldora de dispositivo Spotify Connect (`height: 44px`).
+   - Columna derecha (`508 × 560 px`): Letras sincronizadas (`29px`, `padding-top: 170px`) o Cola de reproducción con scroll suave y botones inferiores `Letra` / `Cola` (`height: 48px`).
 

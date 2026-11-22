@@ -194,12 +194,12 @@ function renderArtistTracks(tracks) {
         </div>
         <span class="artist-track-duration">${durationStr}</span>
         <button class="artist-track-like-btn ${isLiked ? 'liked' : ''}" data-track-id="${track.id || ''}" data-track-title="${track.title.replace(/"/g, '&quot;')}" title="${isLiked ? 'Eliminar de Tus me gusta' : 'Guardar en Tus me gusta'}">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="${isLiked ? '#1ed760' : 'none'}" stroke="${isLiked ? '#1ed760' : 'currentColor'}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="${isLiked ? '#1ed760' : 'none'}" stroke="${isLiked ? '#1ed760' : 'currentColor'}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
           </svg>
         </button>
         <button class="artist-track-more-btn" title="Opciones">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <circle cx="12" cy="5" r="1.9"></circle>
             <circle cx="12" cy="12" r="1.9"></circle>
             <circle cx="12" cy="19" r="1.9"></circle>
@@ -728,12 +728,12 @@ async function openEntityDetail(entityId) {
         </div>
         <div class="track-name">${track.title}</div>
         <button class="track-row-like-btn ${isLiked ? 'liked' : ''}" data-track-id="${track.id || ''}" data-track-title="${track.title.replace(/"/g, '&quot;')}" data-track-artist="${(track.artist || entity.artist || '').replace(/"/g, '&quot;')}" data-track-cover="${track.cover || entity.cover || ''}" title="${isLiked ? 'Eliminar de Tus me gusta' : 'Guardar en Tus me gusta'}">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="${isLiked ? '#1ed760' : 'none'}" stroke="${isLiked ? '#1ed760' : 'currentColor'}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="${isLiked ? '#1ed760' : 'none'}" stroke="${isLiked ? '#1ed760' : 'currentColor'}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
           </svg>
         </button>
         <button class="track-more-btn" title="More options">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <circle cx="12" cy="5" r="1.8"></circle>
             <circle cx="12" cy="12" r="1.8"></circle>
             <circle cx="12" cy="19" r="1.8"></circle>
@@ -835,12 +835,12 @@ async function loadMorePlaylistTracks(entity) {
             </div>
             <div class="track-name">${track.title}</div>
             <button class="track-row-like-btn ${isLiked ? 'liked' : ''}" data-track-id="${track.id || ''}" data-track-title="${track.title.replace(/"/g, '&quot;')}" data-track-artist="${(track.artist || entity.artist || '').replace(/"/g, '&quot;')}" data-track-cover="${track.cover || entity.cover || ''}" title="${isLiked ? 'Eliminar de Tus me gusta' : 'Guardar en Tus me gusta'}">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="${isLiked ? '#1ed760' : 'none'}" stroke="${isLiked ? '#1ed760' : 'currentColor'}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="${isLiked ? '#1ed760' : 'none'}" stroke="${isLiked ? '#1ed760' : 'currentColor'}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
               </svg>
             </button>
             <button class="track-more-btn" title="More options">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <circle cx="12" cy="5" r="1.8"></circle>
                 <circle cx="12" cy="12" r="1.8"></circle>
                 <circle cx="12" cy="19" r="1.8"></circle>

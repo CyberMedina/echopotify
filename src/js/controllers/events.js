@@ -412,9 +412,9 @@ if (artistFollowBtn) {
   artistFollowBtn.addEventListener('click', () => {
     artistFollowBtn.classList.toggle('following');
     if (artistFollowBtn.classList.contains('following')) {
-      artistFollowBtn.innerHTML = `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1ed760" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+      artistFollowBtn.innerHTML = `<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#1ed760" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
     } else {
-      artistFollowBtn.innerHTML = `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+      artistFollowBtn.innerHTML = `<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
     }
   });
 }
@@ -1041,7 +1041,7 @@ const libSortPill = document.querySelector('.lib-sort-pill');
 if (libSortPill) {
   libSortPill.addEventListener('click', () => {
     liveCatalog.sortAlphabetical = !liveCatalog.sortAlphabetical;
-    libSortPill.innerHTML = `${liveCatalog.sortAlphabetical ? 'Alphabetical A–Z' : 'Recently added'} <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+    libSortPill.innerHTML = `${liveCatalog.sortAlphabetical ? 'Alphabetical A–Z' : 'Recently added'} <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
     renderLibrary(liveCatalog.libraryFilter);
   });
 }
@@ -1077,8 +1077,8 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
 
   searchDebounce = setTimeout(async () => {
     document.getElementById('recentSearchesRow').innerHTML = buildSkeletonChipsHTML(5);
-    document.getElementById('searchRecentlyPlayedGrid').innerHTML = buildSkeletonCardsHTML(5, true);
-    const res = await spotifyFetch(`/search?q=${encodeURIComponent(q)}&type=track,album,artist&limit=6`);
+    document.getElementById('searchRecentlyPlayedGrid').innerHTML = buildSkeletonCardsHTML(4, true);
+    const res = await spotifyFetch(`/search?q=${encodeURIComponent(q)}&type=track,album,artist&limit=8`);
     if (!res) return;
 
     const chipsRow = document.getElementById('recentSearchesRow');
@@ -1100,7 +1100,7 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
 
     if (res.albums && Array.isArray(res.albums.items)) {
       const searchGrid = document.getElementById('searchRecentlyPlayedGrid');
-      searchGrid.innerHTML = res.albums.items.slice(0, 5).map(a => {
+      searchGrid.innerHTML = res.albums.items.slice(0, 8).map(a => {
         const entityId = `alb_${a.id}`;
         const cover = (a.images && a.images.length > 0) ? getSpotifyImage(a.images, 'medium') : DEFAULT_ALBUM_COVER;
         const coverLarge = (a.images && a.images.length > 0) ? getSpotifyImage(a.images, 'large') : cover;
@@ -1302,17 +1302,19 @@ if (transferPlaybackBtn) {
   });
 }
 
-// Responsive Viewport Scaling (Robust 1280x800 Echo Show 8 fallback)
+// Responsive Viewport Scaling (1024x640 logical canvas = 1.25x @ ~200 DPI on Echo Show 8 3rd Gen)
 function fitViewport() {
-  const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
-  const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+  const vw = window.innerWidth || document.documentElement.clientWidth || 1024;
+  const vh = window.innerHeight || document.documentElement.clientHeight || 640;
   if (vw <= 10 || vh <= 10) return;
-  const scale = Math.min(vw / 1280, vh / 800);
+  const scale = Math.min(vw / 1024, vh / 640);
   if (!isFinite(scale) || scale <= 0 || Math.abs(scale - 1) < 0.02) {
+    window._echoViewportScale = 1;
     echoViewport.style.transform = 'none';
     echoViewport.style.width = '100vw';
     echoViewport.style.height = '100vh';
   } else {
+    window._echoViewportScale = scale;
     echoViewport.style.transform = `scale(${scale})`;
     echoViewport.style.width = `${Math.round(vw / scale)}px`;
     echoViewport.style.height = `${Math.round(vh / scale)}px`;

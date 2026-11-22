@@ -1,12 +1,12 @@
 /* ==========================================================================
-   Spotify Echo Show 8 (1st Gen) — Apple Music Edition
-   Design System Stylesheet (1280 x 800 Native Resolution)
+   Spotify Echo Show 8 (3rd Gen) — Apple Music Edition
+   Design System Stylesheet (1024 x 640 Logical @ 1.25x on 1280 x 800 Physical)
    ========================================================================== */
 
 :root {
-  /* Native Echo Show 8 Viewport */
-  --viewport-w: 1280px;
-  --viewport-h: 800px;
+  /* Echo Show 8 (3rd Gen) Logical Canvas (1.25x Scale / ~200 DPI) */
+  --viewport-w: 1024px;
+  --viewport-h: 640px;
 
   /* Light Atmospheric Mode Tokens (Home, Library, Search, Album Detail) */
   --bg-sky: #9db7c8;
@@ -100,7 +100,7 @@ body {
 }
 
 /* ==========================================================================
-   1280x800 Echo Show 8 Frame Container
+   1024x640 Logical Echo Show 8 (3rd Gen) Frame Container
    ========================================================================== */
 .echo-viewport {
   position: absolute;
@@ -152,7 +152,7 @@ body.theme-dark.album-light-active .ambient-bg {
 .screen-view {
   position: absolute;
   inset: 0;
-  padding: 38px 54px 200px 54px;
+  padding: 32px 48px 180px 48px;
   opacity: 0;
   pointer-events: none;
   transform: translate3d(0, 8px, 0);
@@ -177,30 +177,32 @@ body.theme-dark.album-light-active .ambient-bg {
    ========================================================================== */
 .top-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 .page-title {
-  font-size: 42px;
+  font-size: 38px;
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.08;
+  text-align: left;
   color: var(--text-primary);
 }
 
 .page-subtitle {
   margin-top: 4px;
-  font-size: 18px;
+  font-size: 16.5px;
   font-weight: 400;
   letter-spacing: -0.01em;
+  text-align: left;
   color: var(--text-secondary);
 }
 
 .profile-btn {
-  width: 46px;
-  height: 46px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.55);
   background: rgba(255, 255, 255, 0.56);
@@ -220,7 +222,7 @@ body.theme-dark.album-light-active .ambient-bg {
 
 /* Section Headers */
 .section-block {
-  margin-bottom: 20px;
+  margin-bottom: 22px;
 }
 
 .section-header {
@@ -231,19 +233,22 @@ body.theme-dark.album-light-active .ambient-bg {
 }
 
 .section-title {
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.02em;
+  text-align: left;
   color: var(--text-primary);
 }
 
 .section-link {
-  font-size: 13.5px;
-  font-weight: 500;
+  font-size: 14.5px;
+  font-weight: 600;
   color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  min-height: 36px;
+  padding: 4px 8px;
   cursor: pointer;
   background: none;
   border: none;

@@ -266,8 +266,9 @@ function closeNowPlaying(opts = {}) {
   function handleMove(clientX, clientY, cancelableEvent) {
     if (!isTracking) return;
 
-    const dx = clientX - startX;
-    const dy = clientY - startY;
+    const vpScale = window._echoViewportScale || 1;
+    const dx = (clientX - startX) / vpScale;
+    const dy = (clientY - startY) / vpScale;
 
     if (!isDragging) {
       // Iniciar arrastre si el movimiento es hacia abajo (> 6px) y vertical
@@ -290,7 +291,9 @@ function closeNowPlaying(opts = {}) {
         cancelableEvent.preventDefault();
       }
       currentDy = Math.max(0, dy);
-      const visualDy = currentDy > 520 ? 520 + Math.round((currentDy - 520) * 0.38) : currentDy;
+      const overlayH = overlay.offsetHeight || 640;
+      const dragLimit = Math.round(overlayH * 0.65);
+      const visualDy = currentDy > dragLimit ? dragLimit + Math.round((currentDy - dragLimit) * 0.38) : currentDy;
       overlay.style.transform = `translate3d(0, ${visualDy}px, 0)`;
 
       if (grabberPill) {
@@ -324,7 +327,8 @@ function closeNowPlaying(opts = {}) {
       clearTimeout(npCloseAnimationTimer);
       document.body.classList.remove('np-fully-open');
 
-      const remaining = Math.max(0, 800 - currentDy);
+      const overlayH = overlay.offsetHeight || 640;
+      const remaining = Math.max(0, overlayH - currentDy);
       const exitDuration = Math.min(0.38, Math.max(0.20, remaining / (Math.max(velocityY, 1.4) * 1000)));
 
       overlay.style.transition = `transform ${exitDuration.toFixed(2)}s cubic-bezier(0.22, 1, 0.36, 1)`;

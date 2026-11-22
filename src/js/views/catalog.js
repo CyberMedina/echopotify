@@ -461,7 +461,7 @@ async function loadAllRealSpotifyData() {
 // --------------------------------------------------------------------------
 // 7. RENDER FUNCTIONS & SKELETON LOADERS FOR ALL 5 VIEWS
 // --------------------------------------------------------------------------
-function buildSkeletonCardsHTML(count = 5, showMeta = true) {
+function buildSkeletonCardsHTML(count = 4, showMeta = true) {
   return Array.from({ length: count }).map(() => `
     <div class="skeleton-card">
       <div class="skeleton-cover skeleton-shimmer"></div>
@@ -470,7 +470,7 @@ function buildSkeletonCardsHTML(count = 5, showMeta = true) {
   `).join('');
 }
 
-function buildSkeletonArtistsHTML(count = 5) {
+function buildSkeletonArtistsHTML(count = 4) {
   return Array.from({ length: count }).map(() => `
     <div class="skeleton-artist-card">
       <div class="skeleton-artist-avatar skeleton-shimmer"></div>
@@ -550,7 +550,7 @@ function renderHomeMadeForYou(banners) {
           </div>
         </div>
         <button class="banner-play-btn" title="Play">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <polygon points="7 5 19 12 7 19 7 5"></polygon>
           </svg>
         </button>
@@ -563,28 +563,28 @@ function renderHomeMadeForYou(banners) {
 function renderInitialSkeletons() {
   updateHomeGreeting();
   const jumpGrid = document.getElementById('homeJumpBackGrid');
-  if (jumpGrid) jumpGrid.innerHTML = buildSkeletonCardsHTML(5, true);
+  if (jumpGrid) jumpGrid.innerHTML = buildSkeletonCardsHTML(4, true);
 
   const mfuGrid = document.getElementById('homeMadeForYouGrid');
   if (mfuGrid) mfuGrid.innerHTML = buildSkeletonBannersHTML();
 
   const artistsGrid = document.getElementById('homeTopArtistsGrid');
-  if (artistsGrid) artistsGrid.innerHTML = buildSkeletonArtistsHTML(5);
+  if (artistsGrid) artistsGrid.innerHTML = buildSkeletonArtistsHTML(4);
 
   const recentGrid = document.getElementById('homeRecentlyPlayedGrid');
-  if (recentGrid) recentGrid.innerHTML = buildSkeletonCardsHTML(5, false);
+  if (recentGrid) recentGrid.innerHTML = buildSkeletonCardsHTML(4, false);
 
   const savedGrid = document.getElementById('homeSavedAlbumsGrid');
-  if (savedGrid) savedGrid.innerHTML = buildSkeletonCardsHTML(5, true);
+  if (savedGrid) savedGrid.innerHTML = buildSkeletonCardsHTML(4, true);
 
   const searchesRow = document.getElementById('recentSearchesRow');
   if (searchesRow) searchesRow.innerHTML = buildSkeletonChipsHTML(5);
 
   const searchRecent = document.getElementById('searchRecentlyPlayedGrid');
-  if (searchRecent) searchRecent.innerHTML = buildSkeletonCardsHTML(5, false);
+  if (searchRecent) searchRecent.innerHTML = buildSkeletonCardsHTML(4, false);
 
   const libGrid = document.getElementById('libraryGrid6');
-  if (libGrid) libGrid.innerHTML = buildSkeletonCardsHTML(12, true);
+  if (libGrid) libGrid.innerHTML = buildSkeletonCardsHTML(10, true);
 }
 
 function renderHome(jumpCards, recentCards, banners, topArtists, savedAlbums) {
@@ -600,7 +600,7 @@ function renderHome(jumpCards, recentCards, banners, topArtists, savedAlbums) {
         jumpGrid.innerHTML = jumpList.slice(0, 8).map((item, idx) => `
           <div class="media-card" data-open-entity="${item.entityId}">
             <div class="media-card-cover-wrap">
-              ${renderOptImg(item.cover, item.title, 'media-card-cover', idx < 5 ? 'fetchpriority="high"' : '')}
+              ${renderOptImg(item.cover, item.title, 'media-card-cover', idx < 4 ? 'fetchpriority="high"' : '')}
             </div>
             <div class="media-card-title">${item.title}</div>
             <div class="media-card-subtitle">${item.subtitle}</div>
@@ -610,7 +610,7 @@ function renderHome(jumpCards, recentCards, banners, topArtists, savedAlbums) {
       }
     } else {
       delete jumpGrid.dataset.sig;
-      jumpGrid.innerHTML = buildSkeletonCardsHTML(5, true);
+      jumpGrid.innerHTML = buildSkeletonCardsHTML(4, true);
     }
   }
 
@@ -645,7 +645,7 @@ function renderHome(jumpCards, recentCards, banners, topArtists, savedAlbums) {
       }
     } else {
       delete artistsGrid.dataset.sig;
-      artistsGrid.innerHTML = buildSkeletonArtistsHTML(5);
+      artistsGrid.innerHTML = buildSkeletonArtistsHTML(4);
     }
   }
 
@@ -676,7 +676,7 @@ function renderHome(jumpCards, recentCards, banners, topArtists, savedAlbums) {
       }
     } else {
       delete recentGrid.dataset.sig;
-      recentGrid.innerHTML = buildSkeletonCardsHTML(5, false);
+      recentGrid.innerHTML = buildSkeletonCardsHTML(4, false);
     }
   }
 
@@ -701,7 +701,7 @@ function renderHome(jumpCards, recentCards, banners, topArtists, savedAlbums) {
       }
     } else {
       delete savedAlbumsGrid.dataset.sig;
-      savedAlbumsGrid.innerHTML = buildSkeletonCardsHTML(5, true);
+      savedAlbumsGrid.innerHTML = buildSkeletonCardsHTML(4, true);
     }
   }
 }
@@ -723,10 +723,10 @@ function renderSearch(recentCards) {
   if (recentCards && recentCards.length > 0) {
     finalSearchRecent = [...recentCards];
   }
-  if (finalSearchRecent.length < 5) {
+  if (finalSearchRecent.length < 4) {
     const fallbackList = liveCatalog.playlists.length > 0 ? liveCatalog.playlists : (liveCatalog.demoCatalog || []);
     for (const item of fallbackList) {
-      if (finalSearchRecent.length >= 5) break;
+      if (finalSearchRecent.length >= 4) break;
       const eId = item.entityId || item.id;
       if (!finalSearchRecent.some(r => (r.entityId || r.id) === eId)) {
         finalSearchRecent.push({
@@ -740,7 +740,7 @@ function renderSearch(recentCards) {
   }
 
   if (finalSearchRecent.length > 0 && searchRecentGrid) {
-    searchRecentGrid.innerHTML = finalSearchRecent.slice(0, 5).map(item => {
+    searchRecentGrid.innerHTML = finalSearchRecent.slice(0, 4).map(item => {
       const actionAttr = item.uri
         ? `data-play-direct-uri="${item.uri}" data-title="${(item.title || '').replace(/"/g, '&quot;')}" data-artist="${(item.subtitle || '').replace(/"/g, '&quot;')}" data-cover="${item.coverLarge || item.cover}" data-thumb="${item.thumb || item.cover}"`
         : `data-open-entity="${item.entityId || item.id}"`;
@@ -855,7 +855,7 @@ function renderLibrary(filter = 'all') {
     const lazyAttr = idx >= 18 ? 'loading="lazy"' : '';
     if (item.likedCard) {
       coverContent = `<div class="liked-songs-art">
-           <svg width="54" height="54" viewBox="0 0 24 24" fill="#ffffff">
+           <svg width="56" height="56" viewBox="0 0 24 24" fill="#ffffff">
              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
            </svg>
          </div>`;

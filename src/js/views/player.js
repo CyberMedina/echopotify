@@ -635,11 +635,13 @@ const FAST_CONNECTOR_WORDS = new Set([
   'as', 'be', 'my', 'you', 'we', 'he', 'she', 'im', 'its'
 ]);
 
+const LYRICS_ANCHOR_OFFSET = 170;
+
 function cacheLyricLineOffsets() {
   const cache = state.lyricDOMCache;
   if (!cache || cache.length === 0) return;
   for (let i = 0; i < cache.length; i++) {
-    cache[i].targetOffset = Math.max(0, cache[i].el.offsetTop - 210);
+    cache[i].targetOffset = Math.max(0, cache[i].el.offsetTop - LYRICS_ANCHOR_OFFSET);
   }
 }
 
@@ -950,7 +952,7 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
     if (activeLine) {
       const targetOffset = typeof activeLine.targetOffset === 'number'
         ? activeLine.targetOffset
-        : Math.max(0, activeLine.el.offsetTop - 210);
+        : Math.max(0, activeLine.el.offsetTop - LYRICS_ANCHOR_OFFSET);
       lyricsScrollTrack.style.transform = `translate3d(0, -${targetOffset}px, 0)`;
     } else {
       lyricsScrollTrack.style.transform = 'translate3d(0, 0, 0)';
@@ -1311,7 +1313,7 @@ function updateNowPlayingRightPanelMode() {
     } else if (state.lyricsLoading) {
       if (lyricsScrollTrack) {
         lyricsScrollTrack.innerHTML = `
-          <div class="lyric-line distance-1" style="opacity: 0.65; font-size: 22px; margin-top: 140px; text-align: left;">
+          <div class="lyric-line distance-1" style="opacity: 0.65; font-size: 22px; margin-top: 100px; text-align: left;">
             Buscando letra...
           </div>
         `;

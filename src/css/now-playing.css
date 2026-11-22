@@ -3,16 +3,16 @@
    ========================================================================== */
 .mini-player-v1 {
   position: absolute;
-  right: 50px;
-  bottom: 114px;
+  right: 48px;
+  bottom: 98px;
   z-index: 20;
-  width: 440px;
-  height: 72px;
-  border-radius: 20px;
+  width: 416px;
+  height: 68px;
+  border-radius: 18px;
   background: var(--glass-miniplayer);
   border: 1px solid rgba(255, 255, 255, 0.72);
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.14);
-  padding: 0 18px 0 12px;
+  padding: 0 12px 0 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -29,14 +29,14 @@
 .mini-player-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
 }
 
 .mini-player-thumb {
-  width: 52px;
-  height: 52px;
-  border-radius: 12px;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
   object-fit: cover;
   flex-shrink: 0;
 }
@@ -55,7 +55,7 @@
 }
 
 .mini-player-artist {
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 500;
   color: var(--text-secondary);
   margin-top: 2px;
@@ -67,12 +67,12 @@
 .mini-player-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .mini-ctrl-btn {
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   border: none;
   background: transparent;
@@ -92,23 +92,23 @@
   transform: scale(0.92);
 }
 
-/* Bottom Navigation Pill Dock - Centered and enlarged for Echo Show 8 (1280x800) */
+/* Bottom Navigation Pill Dock - Centered and scaled for Echo Show 8 (3rd Gen, 1024x640 @ 1.25x) */
 .bottom-dock {
   position: absolute;
   left: 50%;
-  bottom: 26px;
+  bottom: 18px;
   transform: translate3d(-50%, 0, 0);
   z-index: 25;
-  width: 460px;
-  height: 82px;
+  width: 396px;
+  height: 70px;
   border-radius: var(--radius-pill);
   background: var(--glass-dock);
   border: 1px solid rgba(255, 255, 255, 0.72);
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.12);
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  padding: 6px 14px;
-  gap: 8px;
+  padding: 6px 12px;
+  gap: 6px;
   box-sizing: border-box;
 }
 
@@ -120,7 +120,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   color: rgba(23, 26, 29, 0.45);
   cursor: pointer;
   font-family: var(--font-sans);
@@ -131,13 +131,13 @@
 }
 
 .dock-tab svg {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   transition: transform 0.15s ease;
 }
 
 .dock-tab span {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -276,11 +276,11 @@ body.np-fully-open .ambient-bg {
 /* Apple Music Top Pull-Down Grabber Tab (Centered at Top) */
 .np-grabber-btn {
   position: absolute;
-  top: 14px;
+  top: 4px;
   left: 50%;
   transform: translateX(-50%);
   width: 140px;
-  height: 34px;
+  height: 30px;
   border: none;
   background: transparent;
   display: flex;
@@ -319,28 +319,28 @@ body.np-fully-open .ambient-bg {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  padding: 0 40px;
+  padding: 26px 36px 0 36px;
 }
 
 /* Left Column: Player & Cover Art (60fps GPU Hardware-Accelerated) */
 .np-left-player {
   position: relative;
   z-index: 3;
-  width: 440px;
+  width: 380px;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transform: translate3d(-310px, 0, 0);
+  transform: translate3d(-274px, 0, 0);
   transition: transform 0.52s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: transform;
 }
 
 .np-cover-stage {
   position: relative;
-  width: 330px;
-  height: 330px;
-  margin: 0 auto 28px auto;
-  border-radius: 16px;
+  width: 264px;
+  height: 264px;
+  margin: 0 auto 16px auto;
+  border-radius: 15px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
@@ -429,11 +429,11 @@ body.np-fully-open .ambient-bg {
 /* Right Column: Lyrics or Queue Container (GPU Composited) */
 .np-right-column {
   position: absolute;
-  right: 56px;
+  right: 48px;
   top: 50%;
   transform: translate3d(0, -50%, 0);
-  width: 580px;
-  height: 640px;
+  width: 508px;
+  height: 560px;
   z-index: 2;
   opacity: 1;
   pointer-events: auto;
@@ -476,28 +476,28 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-main-grid.centered-layout .np-cover-stage {
-  transform: scale(1.12) translateY(-14px) translateZ(0);
-  margin-bottom: 42px;
-  border-radius: 18px;
+  transform: scale(1.06) translateY(0) translateZ(0);
+  margin-bottom: 24px;
+  border-radius: 17px;
   box-shadow:
     0 26px 56px -10px rgba(0, 0, 0, 0.46),
     0 10px 24px -4px rgba(0, 0, 0, 0.26);
 }
 
 .np-main-grid.centered-layout .np-cover-stage.is-paused {
-  transform: scale(0.95) translateY(-8px) translateZ(0);
+  transform: scale(0.90) translateY(0) translateZ(0);
   box-shadow:
     0 12px 28px -6px rgba(0, 0, 0, 0.28),
     0 4px 10px -2px rgba(0, 0, 0, 0.18);
 }
 
 .np-main-grid.centered-layout .np-cover-stage:active {
-  transform: scale(1.08) translateY(-14px) translateZ(0);
+  transform: scale(1.02) translateY(0) translateZ(0);
   transition: transform 0.16s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .np-main-grid.centered-layout .np-cover-stage.is-paused:active {
-  transform: scale(0.91) translateY(-8px) translateZ(0);
+  transform: scale(0.86) translateY(0) translateZ(0);
 }
 
 .np-main-grid.centered-layout .np-right-column {
@@ -510,8 +510,8 @@ body.np-fully-open .ambient-bg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
-  gap: 16px;
+  margin-bottom: 14px;
+  gap: 12px;
 }
 
 .np-meta-row>div:first-child,
@@ -544,11 +544,11 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-track-title {
-  font-size: 27px;
+  font-size: 24px;
   font-weight: 700;
   color: #ffffff;
   letter-spacing: -0.02em;
-  line-height: 1.2;
+  line-height: 1.18;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -556,11 +556,11 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-track-artist {
-  font-size: 21px;
+  font-size: 18.5px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.68);
   letter-spacing: -0.015em;
-  margin-top: 5px;
+  margin-top: 3px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -589,13 +589,13 @@ body.np-fully-open .ambient-bg {
 .np-meta-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-shrink: 0;
 }
 
 .np-circle-btn {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.16);
@@ -620,13 +620,13 @@ body.np-fully-open .ambient-bg {
 /* Apple Music Pill Scrubber Bar (Matches Justin Bieber 'Sorry' screenshot) */
 .np-scrubber-wrap {
   width: 100%;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .np-slider-track {
   position: relative;
   width: 100%;
-  height: 6.5px;
+  height: 8px;
   border-radius: 99px;
   background: rgba(255, 255, 255, 0.22);
   cursor: pointer;
@@ -657,8 +657,8 @@ body.np-fully-open .ambient-bg {
 .np-time-row {
   display: flex;
   justify-content: space-between;
-  margin-top: 8px;
-  font-size: 12px;
+  margin-top: 7px;
+  font-size: 13px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.46);
   font-variant-numeric: tabular-nums;
@@ -670,13 +670,13 @@ body.np-fully-open .ambient-bg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 4px;
-  margin: 10px 0 6px 0;
+  padding: 0;
+  margin: 6px 0 4px 0;
 }
 
 .np-transport-btn {
-  width: 54px;
-  height: 54px;
+  width: 56px;
+  height: 56px;
   border: none;
   background: transparent;
   color: #ffffff;
@@ -704,8 +704,8 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-transport-btn.small-icon {
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   color: rgba(255, 255, 255, 0.62);
 }
 
@@ -724,9 +724,9 @@ body.np-fully-open .ambient-bg {
 .np-right-lyrics {
   position: absolute;
   inset: 0;
-  height: 700px;
+  height: 100%;
   overflow: hidden;
-  padding-left: 38px;
+  padding-left: 16px;
   contain: strict;
   user-select: none;
   -webkit-mask-image: linear-gradient(
@@ -748,8 +748,8 @@ body.np-fully-open .ambient-bg {
 .lyrics-scroll-track {
   display: flex;
   flex-direction: column;
-  gap: 26px;
-  padding: 210px 28px 340px 0;
+  gap: 22px;
+  padding: 170px 16px 280px 0;
   transform: translate3d(0, 0, 0);
   opacity: 1;
   backface-visibility: hidden;
@@ -765,10 +765,11 @@ body.np-fully-open .ambient-bg {
 
 /* AMLL Line Wrapper & Scale Mechanics */
 .lyric-line {
-  font-size: 33px;
+  font-size: 29px;
   font-weight: 700;
   line-height: 1.24;
   letter-spacing: -0.022em;
+  text-align: left;
   color: rgba(255, 255, 255, 0.34);
   cursor: pointer;
   opacity: 0.12;
@@ -973,11 +974,11 @@ body.np-fully-open .ambient-bg {
 .np-right-queue {
   position: absolute;
   inset: 0;
-  height: 620px;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  padding-left: 34px;
-  padding-right: 12px;
+  padding-left: 16px;
+  padding-right: 4px;
   contain: layout paint;
 }
 
@@ -996,7 +997,7 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-queue-heading {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   color: #ffffff;
   letter-spacing: -0.02em;
@@ -1015,7 +1016,7 @@ body.np-fully-open .ambient-bg {
   background: transparent;
   color: rgba(255, 255, 255, 0.72);
   font-family: var(--font-sans);
-  font-size: 16.5px;
+  font-size: 15.5px;
   font-weight: 500;
   display: inline-flex;
   align-items: center;
@@ -1159,8 +1160,8 @@ body.np-fully-open .ambient-bg {
 .np-queue-row {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 10px 14px;
+  gap: 12px;
+  padding: 9px 12px;
   border-radius: 16px;
   cursor: pointer;
   transition: background 0.15s ease, transform 0.12s ease;
@@ -1181,15 +1182,15 @@ body.np-fully-open .ambient-bg {
   font-size: 13.5px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.38);
-  width: 20px;
+  width: 22px;
   text-align: center;
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
 
 .np-queue-row .np-queue-thumb {
-  width: 52px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
   border-radius: 8px;
   object-fit: cover;
   flex-shrink: 0;
@@ -1197,7 +1198,7 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-queue-row .np-queue-title {
-  font-size: 17.5px;
+  font-size: 16.5px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   white-space: nowrap;
@@ -1206,7 +1207,7 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-queue-row .np-queue-artist {
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 400;
   color: rgba(255, 255, 255, 0.60);
   margin-top: 2px;
@@ -1216,7 +1217,7 @@ body.np-fully-open .ambient-bg {
 }
 
 .np-queue-duration {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.55);
   font-variant-numeric: tabular-nums;
@@ -1286,8 +1287,8 @@ body.np-fully-open .ambient-bg {
 /* Bottom-Right Apple Music Dual Pill (Letras / Cola) */
 .np-dock-controls {
   position: absolute;
-  right: 38px;
-  bottom: 60px;
+  right: 48px;
+  bottom: 26px;
   z-index: 10;
   display: flex;
   align-items: center;
@@ -1311,13 +1312,13 @@ body.np-fully-open .ambient-bg {
   align-items: center;
   gap: 7px;
   padding: 0 16px;
-  height: 38px;
+  height: 40px;
   border-radius: 999px;
   border: 1px solid transparent;
   background: transparent;
   color: rgba(255, 255, 255, 0.65);
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 14.5px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);

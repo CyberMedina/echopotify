@@ -185,7 +185,7 @@ function syncFullscreenSwitchUI() {
     sw.setAttribute('aria-checked', isFs ? 'true' : 'false');
   }
   if (typeof uiLog === 'function') {
-    uiLog('FS', `fullscreenchange -> active=${isFs} (${window.innerWidth}x${window.innerHeight})`);
+    uiLog('FS', `fullscreenchange -> active=${isFs} (${window.innerWidth}x${window.innerHeight}) | dpr=${window.devicePixelRatio || 1} | scale=${(window._echoViewportScale || 1).toFixed(2)}`);
   }
 }
 
@@ -378,7 +378,7 @@ function toggleDevMode() {
   syncDevModeUI();
   if (state.devModeEnabled) {
     if (typeof uiLog === 'function') {
-      uiLog('DEV', `Opciones de desarrollador activadas | viewport=${window.innerWidth}x${window.innerHeight} | fs=${isFullscreenActive()}`);
+      uiLog('DEV', `Opciones de desarrollador activadas | viewport=${window.innerWidth}x${window.innerHeight} | fs=${isFullscreenActive()} | dpr=${window.devicePixelRatio || 1} | scale=${(window._echoViewportScale || 1).toFixed(2)}`);
     }
   } else {
     if (Array.isArray(window._echoLogs)) window._echoLogs.length = 0;
@@ -457,7 +457,7 @@ syncDevModeUI();
   }, true);
 
   if (state.devModeEnabled && typeof uiLog === 'function') {
-    uiLog('BOOT', `App v4.0 lista | viewport=${window.innerWidth}x${window.innerHeight} | fs=${isFullscreenActive()}`);
+    uiLog('BOOT', `App v4.0 lista | viewport=${window.innerWidth}x${window.innerHeight} | fs=${isFullscreenActive()} | dpr=${window.devicePixelRatio || 1} | scale=${(window._echoViewportScale || 1).toFixed(2)}`);
   }
 })();
 
