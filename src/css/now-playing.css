@@ -1967,5 +1967,30 @@ body:not(.theme-dark) .np-dock-btn.active {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
 }
 
+/* Compact Phone Landscape Ergonomics (vw > vh && vh <= 500) */
+body.phone-landscape .np-main-grid {
+  padding-top: 14px;
+}
+
+body.phone-landscape .np-cover-stage {
+  width: 232px;
+  height: 232px;
+  margin-bottom: 12px;
+}
+
+body.phone-landscape .lyrics-scroll-track {
+  padding: 130px 16px 220px 0;
+}
+
+body.phone-landscape .bottom-dock {
+  bottom: 12px;
+  height: 64px;
+}
+
+body.phone-landscape .mini-player-v1 {
+  bottom: 84px;
+  height: 62px;
+}
+
 
 

@@ -309,7 +309,7 @@
   background: transparent;
   overflow-y: auto;
   scrollbar-width: none;
-  padding: 28px 48px 180px 48px;
+  padding: 28px 48px 108px 48px;
 }
 
 #view-album::-webkit-scrollbar {
@@ -888,7 +888,7 @@ body.artist-view-active .mini-ctrl-btn {
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   padding-right: 6px;
-  padding-bottom: 170px;
+  padding-bottom: 108px;
   /* clearance for bottom dock */
 }
 
@@ -1037,7 +1037,7 @@ body.artist-view-active .mini-ctrl-btn {
   overflow-y: hidden;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 90px;
+  padding-bottom: 108px;
   /* clearance for bottom dock */
 }
 
@@ -1167,7 +1167,7 @@ body.artist-view-active .mini-ctrl-btn {
   overflow-y: auto;
   scrollbar-width: none;
   max-height: calc(var(--viewport-h) - 278px);
-  padding-bottom: 120px;
+  padding-bottom: 108px;
 }
 
 .artist-info-card {
@@ -1376,8 +1376,73 @@ body.album-dark-active .mini-like-btn.liked {
 }
 
 /* ==========================================================================
-   SCREEN 3: SEARCH VIEW
+   SCREEN 3: SEARCH VIEW & SMART STICKY HEADERS
    ========================================================================== */
+#view-search,
+#view-library {
+  padding-top: 0;
+}
+
+#view-search > .top-header,
+#view-library > .top-header {
+  padding-top: 32px;
+}
+
+.search-sticky-header,
+.library-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  margin: -12px -48px 14px -48px;
+  padding: 12px 48px 12px 48px;
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+  will-change: transform;
+}
+
+.search-sticky-header.is-stuck,
+.library-sticky-header.is-stuck {
+  background: rgba(242, 237, 230, 0.84);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  border-bottom-color: rgba(23, 26, 29, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.search-sticky-header.is-hidden,
+.library-sticky-header.is-hidden {
+  transform: translate3d(0, -115%, 0);
+  pointer-events: none;
+}
+
+.search-sticky-header .search-bar-wrap {
+  margin-bottom: 0;
+}
+
+.search-sticky-header .search-filter-pills {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
+#view-search .search-section > .search-sub-heading,
+#searchBrowseState .section-header {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  margin-left: -48px;
+  margin-right: -48px;
+  padding: 8px 48px 10px 48px;
+  background: linear-gradient(to bottom, rgba(242, 237, 230, 0.92) 72%, rgba(242, 237, 230, 0) 100%);
+}
+
+#view-search .search-section > .search-sub-heading {
+  margin-bottom: 10px;
+}
+
 .search-bar-wrap {
   position: relative;
   width: 100%;
@@ -1440,6 +1505,7 @@ body.album-dark-active .mini-like-btn.liked {
 }
 
 .search-clear-btn.hidden,
+.search-filter-pills.hidden,
 .search-browse-state.hidden,
 .search-results-state.hidden {
   display: none !important;
@@ -1959,6 +2025,11 @@ body.album-dark-active .mini-like-btn.liked {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 18px;
+}
+
+.library-toolbar.library-sticky-header {
+  margin: -12px -48px 14px -48px;
+  padding: 12px 48px 12px 48px;
 }
 
 .segmented-control {

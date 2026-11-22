@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="robots" content="noindex, nofollow" />
   <meta name="theme-color" content="#0c0f14" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -19,10 +19,10 @@
   <link rel="preconnect" href="https://api.spotify.com" crossorigin />
   <link rel="dns-prefetch" href="https://i.scdn.co" />
   <link rel="dns-prefetch" href="https://mosaic.scdn.co" />
-  <link rel="stylesheet" href="src/css/base.css?v=7.0" />
-  <link rel="stylesheet" href="src/css/views.css?v=7.2" />
-  <link rel="stylesheet" href="src/css/now-playing.css?v=8.8" />
-  <link rel="stylesheet" href="src/css/theme-modals.css?v=8.5" />
+  <link rel="stylesheet" href="src/css/base.css?v=7.1" />
+  <link rel="stylesheet" href="src/css/views.css?v=7.5" />
+  <link rel="stylesheet" href="src/css/now-playing.css?v=8.9" />
+  <link rel="stylesheet" href="src/css/theme-modals.css?v=8.6" />
   <script src="https://cdn.html.games.alexa.a2z.com/alexa-html/latest/alexa-html.js"></script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 </head>
@@ -293,19 +293,29 @@
           </button>
         </header>
 
-        <!-- Search Input Pill -->
-        <div class="search-bar-wrap">
-          <svg class="search-bar-icon" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input type="text" class="search-input" id="searchInput" placeholder="Artistas, canciones, álbumes o playlists..." autocomplete="off" />
-          <button type="button" class="search-clear-btn hidden" id="searchClearBtn" aria-label="Limpiar búsqueda" title="Limpiar">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
+        <!-- Smart Sticky Header: Search Input Pill + Filter Pills -->
+        <div class="search-sticky-header" id="searchStickyHeader">
+          <div class="search-bar-wrap">
+            <svg class="search-bar-icon" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-          </button>
+            <input type="text" class="search-input" id="searchInput" placeholder="Artistas, canciones, álbumes o playlists..." autocomplete="off" />
+            <button type="button" class="search-clear-btn hidden" id="searchClearBtn" aria-label="Limpiar búsqueda" title="Limpiar">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+
+          <div class="search-filter-pills hidden" id="searchFilterPills">
+            <button type="button" class="search-filter-pill active" data-search-filter="all">Todo</button>
+            <button type="button" class="search-filter-pill" data-search-filter="tracks">Canciones</button>
+            <button type="button" class="search-filter-pill" data-search-filter="artists">Artistas</button>
+            <button type="button" class="search-filter-pill" data-search-filter="albums">Álbumes</button>
+            <button type="button" class="search-filter-pill" data-search-filter="playlists">Playlists</button>
+          </div>
         </div>
 
         <!-- State A: Explore & Recent Searches -->
@@ -382,13 +392,6 @@
 
         <!-- State B: Live Search Results -->
         <div class="search-results-state hidden" id="searchResultsState">
-          <div class="search-filter-pills" id="searchFilterPills">
-            <button type="button" class="search-filter-pill active" data-search-filter="all">Todo</button>
-            <button type="button" class="search-filter-pill" data-search-filter="tracks">Canciones</button>
-            <button type="button" class="search-filter-pill" data-search-filter="artists">Artistas</button>
-            <button type="button" class="search-filter-pill" data-search-filter="albums">Álbumes</button>
-            <button type="button" class="search-filter-pill" data-search-filter="playlists">Playlists</button>
-          </div>
           <div class="search-results-container" id="searchResultsContainer"></div>
         </div>
       </section>
@@ -410,7 +413,7 @@
         </header>
 
         <!-- Segmented Control + Search/Sort Toolbar -->
-        <div class="library-toolbar">
+        <div class="library-toolbar library-sticky-header" id="libraryStickyHeader">
           <div class="segmented-control" id="librarySegmented">
             <button class="seg-btn active" data-filter="all">Playlists</button>
             <button class="seg-btn" data-filter="albums">Albums</button>
@@ -887,13 +890,13 @@
 
   <!-- UI Views & Renderers -->
   <script src="src/js/views/catalog.js?v=7.9"></script>
-  <script src="src/js/views/details.js?v=7.0"></script>
+  <script src="src/js/views/details.js?v=7.1"></script>
   <script src="src/js/views/player.js?v=9.0"></script>
 
   <!-- Controllers & Bootstrap -->
   <script src="src/js/controllers/navigation.js?v=8.0"></script>
-  <script src="src/js/controllers/events.js?v=9.4"></script>
-  <script src="src/js/main.js?v=7.6"></script>
+  <script src="src/js/controllers/events.js?v=9.7"></script>
+  <script src="src/js/main.js?v=7.7"></script>
 </body>
 </html>
 

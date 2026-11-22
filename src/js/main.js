@@ -186,6 +186,11 @@ function syncFullscreenSwitchUI() {
     sw.classList.toggle('active', isFs);
     sw.setAttribute('aria-checked', isFs ? 'true' : 'false');
   }
+  if (typeof scheduleFitViewport === 'function') {
+    scheduleFitViewport();
+  } else if (typeof fitViewport === 'function') {
+    fitViewport();
+  }
   if (typeof uiLog === 'function') {
     uiLog('FS', `fullscreenchange -> active=${isFs} (${window.innerWidth}x${window.innerHeight}) | dpr=${window.devicePixelRatio || 1} | scale=${(window._echoViewportScale || 1).toFixed(2)}`);
   }
@@ -203,8 +208,11 @@ function toggleFullscreen() {
   }
 
   if (!isFs) {
-    if (requestFs) {
-      requestFs.call(docEl)
+    const req = (typeof docEl.requestFullscreen === 'function')
+      ? docEl.requestFullscreen({ navigationUI: 'hide' }).catch(() => docEl.requestFullscreen())
+      : (requestFs ? Promise.resolve(requestFs.call(docEl)) : null);
+    if (req && typeof req.then === 'function') {
+      req
         .then(() => syncFullscreenSwitchUI())
         .catch(err => {
           console.warn('Error fullscreen:', err);
@@ -213,7 +221,7 @@ function toggleFullscreen() {
     }
   } else {
     if (exitFs) {
-      exitFs.call(doc)
+      Promise.resolve(exitFs.call(doc))
         .then(() => syncFullscreenSwitchUI())
         .catch(err => {
           console.warn('Error exit fullscreen:', err);
@@ -492,19 +500,30 @@ syncDevModeUI();
   // En Echo Show nativo con bridge no es necesario pedir fullscreen web
   if (typeof bridge !== 'undefined' && bridge) return;
 
-  const isStandaloneOrFullscreenPwa =
-    (window.matchMedia && (window.matchMedia('(display-mode: fullscreen)').matches || window.matchMedia('(display-mode: standalone)').matches)) ||
-    window.navigator.standalone === true;
+  const hasMatchMedia = typeof window.matchMedia === 'function';
+  const isDisplayFullscreen = Boolean(hasMatchMedia && window.matchMedia('(display-mode: fullscreen)').matches);
+  const isStandalonePwa = Boolean(
+    (hasMatchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+    window.navigator.standalone === true
+  );
 
   const lockLandscapeIfMobile = () => {
     const isTouchDevice = (navigator.maxTouchPoints || 0) > 0 || /Android|iPhone|iPad/i.test(navigator.userAgent || '');
     if (isTouchDevice && screen.orientation && typeof screen.orientation.lock === 'function') {
       screen.orientation.lock('landscape').catch(() => { });
     }
+    if (typeof scheduleFitViewport === 'function') {
+      scheduleFitViewport();
+    } else if (typeof fitViewport === 'function') {
+      fitViewport();
+    }
   };
 
-  if (isStandaloneOrFullscreenPwa) {
+  if (isDisplayFullscreen || isStandalonePwa) {
     lockLandscapeIfMobile();
+  }
+
+  if (isDisplayFullscreen || window.navigator.standalone === true) {
     return;
   }
 

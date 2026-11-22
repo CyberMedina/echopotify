@@ -621,7 +621,7 @@ async function openEntityDetail(entityId) {
                 cover: medUrl,
                 coverLarge: largeUrl,
                 duration: Math.round((i.track.duration_ms || 200000) / 1000),
-                popular: idx < 2
+                popular: false
               };
             });
 
@@ -669,7 +669,7 @@ async function openEntityDetail(entityId) {
             cover: entity.cover,
             coverLarge: entity.coverLarge || entity.cover,
             duration: Math.round((t.duration_ms || 200000) / 1000),
-            popular: idx === 0
+            popular: false
           }));
         }
       }
@@ -692,7 +692,7 @@ async function openEntityDetail(entityId) {
             cover: medUrl,
             coverLarge: largeUrl,
             duration: Math.round((t.duration_ms || 200000) / 1000),
-            popular: idx < 3
+            popular: false
           };
         });
       }
@@ -709,7 +709,6 @@ async function openEntityDetail(entityId) {
     const isPlayingTrack = (state.playingTrackId && track.id === state.playingTrackId) ||
       (state.playingTrackTitle === track.title);
     const isLiked = track.id ? liveCatalog.likedTrackIds.has(track.id) : false;
-    const showDot = track.popular || isPlayingTrack;
     return `
       <div class="track-row ${isPlayingTrack ? 'playing' : ''}"
            data-entity-id="${entity.id}"
@@ -723,7 +722,6 @@ async function openEntityDetail(entityId) {
            data-track-cover="${track.coverLarge || track.cover || entity.coverLarge || entity.cover}"
            data-track-duration="${track.duration || 210}">
         <div class="track-num-cell">
-          ${showDot ? '<span class="track-playing-dot"></span>' : ''}
           <span>${(typeof track.num === 'number' && !isNaN(track.num)) ? track.num : (idx + 1)}</span>
         </div>
         <div class="track-name">${track.title}</div>
@@ -830,7 +828,6 @@ async function loadMorePlaylistTracks(entity) {
                data-track-cover="${track.coverLarge || track.cover || entity.coverLarge || entity.cover}"
                data-track-duration="${track.duration || 210}">
             <div class="track-num-cell">
-              ${isPlayingTrack ? '<span class="track-playing-dot"></span>' : ''}
               <span>${(typeof track.num === 'number' && !isNaN(track.num)) ? track.num : (globalIdx + 1)}</span>
             </div>
             <div class="track-name">${track.title}</div>

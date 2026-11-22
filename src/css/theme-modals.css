@@ -429,6 +429,18 @@ body.theme-dark .mini-ctrl-btn:hover {
 }
 
 /* Search bar, Filter Pills & Results Dark Mode */
+body.theme-dark .search-sticky-header.is-stuck,
+body.theme-dark .library-sticky-header.is-stuck {
+  background: rgba(15, 17, 21, 0.86);
+  border-bottom-color: rgba(255, 255, 255, 0.09);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.36);
+}
+
+body.theme-dark #view-search .search-section > .search-sub-heading,
+body.theme-dark #searchBrowseState .section-header {
+  background: linear-gradient(to bottom, rgba(15, 16, 19, 0.94) 72%, rgba(15, 16, 19, 0) 100%);
+}
+
 body.theme-dark .search-bar-wrap {
   background: rgba(33, 36, 42, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.12);

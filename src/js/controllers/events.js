@@ -1860,12 +1860,16 @@ npVolumeTrack.addEventListener('click', (e) => {
   }
 });
 
+let searchStickyCtrl = { reset() {} };
+let libraryStickyCtrl = { reset() {} };
+
 // Library Filter Tabs & Sort Pill
 document.querySelectorAll('#librarySegmented .seg-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('#librarySegmented .seg-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     renderLibrary(btn.getAttribute('data-filter'));
+    libraryStickyCtrl.reset();
   });
 });
 
@@ -2344,13 +2348,101 @@ function setSearchViewMode(isResults) {
   const browseEl = document.getElementById('searchBrowseState');
   const resultsEl = document.getElementById('searchResultsState');
   const clearBtn = document.getElementById('searchClearBtn');
+  const pillsEl = document.getElementById('searchFilterPills');
   if (browseEl) browseEl.classList.toggle('hidden', isResults);
   if (resultsEl) resultsEl.classList.toggle('hidden', !isResults);
   if (clearBtn) clearBtn.classList.toggle('hidden', !isResults);
+  if (pillsEl) pillsEl.classList.toggle('hidden', !isResults);
+}
+
+/**
+ * Attaches Twitter/X-style smart hide-on-scroll-down / reveal-on-scroll-up behavior
+ * to a sticky header inside a .screen-view scroll container.
+ */
+function initSmartStickyHeader(scrollEl, stickyEl, opts = {}) {
+  if (!scrollEl || !stickyEl || typeof scrollEl.addEventListener !== 'function') {
+    return { reset() {} };
+  }
+
+  const baseOffset = (typeof stickyEl.offsetTop === 'number' && stickyEl.offsetTop > 0) ? stickyEl.offsetTop : 0;
+  const STUCK_Y = baseOffset > 0 ? Math.max(44, baseOffset - 2) : 44;
+  const MIN_HIDE_Y = Math.max(64, STUCK_Y + 20);
+  const HIDE_DELTA = 18;
+  const SHOW_DELTA = -12;
+
+  let lastScrollTop = Math.max(0, scrollEl.scrollTop || 0);
+  let accumDelta = 0;
+
+  const syncFromScroll = () => {
+    const currentTop = Math.max(0, scrollEl.scrollTop || 0);
+    stickyEl.classList.toggle('is-stuck', currentTop > STUCK_Y);
+
+    const keepVisible = Boolean(opts.keepVisibleFn && opts.keepVisibleFn());
+    if (currentTop <= MIN_HIDE_Y || keepVisible) {
+      stickyEl.classList.remove('is-hidden');
+      accumDelta = 0;
+      lastScrollTop = currentTop;
+      return;
+    }
+
+    const delta = currentTop - lastScrollTop;
+    if (delta === 0) return;
+
+    const atBottom = Boolean(
+      scrollEl.scrollHeight > 0 &&
+      scrollEl.clientHeight > 0 &&
+      currentTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 4
+    );
+    if (atBottom && delta > 0) {
+      lastScrollTop = currentTop;
+      return;
+    }
+
+    if ((delta > 0 && accumDelta < 0) || (delta < 0 && accumDelta > 0)) {
+      accumDelta = 0;
+    }
+    accumDelta += delta;
+
+    if (accumDelta >= HIDE_DELTA) {
+      stickyEl.classList.add('is-hidden');
+      accumDelta = 0;
+    } else if (accumDelta <= SHOW_DELTA) {
+      stickyEl.classList.remove('is-hidden');
+      accumDelta = 0;
+    }
+
+    lastScrollTop = currentTop;
+  };
+
+  scrollEl.addEventListener('scroll', syncFromScroll, { passive: true });
+
+  return {
+    reset() {
+      const currentTop = Math.max(0, scrollEl.scrollTop || 0);
+      stickyEl.classList.remove('is-hidden');
+      stickyEl.classList.toggle('is-stuck', currentTop > STUCK_Y);
+      lastScrollTop = currentTop;
+      accumDelta = 0;
+    }
+  };
 }
 
 const searchInputEl = document.getElementById('searchInput');
+searchStickyCtrl = initSmartStickyHeader(
+  document.getElementById('view-search'),
+  document.getElementById('searchStickyHeader'),
+  { keepVisibleFn: () => Boolean(searchInputEl && document.activeElement === searchInputEl) }
+);
+libraryStickyCtrl = initSmartStickyHeader(
+  document.getElementById('view-library'),
+  document.getElementById('libraryStickyHeader')
+);
+
 if (searchInputEl) {
+  searchInputEl.addEventListener('focus', () => {
+    searchStickyCtrl.reset();
+  });
+
   searchInputEl.addEventListener('input', (e) => {
     const q = (e.target.value || '').trim();
     clearTimeout(searchDebounce);
@@ -2359,10 +2451,12 @@ if (searchInputEl) {
       lastSearchPayload = null;
       setSearchViewMode(false);
       renderSearch();
+      searchStickyCtrl.reset();
       return;
     }
 
     setSearchViewMode(true);
+    searchStickyCtrl.reset();
     const resultsContainer = document.getElementById('searchResultsContainer');
     if (resultsContainer) {
       resultsContainer.innerHTML = buildSearchLoadingSkeletonHTML();
@@ -2413,6 +2507,7 @@ if (searchClearBtnEl) {
     }
     setSearchViewMode(false);
     renderSearch();
+    searchStickyCtrl.reset();
   });
 }
 
@@ -2427,6 +2522,7 @@ if (searchFilterPillsEl) {
       if (lastSearchPayload) {
         renderSearchResults(lastSearchPayload, activeSearchFilter);
       }
+      searchStickyCtrl.reset();
     });
   });
 }
@@ -2637,23 +2733,53 @@ if (transferPlaybackBtn) {
 
 // Responsive Viewport Scaling (1024x640 logical canvas = 1.25x @ ~200 DPI on Echo Show 8 3rd Gen)
 function fitViewport() {
+  if (!echoViewport) return;
   const vw = window.innerWidth || document.documentElement.clientWidth || 1024;
   const vh = window.innerHeight || document.documentElement.clientHeight || 640;
   if (vw <= 10 || vh <= 10) return;
-  const scale = Math.min(vw / 1024, vh / 640);
+
+  const isPhoneLandscape = vw > vh && vh <= 500;
+  if (document.body && document.body.classList) {
+    document.body.classList.toggle('phone-landscape', isPhoneLandscape);
+  }
+
+  const baseW = 1024;
+  const baseH = isPhoneLandscape ? 530 : 640;
+  const scale = Math.min(vw / baseW, vh / baseH);
+
   if (!isFinite(scale) || scale <= 0 || Math.abs(scale - 1) < 0.02) {
     window._echoViewportScale = 1;
     echoViewport.style.transform = 'none';
     echoViewport.style.width = '100vw';
     echoViewport.style.height = '100vh';
+    if (echoViewport.style && typeof echoViewport.style.setProperty === 'function') {
+      echoViewport.style.setProperty('--viewport-h', `${vh}px`);
+    }
   } else {
     window._echoViewportScale = scale;
+    const logicalW = Math.ceil(vw / scale);
+    const logicalH = Math.ceil(vh / scale);
     echoViewport.style.transform = `scale(${scale})`;
-    echoViewport.style.width = `${Math.ceil(vw / scale)}px`;
-    echoViewport.style.height = `${Math.ceil(vh / scale)}px`;
+    echoViewport.style.width = `${logicalW}px`;
+    echoViewport.style.height = `${logicalH}px`;
+    if (echoViewport.style && typeof echoViewport.style.setProperty === 'function') {
+      echoViewport.style.setProperty('--viewport-h', `${logicalH}px`);
+    }
   }
 }
+let fitViewportTimers = [];
+function scheduleFitViewport() {
+  fitViewportTimers.forEach(t => clearTimeout(t));
+  fitViewportTimers = [];
+  fitViewport();
+  fitViewportTimers.push(setTimeout(fitViewport, 120));
+  fitViewportTimers.push(setTimeout(fitViewport, 360));
+}
+
 window.addEventListener('resize', fitViewport);
+window.addEventListener('orientationchange', scheduleFitViewport);
+window.addEventListener('pageshow', scheduleFitViewport);
+window.addEventListener('load', scheduleFitViewport);
 // cards-scroll-row horizontal mouse wheel scrolling for PC browser testing
 document.addEventListener('wheel', (e) => {
   const row = e.target.closest('.cards-scroll-row');

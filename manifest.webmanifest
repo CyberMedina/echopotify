@@ -4,7 +4,7 @@
   "description": "Spotify Web Player & Karaoke Lyrics Edition",
   "start_url": "./index.html",
   "scope": "./",
-  "display": "standalone",
+  "display": "fullscreen",
   "display_override": ["fullscreen", "standalone"],
   "orientation": "landscape",
   "background_color": "#0c0f14",
