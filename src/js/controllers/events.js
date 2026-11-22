@@ -1500,15 +1500,20 @@ const transferPlaybackBtn = document.getElementById('transferPlaybackHereBtn');
 if (transferPlaybackBtn) {
   transferPlaybackBtn.addEventListener('click', async () => {
     const devRes = await spotifyFetch('/me/player/devices');
-    if (devRes && Array.isArray(devRes.devices) && devRes.devices.length > 0) {
-      const echoId = await findEngineDeviceId();
-      const target = echoId || devRes.devices[0].id;
-      spotifyAuth.activeDeviceId = target;
-      await spotifyFetch('/me/player', {
-        method: 'PUT',
-        body: JSON.stringify({ device_ids: [target], play: true })
-      });
-      spotifyStatusText.textContent = `Reproduciendo en: ${echoId ? 'Echo Show 8 (Nativo)' : devRes.devices[0].name}`;
+    const devices = (devRes && Array.isArray(devRes.devices)) ? devRes.devices : [];
+    const echoId = await findEngineDeviceId();
+    const safeFallbackDev = devices.find(d => typeof isAutoFallbackForbiddenDevice !== 'function' || !isAutoFallbackForbiddenDevice(d));
+    const target = webPlayerDeviceId || echoId || (safeFallbackDev && safeFallbackDev.id) || '';
+    if (!target) {
+      if (typeof showToast === 'function') {
+        showToast('SpotiEcho Web Player aún no está listo en este dispositivo');
+      }
+      return;
+    }
+    state.userSelectedDeviceId = target;
+    const ok = await transferPlaybackToDevice(target, true);
+    if (ok && spotifyStatusText) {
+      spotifyStatusText.textContent = `Reproduciendo en: ${target === webPlayerDeviceId ? 'SpotiEcho Web Player' : (echoId ? 'Echo Show 8 (Nativo)' : (safeFallbackDev ? safeFallbackDev.name : 'SpotiEcho'))}`;
     }
   });
 }

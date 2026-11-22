@@ -87,6 +87,7 @@ const state = {
   playingArtistId: null,
   playingAlbumTitle: '',
   playingCover: '',
+  userSelectedDeviceId: null,
   isPlaying: false,
   durationSec: 0,
   currentTimeSec: 0,

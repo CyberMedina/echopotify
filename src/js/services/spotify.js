@@ -295,12 +295,14 @@ function initWebPlayer() {
         resolveWebPlayerReady = null;
         resFn(device_id);
       }
-      // Asociar el Web Player local salvo que otro dispositivo remoto confirmado esté reproduciendo activamente
+      // Asociar el Web Player local salvo que otro dispositivo remoto confirmado esté reproduciendo activamente o lo haya elegido el usuario
       const isConfirmedExternalPlayback = !!(
         spotifyAuth.activeDeviceId &&
         spotifyAuth.activeDeviceId !== device_id &&
-        state.lastConfirmedApiDeviceId === spotifyAuth.activeDeviceId &&
-        state.isPlaying
+        (
+          (state.lastConfirmedApiDeviceId === spotifyAuth.activeDeviceId && state.isPlaying) ||
+          state.userSelectedDeviceId === spotifyAuth.activeDeviceId
+        )
       );
       if (!isConfirmedExternalPlayback) {
         spotifyAuth.activeDeviceId = device_id;
@@ -323,6 +325,9 @@ function initWebPlayer() {
         webPlayerDeviceId = null;
         webPlayerTransferredOnce = false;
         resetWebPlayerReadyPromise();
+      }
+      if (state.userSelectedDeviceId === device_id) {
+        state.userSelectedDeviceId = null;
       }
       if (spotifyAuth.activeDeviceId === device_id) {
         spotifyAuth.activeDeviceId = null;
@@ -412,10 +417,24 @@ async function findEngineDeviceId() {
   return null;
 }
 
+function isAutoFallbackForbiddenDevice(device) {
+  if (!device) return true;
+  const t = (device.type || '').toLowerCase();
+  return t === 'speaker' || t === 'tv' || t === 'casttv' || t === 'castvideo' || t === 'avr' || t === 'stb';
+}
+
 async function resolvePlaybackDeviceId() {
-  // 1. Si ya conocemos el activeDeviceId, respetarlo
+  // 1. Solo confiar en activeDeviceId si corresponde al Web Player local, elección manual o reproducción externa confirmada
   if (spotifyAuth.activeDeviceId) {
-    return spotifyAuth.activeDeviceId;
+    const isLocalSdk = Boolean(webPlayerDeviceId && spotifyAuth.activeDeviceId === webPlayerDeviceId);
+    const isUserPicked = Boolean(state.userSelectedDeviceId && spotifyAuth.activeDeviceId === state.userSelectedDeviceId);
+    const isConfirmedPlaying = Boolean(state.isPlaying && state.lastConfirmedApiDeviceId === spotifyAuth.activeDeviceId);
+    if (isLocalSdk || isUserPicked || isConfirmedPlaying) {
+      return spotifyAuth.activeDeviceId;
+    }
+    spotifyAuth.activeDeviceId = null;
+    spotifyAuth.activeDeviceName = '';
+    spotifyAuth.activeDeviceType = '';
   }
 
   // 2. Si el Web Player del navegador está listo, usarlo
@@ -435,7 +454,7 @@ async function resolvePlaybackDeviceId() {
   }
 
   // 3. Esperar brevemente a que el Web Playback SDK local termine de registrarse antes de consultar la API
-  const readyDevId = await waitForWebPlayerReady(2500);
+  const readyDevId = await waitForWebPlayerReady(3500);
   if (readyDevId) {
     spotifyAuth.activeDeviceId = readyDevId;
     spotifyAuth.activeDeviceName = 'SpotiEcho Web Player';
@@ -455,21 +474,11 @@ async function resolvePlaybackDeviceId() {
   if (devRes && Array.isArray(devRes.devices) && devRes.devices.length > 0) {
     spotifyAuth.availableDevices = devRes.devices;
 
-    const activeDev = devRes.devices.find(d => d.is_active && d.type !== 'Speaker')
-      || devRes.devices.find(d => d.is_active);
-    if (activeDev && activeDev.id) {
-      spotifyAuth.activeDeviceId = activeDev.id;
-      spotifyAuth.activeDeviceName = activeDev.name;
-      spotifyAuth.activeDeviceType = activeDev.type;
-      if (typeof updateActiveDeviceBadgeUI === 'function') {
-        updateActiveDeviceBadgeUI(activeDev);
-      }
-      return activeDev.id;
-    }
-
-    // 4. JAMÁS enviar a dispositivos tipo 'Speaker' (como 'Echo Show de Jhonatan') ni adoptar sesiones fantasma de SpotiEcho en webPlayerDeviceId
-    const safeDev = devRes.devices.find(d => d.type !== 'Speaker' && !(d.name || '').includes('SpotiEcho'))
-      || devRes.devices.find(d => d.type !== 'Speaker');
+    const safeActive = devRes.devices.find(d => d.is_active && !isAutoFallbackForbiddenDevice(d));
+    // 4. JAMÁS enviar automáticamente a dispositivos tipo 'Speaker' o 'TV'/'CastTV' ni adoptar sesiones fantasma de SpotiEcho
+    const safeDev = safeActive
+      || devRes.devices.find(d => !isAutoFallbackForbiddenDevice(d) && !(d.name || '').includes('SpotiEcho'))
+      || devRes.devices.find(d => !isAutoFallbackForbiddenDevice(d));
     if (safeDev && safeDev.id) {
       spotifyAuth.activeDeviceId = safeDev.id;
       spotifyAuth.activeDeviceName = safeDev.name || '';
@@ -496,7 +505,14 @@ async function fetchAvailableDevices() {
     if (res && Array.isArray(res.devices)) {
       spotifyAuth.availableDevices = res.devices;
       const active = res.devices.find(d => d.is_active);
-      if (active) {
+      const shouldAdoptActive = Boolean(
+        active && (
+          (webPlayerDeviceId && active.id === webPlayerDeviceId) ||
+          (state.userSelectedDeviceId && active.id === state.userSelectedDeviceId) ||
+          (state.isPlaying && state.lastConfirmedApiDeviceId === active.id)
+        )
+      );
+      if (shouldAdoptActive) {
         spotifyAuth.activeDeviceId = active.id;
         spotifyAuth.activeDeviceName = (active.id === webPlayerDeviceId) ? 'SpotiEcho Web Player' : active.name;
         spotifyAuth.activeDeviceType = active.type;

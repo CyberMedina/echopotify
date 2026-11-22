@@ -590,10 +590,13 @@ async function pollSpotifyCurrentPlayback(opts = {}) {
 
   if (pb && pb.item) {
     const isPlaying = Boolean(pb.is_playing);
-    // Solo adoptar el dispositivo remoto si está reproduciendo activamente (no si quedó pausado de una sesión vieja en TV/teléfono o pestaña cerrada)
+    // Solo adoptar el dispositivo remoto si está reproduciendo activamente, si es el Web Player local, o si el usuario lo eligió manualmente
     if (pb.device && pb.device.id) {
-      const isPausedGhostEcho = !isPlaying && pb.device.id !== webPlayerDeviceId && (pb.device.name || '').includes('SpotiEcho');
-      const shouldAdoptDevice = !isPausedGhostEcho && (isPlaying || !webPlayerDeviceId || pb.device.id === webPlayerDeviceId);
+      const shouldAdoptDevice = Boolean(
+        isPlaying ||
+        (webPlayerDeviceId && pb.device.id === webPlayerDeviceId) ||
+        (state.userSelectedDeviceId && pb.device.id === state.userSelectedDeviceId)
+      );
       if (shouldAdoptDevice) {
         spotifyAuth.activeDeviceId = pb.device.id;
         spotifyAuth.activeDeviceName = (pb.device.id === webPlayerDeviceId) ? 'SpotiEcho Web Player' : pb.device.name;
@@ -1502,7 +1505,10 @@ function renderDevicesList(devices = []) {
   }
 
   // Identify active device
-  const activeDev = devices.find(d => d.is_active || d.id === spotifyAuth.activeDeviceId) || devices[0];
+  const activeDev = (spotifyAuth.activeDeviceId && devices.find(d => d.id === spotifyAuth.activeDeviceId))
+    || (webPlayerDeviceId && devices.find(d => d.id === webPlayerDeviceId))
+    || devices.find(d => d.is_active)
+    || devices[0];
   const otherDevs = devices.filter(d => d.id !== activeDev.id);
 
   let html = '';
@@ -1577,6 +1583,7 @@ function renderDevicesList(devices = []) {
       if (typeof showToast === 'function') showToast(`Cambiando audio a ${devName}...`, true);
       const ok = await transferPlaybackToDevice(devId, true);
       if (ok) {
+        state.userSelectedDeviceId = devId;
         if (typeof showToast === 'function') showToast(`Reproduciendo en ${devName}`, true);
         spotifyAuth.activeDeviceName = devName;
         updateActiveDeviceBadgeUI({ id: devId, name: devName, is_active: true });
