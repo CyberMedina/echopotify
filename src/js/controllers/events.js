@@ -792,6 +792,21 @@ miniPlayer.addEventListener('click', (e) => {
   openNowPlaying();
 });
 
+async function playCloudItemDirectly(cloudPb, cloudItem) {
+  const posMs = Math.max(0, Math.floor((cloudPb && cloudPb.progress_ms) || 0));
+  const ctxUri = (cloudPb && cloudPb.context && cloudPb.context.uri) ? String(cloudPb.context.uri) : '';
+  const isPlayableContext = ctxUri.startsWith('spotify:album:') || ctxUri.startsWith('spotify:playlist:') || ctxUri.startsWith('spotify:artist:');
+  if (isPlayableContext) {
+    const ctxRes = await playSpotifyContext(ctxUri, { uri: cloudItem.uri }, [], {
+      positionMs: posMs,
+      preserveShuffle: true,
+      suppressErrorUI: true
+    });
+    if (ctxRes && !ctxRes.error) return ctxRes;
+  }
+  return playSpotifyTrackUri(cloudItem.uri, [], { positionMs: posMs });
+}
+
 async function tryResumeCloudOrFallbackOnLocalSdk(devId, cmdSeq, preloadedCloudPbPromise) {
   let cloudPb = null;
   try {
@@ -809,6 +824,20 @@ async function tryResumeCloudOrFallbackOnLocalSdk(devId, cmdSeq, preloadedCloudP
   if (shouldResumeCloud) {
     const progressSec = Math.max(0, (cloudPb.progress_ms || 0) / 1000);
     applyTrackToUI(cloudItem, progressSec, true, 'poll');
+    const cloudDev = (cloudPb && cloudPb.device) ? cloudPb.device : null;
+    const isLiveExternalSession = Boolean(
+      cloudDev &&
+      cloudDev.is_active &&
+      cloudDev.id &&
+      cloudDev.id !== devId &&
+      !(cloudDev.name || '').includes('SpotiEcho')
+    );
+
+    if (!isLiveExternalSession) {
+      await playCloudItemDirectly(cloudPb, cloudItem);
+      return true;
+    }
+
     const okTransfer = await transferPlaybackToDevice(devId, true, { silent: true });
     if (cmdSeq !== playbackActionSeq) return true;
     if (okTransfer) {
@@ -832,12 +861,15 @@ async function tryResumeCloudOrFallbackOnLocalSdk(devId, cmdSeq, preloadedCloudP
             } else if (typeof setPlaybackBuffering === 'function') {
               setPlaybackBuffering(false);
             }
+            return;
           }
+          // El transfer devolvió 204 sin cargar pista real en el SDK local: reproducir directamente
+          await playCloudItemDirectly(cloudPb, cloudItem);
         } catch (e) { }
-      }, 1800);
+      }, 1200);
       return true;
     }
-    await playSpotifyTrackUri(cloudItem.uri, []);
+    await playCloudItemDirectly(cloudPb, cloudItem);
     return true;
   }
 

@@ -1045,18 +1045,26 @@ test('12. Reload with stale cached track resumes live Spotify cloud session on c
     album: { name: 'Album B', images: [] }
   };
 
+  let transferredToLocal = false;
   h.setFetchHandler(async (url, init) => {
     if (url.endsWith('/me/player') && (!init.method || init.method === 'GET')) {
       return jsonResponse({
         is_playing: false,
         progress_ms: 83000,
-        device: { id: 'phone_1', name: 'Phone', type: 'Smartphone' },
+        device: { id: 'phone_1', name: 'Phone', type: 'Smartphone', is_active: true },
         item: songB
       });
     }
+    if (url.endsWith('/me/player') && init.method === 'PUT') {
+      transferredToLocal = true;
+    }
     return emptyResponse(204);
   });
-  h.setGetCurrentState(async () => null);
+  h.setGetCurrentState(async () => (transferredToLocal ? {
+    paused: false,
+    position: 83200,
+    track_window: { current_track: songB, next_tracks: [] }
+  } : null));
 
   h.eval(`
     initWebPlayer();
@@ -1133,6 +1141,118 @@ test('13. Real track playback persists to sp_last_played_track and cache/context
   const loaded2 = JSON.parse(h.eval('JSON.stringify(loadLastPlayedTrack())'));
   assert.equal(loaded2.id, 'song_real');
   assert.equal(loaded2.name, 'Real Persisted Song');
+});
+
+test('14. Reload from dead SpotiEcho tab plays cloud album track directly at saved position_ms instead of silent transfer no-op', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  const songB = {
+    id: 'song_b',
+    uri: 'spotify:track:song_b',
+    name: 'Cloud Album Song B',
+    duration_ms: 215000,
+    artists: [{ name: 'Artist B' }],
+    album: { name: 'Album B', images: [] }
+  };
+
+  h.setFetchHandler(async (url, init) => {
+    if (url.endsWith('/me/player') && (!init.method || init.method === 'GET')) {
+      return jsonResponse({
+        is_playing: false,
+        progress_ms: 83000,
+        device: { id: 'dead_old_tab', name: 'SpotiEcho Web Player', type: 'Computer', is_active: false },
+        context: { uri: 'spotify:album:albB' },
+        item: songB
+      });
+    }
+    return emptyResponse(204);
+  });
+  h.setGetCurrentState(async () => null);
+
+  h.eval(`
+    initWebPlayer();
+    applyTrackToUI({
+      id: 'song_a',
+      uri: 'spotify:track:song_a',
+      name: 'Old Cached Song A',
+      artists: [{ name: 'Artist A' }],
+      duration_ms: 190000
+    }, 0, false, 'cache');
+  `);
+
+  const togglePromise = h.eval('togglePlayPause()');
+  setTimeout(() => {
+    h.emitSdkEvent('ready', { device_id: 'web_dev_1' });
+  }, 30);
+
+  await togglePromise;
+  await h.flushMicrotasks();
+
+  const playCall = h.fetchCalls.find(c => c.url.includes('/me/player/play'));
+  assert.ok(playCall, 'expected direct /me/player/play call to activate audio');
+  assert.deepEqual(playCall.bodyJson, {
+    context_uri: 'spotify:album:albB',
+    offset: { uri: 'spotify:track:song_b' },
+    position_ms: 83000
+  });
+  assert.equal(h.eval('state.playingTrackId'), 'song_b');
+  assert.equal(h.eval('state.isCachedPlaceholderTrack'), false);
+});
+
+test('15. Silent 204 transfer no-op from external device triggers direct /me/player/play fallback at 1200ms', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  const songB = {
+    id: 'song_b',
+    uri: 'spotify:track:song_b',
+    name: 'Cloud Song B',
+    duration_ms: 215000,
+    artists: [{ name: 'Artist B' }],
+    album: { name: 'Album B', images: [] }
+  };
+
+  h.setFetchHandler(async (url, init) => {
+    if (url.endsWith('/me/player') && (!init.method || init.method === 'GET')) {
+      return jsonResponse({
+        is_playing: false,
+        progress_ms: 83000,
+        device: { id: 'phone_1', name: 'Phone', type: 'Smartphone', is_active: true },
+        item: songB
+      });
+    }
+    return emptyResponse(204);
+  });
+  // Simulate transfer returning 204 while local Web SDK stays empty (silent no-op)
+  h.setGetCurrentState(async () => null);
+
+  h.eval(`
+    initWebPlayer();
+    applyTrackToUI({
+      id: 'song_a',
+      uri: 'spotify:track:song_a',
+      name: 'Old Cached Song A',
+      artists: [{ name: 'Artist A' }],
+      duration_ms: 190000
+    }, 0, false, 'cache');
+  `);
+
+  const togglePromise = h.eval('togglePlayPause()');
+  setTimeout(() => {
+    h.emitSdkEvent('ready', { device_id: 'web_dev_1' });
+  }, 30);
+
+  await togglePromise;
+  await new Promise(r => setTimeout(r, 1300));
+  await h.flushMicrotasks();
+
+  const playCalls = h.fetchCalls.filter(c => c.url.includes('/me/player/play'));
+  assert.ok(playCalls.length >= 1, 'expected fallback /me/player/play after empty SDK check');
+  assert.deepEqual(playCalls[0].bodyJson, {
+    uris: ['spotify:track:song_b'],
+    position_ms: 83000
+  });
 });
 
 

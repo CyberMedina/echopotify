@@ -1039,11 +1039,25 @@ function setPlaybackBuffering(isBuffering) {
   if (miniPlayer) miniPlayer.classList.toggle('is-buffering', next);
 
   if (next) {
-    bufferingSafetyTimer = setTimeout(() => {
+    bufferingSafetyTimer = setTimeout(async () => {
       bufferingSafetyTimer = null;
-      if (state.isBuffering) {
-        setPlaybackBuffering(false);
+      if (!state.isBuffering) return;
+      if (typeof isLocalWebPlayerActive === 'function' && isLocalWebPlayerActive() && webPlayer && typeof webPlayer.getCurrentState === 'function') {
+        try {
+          const sdkState = await webPlayer.getCurrentState();
+          if (!state.isBuffering) return;
+          if (!sdkState || !sdkState.track_window || !sdkState.track_window.current_track || sdkState.paused) {
+            state.isPlaying = false;
+            setPlaybackBuffering(false);
+            updatePlayPauseIcons();
+            if (typeof showToast === 'function') {
+              showToast('No se pudo activar el audio; toca Play de nuevo');
+            }
+            return;
+          }
+        } catch (e) { }
       }
+      setPlaybackBuffering(false);
     }, 6500);
   }
 }

@@ -426,6 +426,9 @@ function initWebPlayer() {
 // Always route playback to the local librespot receiver ("Echo Show 8") when available
 let webPlayerAudioActivated = false;
 function activateWebPlayerAudio() {
+  if (!webPlayer && window.Spotify && spotifyAuth.accessToken) {
+    initWebPlayer();
+  }
   if (!webPlayer || typeof webPlayer.activateElement !== 'function') return false;
   try {
     const res = webPlayer.activateElement();
@@ -812,6 +815,9 @@ async function playSpotifyContext(contextUri, offsetPosition = 0, upcomingSlice 
   } else if (typeof offsetPosition === 'number' && offsetPosition >= 0) {
     body.offset = { position: offsetPosition };
   }
+  if (typeof opts.positionMs === 'number' && opts.positionMs > 0) {
+    body.position_ms = Math.floor(opts.positionMs);
+  }
   const explicitShuffle = (typeof opts.setShuffle === 'boolean')
     ? opts.setShuffle
     : (!opts.preserveShuffle && spotifyAuth.shuffleState ? false : undefined);
@@ -852,8 +858,12 @@ async function playSpotifyUris(urisArray, upcomingSlice = [], opts = {}) {
     ? opts.setShuffle
     : (!opts.preserveShuffle && spotifyAuth.shuffleState ? false : undefined);
   const basePlayOpts = (typeof explicitShuffle === 'boolean') ? { ...opts, setShuffle: explicitShuffle } : opts;
+  const urisBody = { uris: safeUris };
+  if (typeof opts.positionMs === 'number' && opts.positionMs > 0) {
+    urisBody.position_ms = Math.floor(opts.positionMs);
+  }
   let playRes = await executeSpotifyPlay(
-    { uris: safeUris },
+    urisBody,
     cmdSeq,
     safeUris.length > 1 ? { ...basePlayOpts, suppressErrorUI: true } : basePlayOpts
   );
@@ -862,7 +872,9 @@ async function playSpotifyUris(urisArray, upcomingSlice = [], opts = {}) {
   // Si Spotify rechaza la lista masiva (p. ej. 403 Restriction Violated), reintentar inmediatamente con el URI individual de la pista
   if (playRes.error && safeUris.length > 1 && safeUris[0]) {
     console.warn('[Spotify Play Uris Error, retrying single URI]', playRes.error);
-    playRes = await executeSpotifyPlay({ uris: [safeUris[0]] }, cmdSeq, basePlayOpts);
+    const singleBody = { uris: [safeUris[0]] };
+    if (urisBody.position_ms) singleBody.position_ms = urisBody.position_ms;
+    playRes = await executeSpotifyPlay(singleBody, cmdSeq, basePlayOpts);
     if (cmdSeq !== playbackActionSeq || !playRes) return null;
   }
 
