@@ -1919,3 +1919,102 @@ body:not(.theme-dark) .modal-action-chevron {
 @keyframes spinDev {
   to { transform: rotate(360deg); }
 }
+
+/* Light Mode Frosted Glass AirPlay Device Picker (#devicesModal) */
+body:not(.theme-dark) .devices-backdrop {
+  background: rgba(15, 18, 22, 0.24);
+}
+
+body:not(.theme-dark) .devices-flyout-card {
+  background: rgba(248, 245, 240, 0.90);
+  border-color: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.22),
+              inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  color: #171a1d;
+}
+
+body:not(.theme-dark) .devices-flyout-header {
+  border-bottom-color: rgba(23, 26, 29, 0.08);
+}
+
+body:not(.theme-dark) .devices-header-title,
+body:not(.theme-dark) .device-card-name,
+body:not(.theme-dark) .device-other-name,
+body:not(.theme-dark) .devices-empty-state p {
+  color: #171a1d;
+}
+
+body:not(.theme-dark) .devices-header-subtitle,
+body:not(.theme-dark) .device-card-status,
+body:not(.theme-dark) .device-other-sub,
+body:not(.theme-dark) .devices-loading-shimmer,
+body:not(.theme-dark) .devices-empty-state {
+  color: rgba(23, 26, 29, 0.60);
+}
+
+body:not(.theme-dark) .devices-section-heading,
+body:not(.theme-dark) .devices-hint {
+  color: rgba(23, 26, 29, 0.46);
+}
+
+body:not(.theme-dark) .devices-flyout-close {
+  background: rgba(23, 26, 29, 0.08);
+  color: rgba(23, 26, 29, 0.72);
+}
+
+body:not(.theme-dark) .devices-flyout-close:hover {
+  background: rgba(23, 26, 29, 0.14);
+  color: #171a1d;
+}
+
+body:not(.theme-dark) .device-active-card {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(23, 26, 29, 0.08);
+}
+
+body:not(.theme-dark) .device-card-icon {
+  background: rgba(23, 26, 29, 0.08);
+  color: #171a1d;
+  stroke: #171a1d;
+}
+
+body:not(.theme-dark) .device-card-check {
+  background: #171a1d;
+  color: #ffffff;
+}
+
+body:not(.theme-dark) .devices-other-list {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(23, 26, 29, 0.08);
+}
+
+body:not(.theme-dark) .device-other-row + .device-other-row {
+  border-top-color: rgba(23, 26, 29, 0.07);
+}
+
+body:not(.theme-dark) .device-other-row:hover {
+  background: rgba(23, 26, 29, 0.05);
+}
+
+body:not(.theme-dark) .device-other-row:active {
+  background: rgba(23, 26, 29, 0.09);
+}
+
+body:not(.theme-dark) .device-other-icon {
+  background: rgba(23, 26, 29, 0.06);
+  color: rgba(23, 26, 29, 0.76);
+  stroke: rgba(23, 26, 29, 0.76);
+}
+
+body:not(.theme-dark) .device-radio-ring {
+  border-color: rgba(23, 26, 29, 0.24);
+}
+
+body:not(.theme-dark) .device-other-row:hover .device-radio-ring {
+  border-color: rgba(23, 26, 29, 0.50);
+}
+
+body:not(.theme-dark) .devices-spinner {
+  border-color: rgba(23, 26, 29, 0.14);
+  border-top-color: #171a1d;
+}

@@ -11,19 +11,19 @@
   "theme_color": "#0c0f14",
   "icons": [
     {
-      "src": "./src/assets/icon-192.png",
+      "src": "https://storage.googleapis.com/pr-newsroom-wp/1/2023/05/Spotify_Primary_Logo_RGB_Green.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./src/assets/icon-512.png",
+      "src": "https://storage.googleapis.com/pr-newsroom-wp/1/2023/05/Spotify_Primary_Logo_RGB_Green.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./src/assets/icon-512.png",
+      "src": "https://storage.googleapis.com/pr-newsroom-wp/1/2023/05/Spotify_Primary_Logo_RGB_Green.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

@@ -9,9 +9,13 @@
 const root = document.documentElement;
 
 function applyNeutralLikedTheme() {
-  document.body.classList.remove('album-dark-active', 'album-light-active');
   const isDark = document.body.classList.contains('theme-dark');
+  document.body.classList.toggle('album-dark-active', isDark);
+  document.body.classList.toggle('album-light-active', !isDark);
   if (isDark) {
+    root.style.setProperty('--album-bg-top', '#1c192b');
+    root.style.setProperty('--album-bg-mid', '#13131b');
+    root.style.setProperty('--album-bg-bottom', '#0d0e13');
     root.style.setProperty('--album-fg-primary', '#ffffff');
     root.style.setProperty('--album-fg-secondary', 'rgba(255, 255, 255, 0.72)');
     root.style.setProperty('--album-fg-muted', 'rgba(255, 255, 255, 0.48)');
@@ -24,6 +28,9 @@ function applyNeutralLikedTheme() {
     root.style.setProperty('--album-row-active', 'rgba(255, 255, 255, 0.15)');
     root.style.setProperty('--album-cover-shadow', 'rgba(69, 10, 245, 0.35)');
   } else {
+    root.style.setProperty('--album-bg-top', '#dcd8f2');
+    root.style.setProperty('--album-bg-mid', '#eae7f3');
+    root.style.setProperty('--album-bg-bottom', '#f3efe8');
     root.style.setProperty('--album-fg-primary', '#111214');
     root.style.setProperty('--album-fg-secondary', 'rgba(17, 18, 20, 0.70)');
     root.style.setProperty('--album-fg-muted', 'rgba(17, 18, 20, 0.50)');

@@ -2038,9 +2038,8 @@ function applyTheme(mode, updateUI = true) {
   } else if (mode === 'light') {
     isDark = false;
   } else {
-    // 'auto' mode: check time of day or system preference
-    const sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    isDark = isNightTime() || sysDark;
+    // 'auto' mode: follow local time of day strictly (07:00–18:59 light, 19:00–06:59 dark)
+    isDark = isNightTime();
   }
 
   if (isDark) {
@@ -2049,6 +2048,10 @@ function applyTheme(mode, updateUI = true) {
   } else {
     document.body.classList.remove('theme-dark');
     document.documentElement.setAttribute('data-theme', 'light');
+  }
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme && metaTheme.setAttribute) {
+    metaTheme.setAttribute('content', isDark ? '#0f1013' : '#efe6d8');
   }
 
   if (state.activeScreen === 'album') {
@@ -2077,8 +2080,7 @@ function applyTheme(mode, updateUI = true) {
   if (mode === 'auto') {
     autoThemeTimer = setInterval(() => {
       if (currentThemeMode === 'auto') {
-        const sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const shouldBeDark = isNightTime() || sysDark;
+        const shouldBeDark = isNightTime();
         const currentlyDark = document.body.classList.contains('theme-dark');
         if (shouldBeDark !== currentlyDark) {
           applyTheme('auto', false);
@@ -2099,14 +2101,6 @@ if (themeSegmented) {
         applyTheme(mode, true);
       }
     });
-  });
-}
-
-if (window.matchMedia) {
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    if (currentThemeMode === 'auto') {
-      applyTheme('auto', false);
-    }
   });
 }
 
@@ -2149,8 +2143,8 @@ function fitViewport() {
   } else {
     window._echoViewportScale = scale;
     echoViewport.style.transform = `scale(${scale})`;
-    echoViewport.style.width = `${Math.round(vw / scale)}px`;
-    echoViewport.style.height = `${Math.round(vh / scale)}px`;
+    echoViewport.style.width = `${Math.ceil(vw / scale)}px`;
+    echoViewport.style.height = `${Math.ceil(vh / scale)}px`;
   }
 }
 window.addEventListener('resize', fitViewport);
