@@ -567,6 +567,9 @@ async function pollSpotifyCurrentPlayback(opts = {}) {
       if (localState && localState.track_window && localState.track_window.current_track) {
         handleWebPlayerStateChanged(localState);
         const isPlaying = !localState.paused;
+        if (isPlaying && state.isBuffering && typeof setPlaybackBuffering === 'function') {
+          setPlaybackBuffering(false);
+        }
         updateActiveDeviceBadgeUI({
           id: webPlayerDeviceId,
           name: 'SpotiEcho Web Player',
@@ -590,6 +593,9 @@ async function pollSpotifyCurrentPlayback(opts = {}) {
 
   if (pb && pb.item) {
     const isPlaying = Boolean(pb.is_playing);
+    if (isPlaying && state.isBuffering && typeof setPlaybackBuffering === 'function') {
+      setPlaybackBuffering(false);
+    }
     // Solo adoptar el dispositivo remoto si está reproduciendo activamente, si es el Web Player local, o si el usuario lo eligió manualmente
     if (pb.device && pb.device.id) {
       const shouldAdoptDevice = Boolean(
@@ -988,6 +994,35 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
     } else {
       lyricsScrollTrack.style.transform = 'translate3d(0, 0, 0)';
     }
+  }
+}
+
+let bufferingSafetyTimer = null;
+
+function setPlaybackBuffering(isBuffering) {
+  const next = Boolean(isBuffering);
+  if (bufferingSafetyTimer) {
+    clearTimeout(bufferingSafetyTimer);
+    bufferingSafetyTimer = null;
+  }
+
+  state.isBuffering = next;
+  state.bufferingStartedAt = next ? Date.now() : 0;
+
+  const scrubberWrap = typeof document !== 'undefined' ? document.querySelector('.np-scrubber-wrap') : null;
+  if (npScrubberTrack) npScrubberTrack.classList.toggle('is-buffering', next);
+  if (scrubberWrap) scrubberWrap.classList.toggle('is-buffering', next);
+  if (npCoverStage) npCoverStage.classList.toggle('is-buffering', next);
+  if (npPlayPauseBtn) npPlayPauseBtn.classList.toggle('is-buffering', next);
+  if (miniPlayer) miniPlayer.classList.toggle('is-buffering', next);
+
+  if (next) {
+    bufferingSafetyTimer = setTimeout(() => {
+      bufferingSafetyTimer = null;
+      if (state.isBuffering) {
+        setPlaybackBuffering(false);
+      }
+    }, 6500);
   }
 }
 
@@ -1428,6 +1463,27 @@ function getDeviceTypeLabel(type = '') {
   return 'Dispositivo';
 }
 
+function setDeviceConnectingUI(mode = 'connecting') {
+  if (spotifyAuth.activeDeviceId) return;
+  const npDeviceName = document.getElementById('npActiveDeviceName');
+  const npDevRow = document.getElementById('npDeviceIndicatorRow');
+
+  if (mode === 'connecting') {
+    if (npDeviceName) npDeviceName.textContent = 'Conectando SpotiEcho…';
+    if (npDevRow) {
+      npDevRow.classList.remove('has-device');
+      npDevRow.classList.add('is-connecting');
+      npDevRow.title = 'Conectando SpotiEcho Web Player…';
+    }
+  } else {
+    if (npDeviceName) npDeviceName.textContent = 'Elegir dispositivo';
+    if (npDevRow) {
+      npDevRow.classList.remove('is-connecting');
+      npDevRow.title = 'Salida de audio: Elegir dispositivo';
+    }
+  }
+}
+
 function updateActiveDeviceBadgeUI(device) {
   if (!device) return;
   const name = device.name || 'Dispositivo';
@@ -1435,7 +1491,9 @@ function updateActiveDeviceBadgeUI(device) {
   if (device.id) spotifyAuth.activeDeviceId = device.id;
   if (device.type) spotifyAuth.activeDeviceType = device.type;
   try {
-    if (name && name !== 'Dispositivos disponibles') safeStorage.setItem('sp_active_device_name', name);
+    if (name && name !== 'Dispositivos disponibles' && name !== 'Conectando SpotiEcho…' && name !== 'Elegir dispositivo') {
+      safeStorage.setItem('sp_active_device_name', name);
+    }
     if (device.id) safeStorage.setItem('sp_active_device_id', device.id);
     if (device.type) safeStorage.setItem('sp_active_device_type', device.type);
   } catch (e) {}
@@ -1446,6 +1504,7 @@ function updateActiveDeviceBadgeUI(device) {
   }
   const npDevRow = document.getElementById('npDeviceIndicatorRow');
   if (npDevRow) {
+    npDevRow.classList.remove('is-connecting');
     npDevRow.classList.add('has-device');
     npDevRow.title = `Escuchando en: ${name} (toca para cambiar)`;
     if (device.type) {

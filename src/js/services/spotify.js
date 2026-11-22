@@ -7,6 +7,7 @@
 // 3. SPOTIFY API CLIENT WITH AUTO-REFRESH
 // --------------------------------------------------------------------------
 let refreshTokenPromise = null;
+let lastTokenRefreshAt = 0;
 
 async function refreshSpotifyAccessToken() {
   if (!spotifyAuth.refreshToken || !spotifyAuth.clientId) return false;
@@ -29,6 +30,7 @@ async function refreshSpotifyAccessToken() {
       }
       const data = await res.json();
       if (data.access_token) {
+        lastTokenRefreshAt = Date.now();
         spotifyAuth.accessToken = data.access_token;
         safeStorage.setItem('sp_access_token', data.access_token);
         if (spotifyTokenInput) spotifyTokenInput.value = data.access_token;
@@ -192,8 +194,11 @@ function isLocalWebPlayerActive() {
   );
 }
 
+let lastSdkStateEventAt = 0;
+
 function handleWebPlayerStateChanged(sdkState) {
   if (!sdkState || !sdkState.track_window || !sdkState.track_window.current_track) return;
+  lastSdkStateEventAt = Date.now();
   const cur = sdkState.track_window.current_track;
   if (webPlayerDeviceId) {
     webPlayerTransferredOnce = true;
@@ -256,6 +261,21 @@ function handleWebPlayerStateChanged(sdkState) {
 
   const rawSec = Math.max(0, (sdkState.position || 0) / 1000);
   const incomingIsPlaying = !sdkState.paused;
+  if (incomingIsPlaying && typeof setPlaybackBuffering === 'function') {
+    const intent = state.userIntent;
+    const curTitle = (cur.name || '').trim().toLowerCase();
+    const waitingForSpecificSwitch = Boolean(
+      intent &&
+      intent.type === 'track_switch' &&
+      intent.isSpecificTrack &&
+      Date.now() < intent.startedAt + 3400 &&
+      !(intent.targetId && curCleanId === intent.targetId) &&
+      !(intent.targetTitle && curTitle === intent.targetTitle.toLowerCase())
+    );
+    if (!waitingForSpecificSwitch) {
+      setPlaybackBuffering(false);
+    }
+  }
   reconcileIncomingPlaybackState(cur, rawSec, incomingIsPlaying, 'sdk');
 
   if (!state.startupPlaybackChecked && incomingIsPlaying && !state.isNowPlayingOpen) {
@@ -275,12 +295,18 @@ function initWebPlayer() {
   if (!window.Spotify || !spotifyAuth.accessToken || webPlayer) {
     return;
   }
+  if (!spotifyAuth.activeDeviceId && typeof setDeviceConnectingUI === 'function') {
+    setDeviceConnectingUI('connecting');
+  }
   ensureWebPlayerReadyPromise();
   try {
     webPlayer = new window.Spotify.Player({
       name: 'SpotiEcho Web Player',
       getOAuthToken: async cb => {
-        if (spotifyAuth.refreshToken) await refreshSpotifyAccessToken();
+        const tokenIsFresh = Boolean(spotifyAuth.accessToken && lastTokenRefreshAt && (Date.now() - lastTokenRefreshAt < 25 * 60 * 1000));
+        if (spotifyAuth.refreshToken && !tokenIsFresh) {
+          await refreshSpotifyAccessToken();
+        }
         cb(spotifyAuth.accessToken);
       },
       volume: 0.85
@@ -345,12 +371,31 @@ function initWebPlayer() {
 
     webPlayer.addListener('initialization_error', ({ message }) => {
       console.error('[Spotify Web SDK] Error de inicialización:', message);
+      if (resolveWebPlayerReady) {
+        const resFn = resolveWebPlayerReady;
+        resolveWebPlayerReady = null;
+        resFn(null);
+      }
+      if (!spotifyAuth.activeDeviceId && typeof setDeviceConnectingUI === 'function') {
+        setDeviceConnectingUI('unavailable');
+      }
     });
     webPlayer.addListener('authentication_error', ({ message }) => {
       console.error('[Spotify Web SDK] Error de autenticación:', message);
+      if (!spotifyAuth.activeDeviceId && typeof setDeviceConnectingUI === 'function') {
+        setDeviceConnectingUI('unavailable');
+      }
     });
     webPlayer.addListener('account_error', ({ message }) => {
       console.error('[Spotify Web SDK] Error de cuenta (requiere Premium):', message);
+      if (resolveWebPlayerReady) {
+        const resFn = resolveWebPlayerReady;
+        resolveWebPlayerReady = null;
+        resFn(null);
+      }
+      if (!spotifyAuth.activeDeviceId && typeof setDeviceConnectingUI === 'function') {
+        setDeviceConnectingUI('unavailable');
+      }
     });
 
     webPlayer.addListener('playback_error', ({ message }) => {
@@ -367,6 +412,14 @@ function initWebPlayer() {
     webPlayer.connect();
   } catch (e) {
     console.warn('[Spotify Web SDK] No soportado en este entorno:', e);
+    if (resolveWebPlayerReady) {
+      const resFn = resolveWebPlayerReady;
+      resolveWebPlayerReady = null;
+      resFn(null);
+    }
+    if (!spotifyAuth.activeDeviceId && typeof setDeviceConnectingUI === 'function') {
+      setDeviceConnectingUI('unavailable');
+    }
   }
 }
 
@@ -595,8 +648,15 @@ function startNativeEngine() {
 }
 
 async function executeSpotifyPlay(playBody, cmdSeq, opts = {}) {
+  if (typeof setPlaybackBuffering === 'function') {
+    setPlaybackBuffering(true);
+  }
   let targetDeviceId = await resolvePlaybackDeviceId();
   if (cmdSeq !== playbackActionSeq) return null;
+
+  if (!targetDeviceId && !spotifyAuth.activeDeviceId && typeof setDeviceConnectingUI === 'function') {
+    setDeviceConnectingUI('unavailable');
+  }
 
   const buildDevQuery = id => (id ? `?device_id=${id}` : '');
 
@@ -620,6 +680,7 @@ async function executeSpotifyPlay(playBody, cmdSeq, opts = {}) {
     if (cmdSeq !== playbackActionSeq) return null;
   }
 
+  const playSentAt = Date.now();
   let playRes = await spotifyFetch(`/me/player/play${buildDevQuery(targetDeviceId)}`, {
     method: 'PUT',
     body: JSON.stringify(playBody)
@@ -662,6 +723,7 @@ async function executeSpotifyPlay(playBody, cmdSeq, opts = {}) {
     const isBulkUri403 = errStatus === 403 && Array.isArray(playBody.uris) && playBody.uris.length > 1;
     if (!isBulkUri403 && !opts.suppressErrorUI) {
       state.isPlaying = false;
+      if (typeof setPlaybackBuffering === 'function') setPlaybackBuffering(false);
       if (typeof updatePlayPauseIcons === 'function') updatePlayPauseIcons();
       if (typeof showToast === 'function') {
         showToast('No se pudo iniciar la reproducción en este dispositivo');
@@ -670,7 +732,7 @@ async function executeSpotifyPlay(playBody, cmdSeq, opts = {}) {
     return playRes || { error: { status: 0, message: 'No response' } };
   }
 
-  // Watchdog local: verificar 650ms después si el Web Playback SDK recibió la pista y está sonando
+  // Watchdog no destructivo (2200ms): da margen al handshake DRM/Widevine inicial sin reiniciar audio en curso
   if (targetDeviceId && targetDeviceId === webPlayerDeviceId && webPlayer) {
     setTimeout(async () => {
       try {
@@ -685,14 +747,26 @@ async function executeSpotifyPlay(playBody, cmdSeq, opts = {}) {
             if (typeof webPlayer.resume === 'function') {
               await webPlayer.resume().catch(() => {});
             }
+          } else if (typeof setPlaybackBuffering === 'function') {
+            setPlaybackBuffering(false);
           }
           return;
         }
 
-        // Spotify respondió 204 pero el SDK sigue vacío: re-transferir y reintentar una vez
+        // Si el SDK ya emitió estado después del envío de /play, respetar la negociación sin reiniciar
+        if (lastSdkStateEventAt >= playSentAt) {
+          return;
+        }
+
+        // El SDK local sigue completamente vacío tras 2200ms y sin eventos recientes: intentar una transferencia única
         const retransferred = await transferPlaybackToDevice(targetDeviceId, false, { silent: true });
         if (!retransferred || cmdSeq !== playbackActionSeq || !state.isPlaying) return;
         await sleepMs(220);
+        if (cmdSeq !== playbackActionSeq || !state.isPlaying) return;
+
+        if (lastSdkStateEventAt >= playSentAt) return;
+        const lateState = await webPlayer.getCurrentState().catch(() => null);
+        if (lateState && lateState.track_window && lateState.track_window.current_track) return;
         if (cmdSeq !== playbackActionSeq || !state.isPlaying) return;
 
         const retryRes = await spotifyFetch(`/me/player/play${buildDevQuery(targetDeviceId)}`, {
@@ -702,6 +776,7 @@ async function executeSpotifyPlay(playBody, cmdSeq, opts = {}) {
         if (cmdSeq !== playbackActionSeq) return;
         if (!retryRes || retryRes.error) {
           state.isPlaying = false;
+          if (typeof setPlaybackBuffering === 'function') setPlaybackBuffering(false);
           if (typeof updatePlayPauseIcons === 'function') updatePlayPauseIcons();
           if (typeof showToast === 'function') {
             showToast('No se pudo activar el audio en SpotiEcho Web Player');
@@ -710,7 +785,7 @@ async function executeSpotifyPlay(playBody, cmdSeq, opts = {}) {
       } catch (err) {
         console.warn('[Spotify Watchdog Error]', err);
       }
-    }, 650);
+    }, 2200);
   }
 
   if (playRes && typeof playRes === 'object') {

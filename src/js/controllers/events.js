@@ -794,12 +794,20 @@ miniPlayer.addEventListener('click', (e) => {
 
 async function togglePlayPause() {
   activateWebPlayerAudio();
+  if (state.isPlaying && state.isBuffering && (Date.now() - (state.bufferingStartedAt || 0)) < 1200) {
+    return;
+  }
+
   state.isPlaying = !state.isPlaying;
   const cmdSeq = lockUserPlaybackIntent('play_pause', {
     durationMs: 3200,
     targetIsPlaying: state.isPlaying
   });
   updatePlayPauseIcons();
+
+  if (!state.isPlaying && typeof setPlaybackBuffering === 'function') {
+    setPlaybackBuffering(false);
+  }
 
   if (state.isPlaying && !state.hasValidLyrics && !state.lyricsLoading && state.playingTrackTitle && typeof ensureLyricsLoadedForCurrentTrack === 'function') {
     ensureLyricsLoadedForCurrentTrack('play');
@@ -816,6 +824,7 @@ async function togglePlayPause() {
         if (cmdSeq !== playbackActionSeq) return;
         if (localState && localState.track_window && localState.track_window.current_track && typeof webPlayer.resume === 'function') {
           await webPlayer.resume();
+          if (typeof setPlaybackBuffering === 'function') setPlaybackBuffering(false);
           return;
         }
         if (state.playingTrackUri) {
@@ -827,9 +836,28 @@ async function togglePlayPause() {
   }
 
   if (spotifyAuth.accessToken) {
-    const devQ = await getTargetDeviceQuery();
-    if (cmdSeq !== playbackActionSeq) return;
     if (state.isPlaying) {
+      if (typeof setPlaybackBuffering === 'function') setPlaybackBuffering(true);
+      const devId = await resolvePlaybackDeviceId();
+      if (cmdSeq !== playbackActionSeq) return;
+
+      if (devId && devId === webPlayerDeviceId && webPlayer) {
+        try {
+          const localState = (typeof webPlayer.getCurrentState === 'function') ? await webPlayer.getCurrentState() : null;
+          if (cmdSeq !== playbackActionSeq) return;
+          if (localState && localState.track_window && localState.track_window.current_track && typeof webPlayer.resume === 'function') {
+            await webPlayer.resume();
+            if (typeof setPlaybackBuffering === 'function') setPlaybackBuffering(false);
+            return;
+          }
+        } catch (e) { }
+        if (state.playingTrackUri) {
+          await playSpotifyTrackUri(state.playingTrackUri, state.contextUpcomingTracks || []);
+          return;
+        }
+      }
+
+      const devQ = devId ? `?device_id=${devId}` : '';
       const res = await spotifyFetch(`/me/player/play${devQ}`, { method: 'PUT' });
       if (cmdSeq !== playbackActionSeq) return;
       if (!res || res.error) {
@@ -838,18 +866,26 @@ async function togglePlayPause() {
           await playSpotifyTrackUri(state.playingTrackUri, state.contextUpcomingTracks || []);
           return;
         }
-        const devId = await resolvePlaybackDeviceId();
+        const retryDevId = devId || await resolvePlaybackDeviceId();
         if (cmdSeq !== playbackActionSeq) return;
-        if (devId && (await transferPlaybackToDevice(devId, true, { silent: true }))) {
+        if (retryDevId && (await transferPlaybackToDevice(retryDevId, true, { silent: true }))) {
+          if (typeof setPlaybackBuffering === 'function') setPlaybackBuffering(false);
           setTimeout(pollSpotifyCurrentPlayback, 700);
           return;
         }
         state.isPlaying = false;
+        if (typeof setPlaybackBuffering === 'function') setPlaybackBuffering(false);
         updatePlayPauseIcons();
+      } else if (typeof setPlaybackBuffering === 'function' && devId !== webPlayerDeviceId) {
+        setPlaybackBuffering(false);
       }
     } else {
+      const devQ = await getTargetDeviceQuery();
+      if (cmdSeq !== playbackActionSeq) return;
       await spotifyFetch(`/me/player/pause${devQ}`, { method: 'PUT' });
     }
+  } else if (typeof setPlaybackBuffering === 'function') {
+    setPlaybackBuffering(false);
   }
 }
 
@@ -1202,6 +1238,7 @@ if (npFavBtn) {
 
 // Scrubber Seek
 npScrubberTrack.addEventListener('click', (e) => {
+  if (state.isBuffering) return;
   const rect = npScrubberTrack.getBoundingClientRect();
   const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
   state.currentTimeSec = ratio * state.durationSec;

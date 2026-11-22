@@ -154,7 +154,7 @@ function tick(now) {
         updateScrubberAndLyricsUI(false);
       }
     }
-  } else if (state.isPlaying) {
+  } else if (state.isPlaying && !state.isBuffering) {
     state.currentTimeSec += dt * (state.clockRate || 1.0);
     if (state.currentTimeSec >= state.durationSec) {
       state.currentTimeSec = 0;
@@ -317,11 +317,14 @@ function logoutUser() {
   spotifyAuth.accessToken = '';
   spotifyAuth.refreshToken = '';
   state.isPlaying = false;
+  state.isBuffering = false;
+  state.bufferingStartedAt = 0;
+  state.userSelectedDeviceId = null;
   state.pcmFlowing = false;
   state.playingTrackId = null;
 
   if (webPlayer) {
-    try { webPlayer.disconnect(); } catch (e) {}
+    try { webPlayer.disconnect(); } catch (e) { }
     webPlayer = null;
   }
   webPlayerDeviceId = null;
@@ -492,7 +495,7 @@ syncDevModeUI();
   const lockLandscapeIfMobile = () => {
     const isTouchDevice = (navigator.maxTouchPoints || 0) > 0 || /Android|iPhone|iPad/i.test(navigator.userAgent || '');
     if (isTouchDevice && screen.orientation && typeof screen.orientation.lock === 'function') {
-      screen.orientation.lock('landscape').catch(() => {});
+      screen.orientation.lock('landscape').catch(() => { });
     }
   };
 
@@ -519,7 +522,7 @@ syncDevModeUI();
       : (root.webkitRequestFullscreen ? Promise.resolve(root.webkitRequestFullscreen()) : null);
 
     if (req && typeof req.then === 'function') {
-      req.then(lockLandscapeIfMobile).catch(() => {});
+      req.then(lockLandscapeIfMobile).catch(() => { });
     }
   };
 

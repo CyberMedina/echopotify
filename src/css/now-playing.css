@@ -18,7 +18,22 @@
   justify-content: space-between;
   cursor: pointer;
   box-sizing: border-box;
+  overflow: hidden;
   transform: translateZ(0);
+}
+
+.mini-player-v1.is-buffering::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.5px;
+  width: 50%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
+  transform: translate3d(-110%, 0, 0);
+  animation: appleScrubberShimmer 1.3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  pointer-events: none;
 }
 
 .mini-player-v1:hover {
@@ -383,6 +398,17 @@ body.np-fully-open .ambient-bg {
     border-radius 0.46s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* Apple Music Buffering State: cover lifts smoothly to poised scale, springing to 1.0 when audio starts */
+.np-cover-stage.is-buffering:not(.is-paused) {
+  transform: scale(0.93) translateZ(0);
+  box-shadow:
+    0 16px 36px -8px rgba(0, 0, 0, 0.34),
+    0 6px 14px -4px rgba(0, 0, 0, 0.20);
+  transition:
+    transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 /* Subtle tactile press feedback on the stage */
 .np-cover-stage:active {
   transform: scale(0.965) translateZ(0);
@@ -644,10 +670,11 @@ body.np-fully-open .ambient-bg {
   transform-origin: left center;
   transform: scaleX(0);
   will-change: transform;
+  transition: background 0.28s ease;
 }
 
 .np-slider-fill.scrubber-resetting {
-  transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), background 0.28s ease;
 }
 
 .np-slider-thumb {
@@ -662,6 +689,58 @@ body.np-fully-open .ambient-bg {
   font-weight: 600;
   color: rgba(255, 255, 255, 0.46);
   font-variant-numeric: tabular-nums;
+}
+
+/* Apple Music Buffering Scrubber: liquid translucent shimmer + locked scrubbing until real audio flows */
+.np-slider-track.is-buffering {
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.np-slider-track.is-buffering::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 55%;
+  border-radius: 99px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.14) 22%,
+    rgba(255, 255, 255, 0.56) 50%,
+    rgba(255, 255, 255, 0.14) 78%,
+    transparent 100%
+  );
+  transform: translate3d(-110%, 0, 0);
+  animation: appleScrubberShimmer 1.35s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
+}
+
+.np-slider-track.is-buffering .np-slider-fill {
+  background: rgba(255, 255, 255, 0.44);
+  transition: background 0.28s ease;
+}
+
+.np-scrubber-wrap.is-buffering .np-time-row {
+  animation: appleTimeBreathe 1.5s ease-in-out infinite;
+}
+
+@keyframes appleScrubberShimmer {
+  0% {
+    transform: translate3d(-110%, 0, 0);
+  }
+  100% {
+    transform: translate3d(210%, 0, 0);
+  }
+}
+
+@keyframes appleTimeBreathe {
+  0%, 100% {
+    opacity: 0.42;
+  }
+  50% {
+    opacity: 0.78;
+  }
 }
 
 /* Apple Music Full-Width Transport Row */

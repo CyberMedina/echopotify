@@ -907,3 +907,128 @@ test('8. Cold-start lyrics recover on Play, reset lyricsLoading, exit centered m
   assert.equal(h.eval('state.nowPlayingMode'), 'lyrics');
   assert.equal(h.getEl('lyricsScrollTrack').classList.contains('lyrics-fade-out'), false);
 });
+
+test('9. Slow cold-start DRM (~900ms) keeps Apple Music buffering shimmer on scrubber and avoids watchdog restart', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  h.setFetchHandler(async () => emptyResponse(204));
+  h.eval('initWebPlayer()');
+  h.emitSdkEvent('ready', { device_id: 'web_dev_1' });
+
+  let sdkCurrentState = null;
+  h.setGetCurrentState(async () => sdkCurrentState);
+
+  const playPromise = h.eval('playSpotifyTrackUri("spotify:track:slow_drm")');
+  await h.flushMicrotasks();
+
+  // While waiting for first audio frame, buffering shimmer is active on scrubber & cover (not paused)
+  assert.equal(h.eval('state.isBuffering'), true);
+  assert.equal(h.getEl('npScrubberTrack').classList.contains('is-buffering'), true);
+  assert.equal(h.getSelectorEl('.np-scrubber-wrap').classList.contains('is-buffering'), true);
+  assert.equal(h.getEl('npCoverStage').classList.contains('is-buffering'), true);
+  assert.equal(h.getEl('miniPlayer').classList.contains('is-buffering'), true);
+
+  await playPromise;
+
+  // Simulate Widevine DRM + first chunk finishing at ~900ms (before 2200ms watchdog!)
+  await new Promise(r => setTimeout(r, 900));
+  sdkCurrentState = {
+    paused: false,
+    position: 180,
+    shuffle: false,
+    repeat_mode: 0,
+    track_window: {
+      current_track: {
+        id: 'slow_drm',
+        uri: 'spotify:track:slow_drm',
+        name: 'Slow DRM Song',
+        duration_ms: 210000,
+        artists: [{ name: 'Artist' }],
+        album: { name: 'Album', images: [] }
+      },
+      next_tracks: []
+    }
+  };
+  h.emitSdkEvent('player_state_changed', sdkCurrentState);
+  await h.flushMicrotasks();
+
+  assert.equal(h.eval('state.isBuffering'), false);
+  assert.equal(h.getEl('npScrubberTrack').classList.contains('is-buffering'), false);
+  assert.equal(h.getEl('npCoverStage').classList.contains('is-buffering'), false);
+
+  // Wait past 2200ms watchdog to prove it never re-transfers or restarts playback
+  await new Promise(r => setTimeout(r, 1500));
+  const playCalls = h.fetchCalls.filter(c => c.url.includes('/me/player/play'));
+  const transferCalls = h.fetchCalls.filter(c => c.url.endsWith('/me/player') && c.method === 'PUT');
+  assert.equal(playCalls.length, 1, 'expected exactly one /me/player/play with zero restarts');
+  assert.equal(transferCalls.length, 1, 'expected exactly one initial transfer');
+});
+
+test('10. Cold togglePlayPause waits for SDK without 404, starts track cleanly, and ignores rapid double-tap while buffering', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  h.setFetchHandler(async () => emptyResponse(204));
+  h.setGetCurrentState(async () => null);
+  h.eval(`
+    initWebPlayer();
+    state.playingTrackId = 'cached_1';
+    state.playingTrackUri = 'spotify:track:cached_1';
+    state.playingTrackTitle = 'Cached Song';
+    state.isPlaying = false;
+  `);
+
+  const togglePromise = h.eval('togglePlayPause()');
+  assert.equal(h.eval('state.isPlaying'), true);
+  assert.equal(h.eval('state.isBuffering'), true);
+
+  // Impatient second tap 60ms later while still connecting/buffering must be ignored
+  await new Promise(r => setTimeout(r, 60));
+  await h.eval('togglePlayPause()');
+  assert.equal(h.eval('state.isPlaying'), true);
+
+  setTimeout(() => {
+    h.emitSdkEvent('ready', { device_id: 'web_dev_1' });
+  }, 40);
+
+  await togglePromise;
+  await h.flushMicrotasks();
+
+  const playCalls = h.fetchCalls.filter(c => c.url.includes('/me/player/play'));
+  assert.equal(playCalls.length, 1, 'expected single /me/player/play without initial empty 404 call');
+  assert.deepEqual(playCalls[0].bodyJson, { uris: ['spotify:track:cached_1'] });
+});
+
+test('11. Cold-start token refresh deduplicates getOAuthToken and device pill shows connecting before ready', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  h.setFetchHandler(async (url) => {
+    if (url.includes('accounts.spotify.com/api/token')) {
+      return jsonResponse({ access_token: 'fresh_tok_123' });
+    }
+    return emptyResponse(204);
+  });
+
+  const ok = await h.eval('refreshSpotifyAccessToken()');
+  assert.equal(ok, true);
+
+  h.eval('initWebPlayer()');
+  assert.equal(h.getEl('npActiveDeviceName').textContent, 'Conectando SpotiEcho…');
+  assert.equal(h.getEl('npDeviceIndicatorRow').classList.contains('is-connecting'), true);
+
+  const cfg = h.getPlayerConfig();
+  let suppliedToken = null;
+  await cfg.getOAuthToken(tok => { suppliedToken = tok; });
+  assert.equal(suppliedToken, 'fresh_tok_123');
+
+  const tokenCalls = h.fetchCalls.filter(c => c.url.includes('accounts.spotify.com/api/token'));
+  assert.equal(tokenCalls.length, 1, 'getOAuthToken should reuse freshly refreshed token');
+
+  h.emitSdkEvent('ready', { device_id: 'web_dev_1' });
+  assert.equal(h.getEl('npActiveDeviceName').textContent, 'SpotiEcho Web Player');
+  assert.equal(h.getEl('npDeviceIndicatorRow').classList.contains('is-connecting'), false);
+  assert.equal(h.getEl('npDeviceIndicatorRow').classList.contains('has-device'), true);
+});
+

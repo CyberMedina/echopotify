@@ -89,6 +89,8 @@ const state = {
   playingCover: '',
   userSelectedDeviceId: null,
   isPlaying: false,
+  isBuffering: false,
+  bufferingStartedAt: 0,
   durationSec: 0,
   currentTimeSec: 0,
   activeLineIndex: -1,

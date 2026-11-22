@@ -21,8 +21,8 @@
   <link rel="dns-prefetch" href="https://mosaic.scdn.co" />
   <link rel="stylesheet" href="src/css/base.css?v=7.0" />
   <link rel="stylesheet" href="src/css/views.css?v=7.0" />
-  <link rel="stylesheet" href="src/css/now-playing.css?v=7.1" />
-  <link rel="stylesheet" href="src/css/theme-modals.css?v=7.1" />
+  <link rel="stylesheet" href="src/css/now-playing.css?v=7.5" />
+  <link rel="stylesheet" href="src/css/theme-modals.css?v=7.5" />
   <script src="https://cdn.html.games.alexa.a2z.com/alexa-html/latest/alexa-html.js"></script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 </head>
@@ -583,13 +583,13 @@
           </div>
 
           <!-- Spotify Connect Active Device Pill Row (AirPlay / Spotify Connect Style) -->
-          <div class="np-device-indicator-row" id="npDeviceIndicatorRow" role="button" tabindex="0" title="Salida de audio: Elegir dispositivo">
+          <div class="np-device-indicator-row is-connecting" id="npDeviceIndicatorRow" role="button" tabindex="0" title="Salida de audio: Elegir dispositivo">
             <svg class="np-device-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="2" y="3" width="20" height="14" rx="2"></rect>
               <line x1="8" y1="21" x2="16" y2="21"></line>
               <line x1="12" y1="17" x2="12" y2="21"></line>
             </svg>
-            <span id="npActiveDeviceName">Dispositivos disponibles</span>
+            <span id="npActiveDeviceName">Conectando SpotiEcho…</span>
             <svg class="np-device-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
@@ -861,25 +861,25 @@
   </div>
 
   <!-- Core Architecture -->
-  <script src="src/js/core/state.js?v=7.4"></script>
+  <script src="src/js/core/state.js?v=7.5"></script>
   <script src="src/js/core/dom.js?v=7.0"></script>
   <script src="src/js/core/color.js?v=7.0"></script>
 
   <!-- External Services (OAuth 2.0 PKCE, Spotify API & Web Playback SDK, EchoRadio, LRCLIB) -->
   <script src="src/js/services/auth.js?v=7.0"></script>
-  <script src="src/js/services/spotify.js?v=7.4"></script>
+  <script src="src/js/services/spotify.js?v=7.5"></script>
   <script src="src/js/services/radio.js?v=7.0"></script>
   <script src="src/js/services/lyrics.js?v=7.3"></script>
 
   <!-- UI Views & Renderers -->
   <script src="src/js/views/catalog.js?v=7.3"></script>
   <script src="src/js/views/details.js?v=7.0"></script>
-  <script src="src/js/views/player.js?v=7.4"></script>
+  <script src="src/js/views/player.js?v=7.5"></script>
 
   <!-- Controllers & Bootstrap -->
   <script src="src/js/controllers/navigation.js?v=7.3"></script>
-  <script src="src/js/controllers/events.js?v=7.4"></script>
-  <script src="src/js/main.js?v=7.2"></script>
+  <script src="src/js/controllers/events.js?v=7.5"></script>
+  <script src="src/js/main.js?v=7.5"></script>
 </body>
 </html>
 

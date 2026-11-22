@@ -1504,6 +1504,27 @@ body:not(.theme-dark) .modal-action-chevron {
   transform: translateY(1px);
 }
 
+.np-device-indicator-row.is-connecting .np-device-icon {
+  color: rgba(255, 255, 255, 0.82);
+  stroke: rgba(255, 255, 255, 0.82);
+  animation: deviceIconPulse 1.55s ease-in-out infinite;
+}
+
+.np-device-indicator-row.is-connecting #npActiveDeviceName {
+  color: rgba(255, 255, 255, 0.80);
+}
+
+@keyframes deviceIconPulse {
+  0%, 100% {
+    opacity: 0.42;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
 /* Flyout Modal Backdrop (Anchored as Popover next to player on Echo Show 8) */
 .devices-backdrop {
   position: absolute;
