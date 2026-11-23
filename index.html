@@ -4,20 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="robots" content="noindex, nofollow" />
-  <meta name="app-build" content="2026.11.22-3" />
-  <script>
-    /* Modo experimental "barra auto-oculta" de Silk (rollback: ?barmode=off) */
-    (function () {
-      try {
-        var q = window.location.search || '';
-        if (/[?&]barmode=off\b/.test(q)) window.localStorage.removeItem('sp_silk_autohide_bar');
-        else if (/[?&]barmode=on\b/.test(q)) window.localStorage.setItem('sp_silk_autohide_bar', 'true');
-        if (window.localStorage.getItem('sp_silk_autohide_bar') === 'true') {
-          document.documentElement.classList.add('silk-autohide-bar');
-        }
-      } catch (e) { }
-    })();
-  </script>
+  <meta name="app-build" content="2026.11.22-4" />
   <meta name="theme-color" content="#0c0f14" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -33,7 +20,7 @@
   <link rel="preconnect" href="https://api.spotify.com" crossorigin />
   <link rel="dns-prefetch" href="https://i.scdn.co" />
   <link rel="dns-prefetch" href="https://mosaic.scdn.co" />
-  <link rel="stylesheet" href="src/css/base.css?v=7.3" />
+  <link rel="stylesheet" href="src/css/base.css?v=7.4" />
   <link rel="stylesheet" href="src/css/views.css?v=7.6" />
   <link rel="stylesheet" href="src/css/now-playing.css?v=9.3" />
   <link rel="stylesheet" href="src/css/theme-modals.css?v=8.7" />
@@ -853,64 +840,6 @@
                   </svg>
                 </div>
               </button>
-
-              <div id="silkFsLabBox" style="display: none; margin-top: 12px;">
-                <button type="button" class="modal-action-card-btn" id="silkFsTargetBtn">
-                  <div class="modal-action-left">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2"></rect>
-                      <path d="M9 3v18"></path>
-                    </svg>
-                    <span>Objetivo Fullscreen (Silk)</span>
-                  </div>
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <span id="silkFsTargetLabel" style="font-size: 12.5px; opacity: 0.68;">doc</span>
-                    <svg class="modal-action-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="9 18 15 12 9 6"></polyline>
-                    </svg>
-                  </div>
-                </button>
-
-                <div class="modal-setting-row" id="silkConsumeTouchRow" style="margin-top: 10px;">
-                  <div class="modal-setting-left">
-                    <div class="modal-setting-icon">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"></path>
-                        <path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"></path>
-                        <path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"></path>
-                        <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"></path>
-                      </svg>
-                    </div>
-                    <div class="modal-setting-text">
-                      <div class="modal-setting-label">Consumir toques en pantalla completa</div>
-                      <div class="modal-setting-desc">Prueba si Blink evita mostrar la barra de URL consumiendo toques sin scroll.</div>
-                    </div>
-                  </div>
-                  <button type="button" class="apple-switch" id="silkConsumeTouchSwitch" role="switch" aria-checked="false" aria-label="Consumir toques en pantalla completa">
-                    <span class="apple-switch-thumb"></span>
-                  </button>
-                </div>
-
-                <div class="modal-setting-row" id="silkAutoHideBarRow" style="margin-top: 10px;">
-                  <div class="modal-setting-left">
-                    <div class="modal-setting-icon">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="4" width="18" height="16" rx="2"></rect>
-                        <path d="M3 9h18"></path>
-                        <path d="M12 13v5"></path>
-                        <path d="M9.5 15.5L12 13l2.5 2.5"></path>
-                      </svg>
-                    </div>
-                    <div class="modal-setting-text">
-                      <div class="modal-setting-label">Barra auto-oculta (experimental)</div>
-                      <div class="modal-setting-desc">Sin pantalla completa: Silk oculta la barra al desplazar. Recarga al cambiar. Rollback: ?barmode=off</div>
-                    </div>
-                  </div>
-                  <button type="button" class="apple-switch" id="silkAutoHideBarSwitch" role="switch" aria-checked="false" aria-label="Barra auto-oculta experimental">
-                    <span class="apple-switch-thumb"></span>
-                  </button>
-                </div>
-              </div>
             </div>
 
             <!-- Section 3: Cuenta -->
@@ -984,7 +913,7 @@
   <!-- Controllers & Bootstrap -->
   <script src="src/js/controllers/navigation.js?v=8.2"></script>
   <script src="src/js/controllers/events.js?v=10.0"></script>
-  <script src="src/js/main.js?v=8.0"></script>
+  <script src="src/js/main.js?v=8.1"></script>
 </body>
 </html>
 

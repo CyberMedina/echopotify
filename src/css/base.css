@@ -101,46 +101,6 @@ body {
   touch-action: manipulation;
 }
 
-/* --------------------------------------------------------------------------
-   EXPERIMENTAL: Silk "barra auto-oculta" (sin requestFullscreen)
-   El documento raíz obtiene un poco de scroll para que Silk/Chromium
-   oculte su barra de URL; la app queda fija encima.
-   Rollback: quitar la clase .silk-autohide-bar (switch Dev o ?barmode=off)
-   -------------------------------------------------------------------------- */
-html.silk-autohide-bar,
-html.silk-autohide-bar body {
-  position: static;
-  inset: auto;
-  height: auto;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior-x: none;
-  overscroll-behavior-y: none;
-  scrollbar-width: none;
-}
-
-html.silk-autohide-bar::-webkit-scrollbar,
-html.silk-autohide-bar body::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
-}
-
-html.silk-autohide-bar body {
-  min-height: calc(100vh + 180px);
-}
-
-html.silk-autohide-bar .echo-viewport {
-  position: fixed;
-  top: 0;
-  left: 0;
-}
-
-html.silk-autohide-bar .echo-viewport,
-html.silk-autohide-bar .echo-viewport * {
-  overscroll-behavior: contain;
-}
-
 /* ==========================================================================
    1024x640 Logical Echo Show 8 (3rd Gen) Frame Container
    ========================================================================== */
