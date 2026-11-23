@@ -2457,6 +2457,7 @@ function initSmartStickyHeader(scrollEl, stickyEl, opts = {}) {
   const syncFromScroll = () => {
     const currentTop = Math.max(0, scrollEl.scrollTop || 0);
     stickyEl.classList.toggle('is-stuck', currentTop > STUCK_Y);
+    if (typeof opts.onScroll === 'function') opts.onScroll(currentTop);
 
     const keepVisible = Boolean(opts.keepVisibleFn && opts.keepVisibleFn());
     if (currentTop <= MIN_HIDE_Y || keepVisible) {
@@ -2502,17 +2503,44 @@ function initSmartStickyHeader(scrollEl, stickyEl, opts = {}) {
       const currentTop = Math.max(0, scrollEl.scrollTop || 0);
       stickyEl.classList.remove('is-hidden');
       stickyEl.classList.toggle('is-stuck', currentTop > STUCK_Y);
+      if (typeof opts.onScroll === 'function') opts.onScroll(currentTop);
       lastScrollTop = currentTop;
       accumDelta = 0;
     }
   };
 }
 
+function syncSearchStickySectionHeaders(currentTop) {
+  const viewSearch = document.getElementById('view-search');
+  if (!viewSearch || typeof viewSearch.querySelectorAll !== 'function') return;
+  const headings = viewSearch.querySelectorAll('.search-section > .search-sub-heading, #searchBrowseState .section-header');
+  if (!headings || headings.length === 0) return;
+
+  if (currentTop <= 16 || typeof viewSearch.getBoundingClientRect !== 'function') {
+    headings.forEach(el => {
+      if (el && el.classList) el.classList.remove('is-section-stuck');
+    });
+    return;
+  }
+
+  const containerRect = viewSearch.getBoundingClientRect();
+  const containerTop = containerRect ? containerRect.top : 0;
+  headings.forEach(el => {
+    if (!el || !el.classList || typeof el.getBoundingClientRect !== 'function') return;
+    const rect = el.getBoundingClientRect();
+    const isStuck = Boolean(rect && rect.height > 0 && rect.top <= containerTop + 2);
+    el.classList.toggle('is-section-stuck', isStuck);
+  });
+}
+
 const searchInputEl = document.getElementById('searchInput');
 searchStickyCtrl = initSmartStickyHeader(
   document.getElementById('view-search'),
   document.getElementById('searchStickyHeader'),
-  { keepVisibleFn: () => Boolean(searchInputEl && document.activeElement === searchInputEl) }
+  {
+    keepVisibleFn: () => Boolean(searchInputEl && document.activeElement === searchInputEl),
+    onScroll: syncSearchStickySectionHeaders
+  }
 );
 libraryStickyCtrl = initSmartStickyHeader(
   document.getElementById('view-library'),

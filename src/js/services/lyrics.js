@@ -234,13 +234,100 @@ const lyricsPrefetchAttempted = new Map();
 const LYRICS_PREFETCH_RETRY_COOLDOWN_MS = 5 * 60 * 1000;
 let lyricsPrefetchSeq = 0;
 
+const LRCLIB_MAX_DURATION_DIFF_SEC = 7;
+
 function normalizeLyricsTrackMeta(trackName, artistName) {
-  const rawTrack = String(trackName || '');
-  const rawArtist = String(artistName || '');
-  const cleanTrack = rawTrack.replace(/\s*\(.*?\)\s*/g, '').replace(/\s*-\s*.*$/, '').trim() || rawTrack.trim();
-  const cleanArtist = rawArtist.replace(/\s*,\s*.*$/, '').trim() || rawArtist.trim();
-  const cacheKey = cleanTrack ? `${cleanArtist.toLowerCase()}::${cleanTrack.toLowerCase()}` : '';
-  return { cleanTrack, cleanArtist, cacheKey };
+  const rawTrack = String(trackName || '').trim();
+  const rawArtist = String(artistName || '').trim();
+  const cleanTrack = rawTrack.replace(/\s*\(.*?\)\s*/g, '').replace(/\s*-\s*.*$/, '').trim() || rawTrack;
+  const cleanArtist = rawArtist.replace(/\s*,\s*.*$/, '').trim() || rawArtist;
+  const hasVariantTitle = Boolean(rawTrack && cleanTrack && rawTrack.toLowerCase() !== cleanTrack.toLowerCase());
+  const keyTrack = hasVariantTitle ? rawTrack : cleanTrack;
+  const cacheKey = keyTrack ? `${cleanArtist.toLowerCase()}::${keyTrack.toLowerCase()}` : '';
+  return { rawTrack, cleanTrack, cleanArtist, hasVariantTitle, cacheKey };
+}
+
+function getLyricsTitleCandidates(meta) {
+  if (!meta) return [];
+  if (meta.hasVariantTitle && meta.rawTrack) {
+    return meta.cleanTrack ? [meta.rawTrack, meta.cleanTrack] : [meta.rawTrack];
+  }
+  return meta.cleanTrack ? [meta.cleanTrack] : [];
+}
+
+function isLrclibDurationValid(candidateDuration, expectedDurationSec) {
+  const cand = Number(candidateDuration);
+  const exp = Number(expectedDurationSec);
+  if (!Number.isFinite(cand) || cand <= 0 || !Number.isFinite(exp) || exp <= 0) {
+    return true;
+  }
+  return Math.abs(cand - exp) <= LRCLIB_MAX_DURATION_DIFF_SEC;
+}
+
+function buildLyricsPlusUrl(trackTitle, artistName, durationSec) {
+  const durParam = durationSec && durationSec > 0 ? `&duration=${Math.round(durationSec)}` : '';
+  return `https://lyricsplus.binimum.org/v2/lyrics/get?title=${encodeURIComponent(trackTitle)}&artist=${encodeURIComponent(artistName)}${durParam}`;
+}
+
+function buildLrclibGetUrl(trackTitle, artistName, durationSec) {
+  const durParam = durationSec && durationSec > 0 ? `&duration=${Math.round(durationSec)}` : '';
+  return `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackTitle)}&artist_name=${encodeURIComponent(artistName)}${durParam}`;
+}
+
+async function fetchLyricsPlusCandidates(meta, durationSec, fetchId, tag, timeoutMs, shouldAbortFn) {
+  const titles = getLyricsTitleCandidates(meta);
+  for (const titleCandidate of titles) {
+    if (shouldAbortFn && shouldAbortFn()) return null;
+    try {
+      const lpUrl = buildLyricsPlusUrl(titleCandidate, meta.cleanArtist, durationSec);
+      const lpRes = await timedLyricsFetch(tag, fetchId, lpUrl, timeoutMs);
+      if (shouldAbortFn && shouldAbortFn()) return null;
+      if (lpRes && lpRes.ok) {
+        const lpData = await lpRes.json();
+        const wordParsed = parseLyricsPlusWordSync(lpData, durationSec, meta.rawTrack || titleCandidate);
+        if (wordParsed && wordParsed.length > 0) {
+          return wordParsed;
+        }
+      }
+    } catch (e) { }
+  }
+  return null;
+}
+
+async function fetchLrclibGetCandidates(meta, durationSec, fetchId, tag, timeoutMs, allowRetry, shouldAbortFn) {
+  const titles = getLyricsTitleCandidates(meta);
+  for (const titleCandidate of titles) {
+    if (shouldAbortFn && shouldAbortFn()) return null;
+    try {
+      const getUrl = buildLrclibGetUrl(titleCandidate, meta.cleanArtist, durationSec);
+      let res = await timedLyricsFetch(tag, fetchId, getUrl, timeoutMs);
+      if (shouldAbortFn && shouldAbortFn()) return null;
+
+      if (allowRetry && (!res || res.status >= 500)) {
+        await new Promise(r => setTimeout(r, 700));
+        if (shouldAbortFn && shouldAbortFn()) return null;
+        res = await timedLyricsFetch(`${tag}-retry`, fetchId, getUrl, timeoutMs + 1500);
+        if (shouldAbortFn && shouldAbortFn()) return null;
+      }
+
+      if (res && res.ok) {
+        try {
+          const data = await res.json();
+          if (data && !data.instrumental && data.syncedLyrics) {
+            if (isLrclibDurationValid(data.duration, durationSec)) {
+              return data.syncedLyrics;
+            }
+            lyrLog(`#${fetchId} ${tag} dropped duration mismatch (lrc=${data.duration}s vs spotify=${durationSec}s) for "${titleCandidate}"`);
+          } else {
+            lyrLog(`#${fetchId} ${tag}: no syncedLyrics (instrumental=${data && data.instrumental})`);
+          }
+        } catch (jsonErr) {
+          lyrLog(`#${fetchId} ${tag}: body is not JSON (${jsonErr && jsonErr.message})`);
+        }
+      }
+    } catch (e) { }
+  }
+  return null;
 }
 
 function setLyricsMemoryCache(cacheKey, parsedLines) {
@@ -262,7 +349,8 @@ async function prefetchSingleTrackLyrics(track) {
   const artistName = (Array.isArray(track.artists) && track.artists[0] && track.artists[0].name)
     ? track.artists[0].name
     : (track.artist || '');
-  const { cleanTrack, cleanArtist, cacheKey } = normalizeLyricsTrackMeta(trackName, artistName);
+  const meta = normalizeLyricsTrackMeta(trackName, artistName);
+  const { cacheKey } = meta;
   if (!cacheKey) return null;
   if (cacheKey === activeLyricTrackKey || cacheKey === state.loadedLyricsKey) return null;
 
@@ -282,52 +370,29 @@ async function prefetchSingleTrackLyrics(track) {
     : (track.duration || 0);
 
   const task = (async () => {
-    let triedLyricsPlus = false;
-    let triedLrclibGet = false;
+    const wordParsed = await fetchLyricsPlusCandidates(meta, durationSec, 0, 'prefetch-lp', 3600, null);
+    if (wordParsed && wordParsed.length > 0) {
+      setLyricsMemoryCache(cacheKey, wordParsed);
+      lyrLog(`prefetch CACHE HIT (lyricsplus) "${cacheKey}" (${wordParsed.length} lines)`);
+      return { lines: wordParsed, triedLyricsPlus: true, triedLrclibGet: false };
+    }
 
-    try {
-      triedLyricsPlus = true;
-      const durParam = durationSec && durationSec > 0 ? `&duration=${Math.round(durationSec)}` : '';
-      const lpUrl = `https://lyricsplus.binimum.org/v2/lyrics/get?title=${encodeURIComponent(cleanTrack)}&artist=${encodeURIComponent(cleanArtist)}${durParam}`;
-      const lpRes = await timedLyricsFetch('prefetch-lp', 0, lpUrl, 3600);
-      if (lpRes && lpRes.ok) {
-        try {
-          const lpData = await lpRes.json();
-          const wordParsed = parseLyricsPlusWordSync(lpData, durationSec, cleanTrack);
-          if (wordParsed && wordParsed.length > 0) {
-            setLyricsMemoryCache(cacheKey, wordParsed);
-            lyrLog(`prefetch CACHE HIT (lyricsplus) "${cacheKey}" (${wordParsed.length} lines)`);
-            return { lines: wordParsed, triedLyricsPlus: true, triedLrclibGet: false };
-          }
-        } catch (e) { }
+    const rawSyncedLrc = await fetchLrclibGetCandidates(meta, durationSec, 0, 'prefetch-get', 4500, false, null);
+    if (rawSyncedLrc) {
+      const parsed = parseLrcToWordSync(rawSyncedLrc, durationSec);
+      if (parsed && parsed.length > 0) {
+        setLyricsMemoryCache(cacheKey, parsed);
+        lyrLog(`prefetch CACHE HIT (lrclib) "${cacheKey}" (${parsed.length} lines)`);
+        return { lines: parsed, triedLyricsPlus: true, triedLrclibGet: true };
       }
-    } catch (e) { }
-
-    try {
-      triedLrclibGet = true;
-      const getUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTrack)}&artist_name=${encodeURIComponent(cleanArtist)}`;
-      const res = await timedLyricsFetch('prefetch-get', 0, getUrl, 4500);
-      if (res && res.ok) {
-        try {
-          const data = await res.json();
-          if (data && !data.instrumental && data.syncedLyrics) {
-            const parsed = parseLrcToWordSync(data.syncedLyrics, durationSec);
-            if (parsed && parsed.length > 0) {
-              setLyricsMemoryCache(cacheKey, parsed);
-              lyrLog(`prefetch CACHE HIT (lrclib) "${cacheKey}" (${parsed.length} lines)`);
-              return { lines: parsed, triedLyricsPlus: true, triedLrclibGet: true };
-            }
-          }
-        } catch (e) { }
-      }
-    } catch (e) { }
+    }
 
     lyricsPrefetchAttempted.set(cacheKey, Date.now());
     if (lyricsPrefetchAttempted.size > 120) {
       const oldestMiss = lyricsPrefetchAttempted.keys().next().value;
       if (oldestMiss) lyricsPrefetchAttempted.delete(oldestMiss);
     }
-    return { lines: null, triedLyricsPlus, triedLrclibGet };
+    return { lines: null, triedLyricsPlus: true, triedLrclibGet: true };
   })().finally(() => {
     lyricsPrefetchInFlight.delete(cacheKey);
   });
@@ -390,7 +455,8 @@ async function timedLyricsFetch(tag, fetchId, url, timeoutMs) {
 
 async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durationSec) {
   if (!trackName) return;
-  const { cleanTrack, cleanArtist, cacheKey } = normalizeLyricsTrackMeta(trackName, artistName);
+  const meta = normalizeLyricsTrackMeta(trackName, artistName);
+  const { rawTrack, cleanTrack, cleanArtist, cacheKey } = meta;
   if (!cleanTrack) return;
 
   // If lyrics are already loaded and displayed for this exact song, never wipe or re-fetch!
@@ -474,105 +540,77 @@ async function fetchSyncedLyricsForTrack(trackName, artistName, albumName, durat
     } catch (e) { }
   }
 
+  const isStaleFetch = () => fetchId !== lyricFetchSeq;
+
   // STEP 0: High-fidelity Apple Music TTML Word-Sync via LyricsPlus (Truth Source)
   if (!skipLyricsPlus) {
-    try {
-      const durParam = durationSec && durationSec > 0 ? `&duration=${Math.round(durationSec)}` : '';
-      const lpUrl = `https://lyricsplus.binimum.org/v2/lyrics/get?title=${encodeURIComponent(cleanTrack)}&artist=${encodeURIComponent(cleanArtist)}${durParam}`;
-      const lpRes = await timedLyricsFetch('lyricsplus-wordsync', fetchId, lpUrl, 3800);
-      if (fetchId !== lyricFetchSeq) { lyrLog(`#${fetchId} stale after lyricsplus, dropped`); return; }
-
-      if (lpRes && lpRes.ok) {
-        try {
-          const lpData = await lpRes.json();
-          const wordParsed = parseLyricsPlusWordSync(lpData, durationSec, cleanTrack);
-          if (wordParsed && wordParsed.length > 0) {
-            lyrLog(`#${fetchId} OK REAL APPLE MUSIC WORD-SYNC ${wordParsed.length} lines in ${Date.now() - tStart}ms`);
-            setLyricsMemoryCache(cacheKey, wordParsed);
-            state.lyricsLoading = false;
-            state.hasValidLyrics = true;
-            state.loadedLyricsKey = cacheKey;
-            state.activeLyrics = wordParsed;
-            state.activeLineIndex = -1;
-            buildLyricsDOM(wordParsed);
-            updateNowPlayingRightPanelMode();
-            updateScrubberAndLyricsUI(true);
-            return;
-          }
-        } catch (jsonErr) {
-          lyrLog(`#${fetchId} lyricsplus parse error: ${jsonErr && jsonErr.message}`);
-        }
-      }
-    } catch (e) {
-      lyrLog(`#${fetchId} lyricsplus fetch error: ${e && e.message}`);
+    const wordParsed = await fetchLyricsPlusCandidates(meta, durationSec, fetchId, 'lyricsplus-wordsync', 3800, isStaleFetch);
+    if (isStaleFetch()) { lyrLog(`#${fetchId} stale after lyricsplus, dropped`); return; }
+    if (wordParsed && wordParsed.length > 0) {
+      lyrLog(`#${fetchId} OK REAL APPLE MUSIC WORD-SYNC ${wordParsed.length} lines in ${Date.now() - tStart}ms`);
+      setLyricsMemoryCache(cacheKey, wordParsed);
+      state.lyricsLoading = false;
+      state.hasValidLyrics = true;
+      state.loadedLyricsKey = cacheKey;
+      state.activeLyrics = wordParsed;
+      state.activeLineIndex = -1;
+      buildLyricsDOM(wordParsed);
+      updateNowPlayingRightPanelMode();
+      updateScrubberAndLyricsUI(true);
+      return;
     }
   }
 
   let rawSyncedLrc = null;
 
-  // STEP 1: Direct lookup via /api/get (returns exact syncedLyrics)
-  if (!skipLrclibGet && fetchId === lyricFetchSeq) {
-    try {
-      const getUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTrack)}&artist_name=${encodeURIComponent(cleanArtist)}`;
-      let res = await timedLyricsFetch('get', fetchId, getUrl, 5000);
-      if (fetchId !== lyricFetchSeq) { lyrLog(`#${fetchId} stale after get, dropped`); return; }
-
-      // One retry on timeout / network error / 5xx (not on 404 = genuinely missing)
-      if (!res || res.status >= 500) {
-        await new Promise(r => setTimeout(r, 700));
-        if (fetchId !== lyricFetchSeq) return;
-        res = await timedLyricsFetch('get-retry', fetchId, getUrl, 6500);
-      }
-
-      if (fetchId !== lyricFetchSeq) { lyrLog(`#${fetchId} stale after get-retry, dropped`); return; }
-      if (res && res.ok) {
-        try {
-          const data = await res.json();
-          if (data && !data.instrumental && data.syncedLyrics) {
-            rawSyncedLrc = data.syncedLyrics;
-          } else {
-            lyrLog(`#${fetchId} get: no syncedLyrics (instrumental=${data && data.instrumental})`);
-          }
-        } catch (jsonErr) {
-          lyrLog(`#${fetchId} get: body is not JSON (${jsonErr && jsonErr.message})`);
-        }
-      }
-    } catch (e) { }
+  // STEP 1: Direct lookup via /api/get (tries exact track title first, then clean fallback, with duration check)
+  if (!skipLrclibGet && !isStaleFetch()) {
+    rawSyncedLrc = await fetchLrclibGetCandidates(meta, durationSec, fetchId, 'get', 5000, true, isStaleFetch);
+    if (isStaleFetch()) { lyrLog(`#${fetchId} stale after get, dropped`); return; }
   }
 
-  // STEP 2: Fallback search if direct get didn't find it or had naming discrepancy
-  if (!rawSyncedLrc && fetchId === lyricFetchSeq) {
-    try {
-      const searchUrl = `https://lrclib.net/api/search?track_name=${encodeURIComponent(cleanTrack)}&artist_name=${encodeURIComponent(cleanArtist)}`;
-      const res = await timedLyricsFetch('search', fetchId, searchUrl, 7500);
-      if (fetchId !== lyricFetchSeq) { lyrLog(`#${fetchId} stale after search, dropped`); return; }
-      if (res && res.ok) {
-        try {
-          const list = await res.json();
-          if (Array.isArray(list) && list.length > 0) {
-            const syncedCandidates = list.filter(item => !item.instrumental && item.syncedLyrics);
-            lyrLog(`#${fetchId} search: ${list.length} results, ${syncedCandidates.length} synced`);
-            if (syncedCandidates.length > 0) {
-              syncedCandidates.sort((a, b) => Math.abs((a.duration || durationSec) - durationSec) - Math.abs((b.duration || durationSec) - durationSec));
-              rawSyncedLrc = syncedCandidates[0].syncedLyrics;
+  // STEP 2: Fallback search (tries variation title first, then clean title, strictly bounded by duration diff)
+  if (!rawSyncedLrc && !isStaleFetch()) {
+    const searchTitles = getLyricsTitleCandidates(meta);
+    for (const searchTitle of searchTitles) {
+      if (isStaleFetch() || rawSyncedLrc) break;
+      try {
+        const searchUrl = `https://lrclib.net/api/search?track_name=${encodeURIComponent(searchTitle)}&artist_name=${encodeURIComponent(cleanArtist)}`;
+        const res = await timedLyricsFetch('search', fetchId, searchUrl, 7500);
+        if (isStaleFetch()) { lyrLog(`#${fetchId} stale after search, dropped`); return; }
+        if (res && res.ok) {
+          try {
+            const list = await res.json();
+            if (Array.isArray(list) && list.length > 0) {
+              const syncedCandidates = list.filter(item =>
+                item && !item.instrumental && item.syncedLyrics && isLrclibDurationValid(item.duration, durationSec)
+              );
+              lyrLog(`#${fetchId} search ("${searchTitle}"): ${list.length} results, ${syncedCandidates.length} valid synced`);
+              if (syncedCandidates.length > 0) {
+                syncedCandidates.sort((a, b) => Math.abs((a.duration || durationSec) - durationSec) - Math.abs((b.duration || durationSec) - durationSec));
+                rawSyncedLrc = syncedCandidates[0].syncedLyrics;
+              }
+            } else {
+              lyrLog(`#${fetchId} search ("${searchTitle}"): 0 results`);
             }
-          } else {
-            lyrLog(`#${fetchId} search: 0 results`);
+          } catch (jsonErr) {
+            lyrLog(`#${fetchId} search: body is not JSON (${jsonErr && jsonErr.message})`);
           }
-        } catch (jsonErr) {
-          lyrLog(`#${fetchId} search: body is not JSON (${jsonErr && jsonErr.message})`);
         }
-      }
-    } catch (e) { }
+      } catch (e) { }
+    }
   }
 
-  // Ensure this is still the active fetch and track hasn't changed
+  // Ensure this is still the active fetch and track/version hasn't changed
   if (fetchId !== lyricFetchSeq) {
     lyrLog(`#${fetchId} stale seq at end (now playing "${state.playingTrackTitle}"), dropped`);
     return;
   }
-  const currentCleanTitle = (state.playingTrackTitle || '').replace(/\s*\(.*?\)\s*/g, '').replace(/\s*-\s*.*$/, '').trim() || state.playingTrackTitle;
-  if (currentCleanTitle.toLowerCase() !== cleanTrack.toLowerCase() && state.playingTrackTitle !== trackName) {
+  const currentMeta = normalizeLyricsTrackMeta(state.playingTrackTitle || '', artistName);
+  const sameExactVersion = currentMeta.rawTrack.toLowerCase() === rawTrack.toLowerCase();
+  const samePlainTrack = !currentMeta.hasVariantTitle && !meta.hasVariantTitle &&
+    currentMeta.cleanTrack.toLowerCase() === cleanTrack.toLowerCase();
+  if (!sameExactVersion && !samePlainTrack && state.playingTrackTitle !== trackName) {
     lyrLog(`#${fetchId} stale track at end (now playing "${state.playingTrackTitle}"), dropped`);
     state.lyricsLoading = false;
     return;
@@ -619,9 +657,7 @@ function ensureLyricsLoadedForCurrentTrack(reason = 'auto') {
   const artistName = (Array.isArray(state.playingArtists) && state.playingArtists[0] && state.playingArtists[0].name)
     ? state.playingArtists[0].name
     : (state.playingArtist ? state.playingArtist.split(',')[0].trim() : '');
-  const cleanTrack = trackName.replace(/\s*\(.*?\)\s*/g, '').replace(/\s*-\s*.*$/, '').trim() || trackName;
-  const cleanArtist = (artistName || '').replace(/\s*,\s*.*$/, '').trim() || artistName;
-  const cacheKey = `${cleanArtist.toLowerCase()}::${cleanTrack.toLowerCase()}`;
+  const { cacheKey } = normalizeLyricsTrackMeta(trackName, artistName);
 
   if (state.hasValidLyrics && state.loadedLyricsKey === cacheKey && Array.isArray(state.activeLyrics) && state.activeLyrics.length > 0) {
     if (lyricsScrollTrack) lyricsScrollTrack.classList.remove('lyrics-fade-out');
