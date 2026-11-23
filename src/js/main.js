@@ -198,6 +198,11 @@ function syncFullscreenSwitchUI() {
 
 const SILK_FS_MODES = ['doc', 'viewport', 'viewport-plain'];
 
+function isSilkAutoHideBarMode() {
+  const docEl = document.documentElement;
+  return Boolean(docEl && docEl.classList && typeof docEl.classList.contains === 'function' && docEl.classList.contains('silk-autohide-bar'));
+}
+
 function getSilkFsTargetMode() {
   const saved = typeof safeStorage !== 'undefined' && safeStorage ? safeStorage.getItem('sp_silk_fs_target') : null;
   return SILK_FS_MODES.includes(saved) ? saved : 'doc';
@@ -565,6 +570,13 @@ syncDevModeUI();
     document.removeEventListener('pointerdown', requestAutoFullscreen, true);
     document.removeEventListener('keydown', requestAutoFullscreen, true);
 
+    if (isSilkAutoHideBarMode()) {
+      if (typeof uiLog === 'function' && state.devModeEnabled) {
+        uiLog('SILK-BAR', 'auto-fullscreen omitido (modo barra auto-oculta)');
+      }
+      return;
+    }
+
     if (typeof isFullscreenActive === 'function' && isFullscreenActive()) {
       lockLandscapeIfMobile();
       return;
@@ -900,4 +912,163 @@ syncDevModeUI();
   document.addEventListener('pointerdown', (e) => {
     logInteractionEvent(`pointerdown:${e.pointerType || 'unk'}`, e.clientX, e.clientY, e);
   }, { capture: true, passive: true });
+})();
+
+// ============================================================================
+// EXPERIMENTAL: SILK "BARRA AUTO-OCULTA" (SIN requestFullscreen)
+// Rollback: switch en Opciones de desarrollador o abrir la URL con ?barmode=off
+// ============================================================================
+(function initSilkAutoHideBarMode() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+  const STORAGE_KEY = 'sp_silk_autohide_bar';
+  const active = isSilkAutoHideBarMode();
+
+  function barLog(msg) {
+    if (state.devModeEnabled && typeof uiLog === 'function') {
+      uiLog('SILK-BAR', msg);
+    }
+  }
+
+  function syncSwitchUI() {
+    const sw = document.getElementById('silkAutoHideBarSwitch');
+    if (sw) {
+      sw.classList.toggle('active', active);
+      sw.setAttribute('aria-checked', active ? 'true' : 'false');
+    }
+  }
+  syncSwitchUI();
+
+  function toggleMode(e) {
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+    const next = !active;
+    try {
+      if (next) {
+        window.localStorage.setItem(STORAGE_KEY, 'true');
+      } else {
+        window.localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch (err) { }
+    if (typeof safeStorage !== 'undefined' && safeStorage) {
+      if (next) safeStorage.setItem(STORAGE_KEY, 'true');
+      else if (typeof safeStorage.removeItem === 'function') safeStorage.removeItem(STORAGE_KEY);
+    }
+    barLog(`modo barra auto-oculta -> ${next} (recargando)`);
+    if (typeof showToast === 'function') {
+      showToast(next ? 'Barra auto-oculta activada · recargando' : 'Barra auto-oculta desactivada · recargando', true);
+    }
+
+    const doc = document;
+    const exitFs = doc.exitFullscreen || doc.webkitExitFullscreen;
+    const reload = () => {
+      const url = `${window.location.pathname}?barmode=${next ? 'on' : 'off'}&r=${Date.now()}`;
+      window.location.replace(url);
+    };
+    if (next && isFullscreenActive() && exitFs) {
+      Promise.resolve(exitFs.call(doc)).catch(() => { }).then(() => setTimeout(reload, 250));
+    } else {
+      setTimeout(reload, 250);
+    }
+  }
+
+  const row = document.getElementById('silkAutoHideBarRow');
+  if (row) row.addEventListener('click', toggleMode);
+  const sw = document.getElementById('silkAutoHideBarSwitch');
+  if (sw) sw.addEventListener('click', toggleMode);
+
+  if (!active) return;
+
+  const echoViewportEl = document.getElementById('echoViewport');
+
+  function getMaxRootScroll() {
+    const se = document.scrollingElement || document.documentElement;
+    if (!se) return 0;
+    return Math.max(0, (se.scrollHeight || 0) - (window.innerHeight || 0));
+  }
+
+  function getRootScrollY() {
+    return typeof window.scrollY === 'number' ? window.scrollY : 0;
+  }
+
+  // Intento programático: llevar el documento al fondo para que Silk oculte la barra
+  let lastPinAt = 0;
+  function pinRootToBottom(reason) {
+    const now = Date.now();
+    if (now - lastPinAt < 400) return;
+    lastPinAt = now;
+    if (typeof window.scrollTo !== 'function') return;
+    const maxY = getMaxRootScroll();
+    if (maxY <= 0) return;
+    if (getRootScrollY() >= maxY - 2) return;
+    const beforeH = window.innerHeight;
+    window.scrollTo(0, maxY);
+    setTimeout(() => {
+      barLog(`pin(${reason}) scrollY=${Math.round(getRootScrollY())}/${Math.round(getMaxRootScroll())} innerH ${beforeH}->${window.innerHeight}`);
+    }, 350);
+  }
+
+  // Si el toque NO está dentro de un contenedor desplazable, bloquear el arrastre
+  // hacia abajo del documento raíz (que haría volver a aparecer la barra de Silk).
+  function findScrollableAncestor(node, axis) {
+    let el = (node && node.nodeType === 3) ? node.parentElement : node;
+    while (el && el !== document.body && el !== document.documentElement) {
+      if (typeof window.getComputedStyle === 'function') {
+        const cs = window.getComputedStyle(el);
+        const ov = axis === 'x' ? cs.overflowX : cs.overflowY;
+        if (ov === 'auto' || ov === 'scroll') {
+          if (axis === 'x' ? (el.scrollWidth > el.clientWidth + 1) : (el.scrollHeight > el.clientHeight + 1)) {
+            return el;
+          }
+        }
+      }
+      if (el === echoViewportEl) break;
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchScrollable = null;
+
+  document.addEventListener('touchstart', (e) => {
+    if (!e.touches || e.touches.length !== 1) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchScrollable = findScrollableAncestor(e.target, 'y');
+  }, { capture: true, passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!e.touches || e.touches.length !== 1 || !e.cancelable) return;
+    if (touchScrollable) return;
+    const dx = e.touches[0].clientX - touchStartX;
+    const dy = e.touches[0].clientY - touchStartY;
+    // Dedo hacia abajo (dy > 0) => el documento subiría => Silk mostraría la barra
+    if (dy > 0 && Math.abs(dy) >= Math.abs(dx)) {
+      e.preventDefault();
+    }
+  }, { capture: true, passive: false });
+
+  document.addEventListener('touchend', () => {
+    touchScrollable = null;
+    setTimeout(() => pinRootToBottom('touchend'), 60);
+  }, { capture: true, passive: true });
+
+  let lastLoggedScrollY = -1;
+  window.addEventListener('scroll', () => {
+    const y = Math.round(getRootScrollY());
+    if (Math.abs(y - lastLoggedScrollY) >= 20) {
+      lastLoggedScrollY = y;
+      barLog(`root scrollY=${y}/${Math.round(getMaxRootScroll())} innerH=${window.innerHeight}`);
+    }
+  }, { passive: true });
+
+  window.addEventListener('resize', () => {
+    barLog(`resize innerH=${window.innerHeight} vvH=${window.visualViewport ? Math.round(window.visualViewport.height) : 'na'} scrollY=${Math.round(getRootScrollY())}`);
+  });
+
+  if (typeof scheduleFitViewport === 'function') scheduleFitViewport();
+  setTimeout(() => pinRootToBottom('boot'), 300);
+  window.addEventListener('load', () => setTimeout(() => pinRootToBottom('load'), 300));
+  barLog(`modo activo | innerH=${window.innerHeight} maxScroll=${Math.round(getMaxRootScroll())}`);
 })();
