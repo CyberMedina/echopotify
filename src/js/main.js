@@ -196,21 +196,48 @@ function syncFullscreenSwitchUI() {
   }
 }
 
+const SILK_FS_MODES = ['doc', 'viewport', 'viewport-plain'];
+
+function getSilkFsTargetMode() {
+  const saved = typeof safeStorage !== 'undefined' && safeStorage ? safeStorage.getItem('sp_silk_fs_target') : null;
+  return SILK_FS_MODES.includes(saved) ? saved : 'doc';
+}
+
+function getSilkFsTargetElement(mode) {
+  if (mode === 'viewport' || mode === 'viewport-plain') {
+    return document.getElementById('echoViewport') || document.documentElement;
+  }
+  return document.documentElement;
+}
+
+function requestConfiguredFullscreen(explicitMode) {
+  const mode = SILK_FS_MODES.includes(explicitMode) ? explicitMode : getSilkFsTargetMode();
+  const targetEl = getSilkFsTargetElement(mode);
+  if (!targetEl) return null;
+
+  if (typeof targetEl.requestFullscreen === 'function') {
+    if (mode === 'viewport-plain') {
+      return targetEl.requestFullscreen();
+    }
+    return targetEl.requestFullscreen({ navigationUI: 'hide' }).catch(() => targetEl.requestFullscreen());
+  }
+
+  const vendorReq = targetEl.webkitRequestFullscreen || targetEl.mozRequestFullScreen || targetEl.msRequestFullscreen;
+  return vendorReq ? Promise.resolve(vendorReq.call(targetEl)) : null;
+}
+
 function toggleFullscreen() {
   const doc = document;
-  const docEl = doc.documentElement;
-  const requestFs = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.mozRequestFullScreen || docEl.msRequestFullscreen;
   const exitFs = doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen;
 
   const isFs = isFullscreenActive();
+  const fsMode = getSilkFsTargetMode();
   if (typeof uiLog === 'function') {
-    uiLog('FS', `toggleFullscreen() solicitado (actual=${isFs})`);
+    uiLog('FS', `toggleFullscreen() solicitado (actual=${isFs}, mode=${fsMode})`);
   }
 
   if (!isFs) {
-    const req = (typeof docEl.requestFullscreen === 'function')
-      ? docEl.requestFullscreen({ navigationUI: 'hide' }).catch(() => docEl.requestFullscreen())
-      : (requestFs ? Promise.resolve(requestFs.call(docEl)) : null);
+    const req = requestConfiguredFullscreen(fsMode);
     if (req && typeof req.then === 'function') {
       req
         .then(() => syncFullscreenSwitchUI())
@@ -394,6 +421,10 @@ function syncDevModeUI() {
   if (!isEnabled && panel) {
     panel.classList.remove('open');
   }
+  const labBox = document.getElementById('silkFsLabBox');
+  if (labBox) {
+    labBox.style.display = isEnabled ? 'block' : 'none';
+  }
 }
 
 function toggleDevMode() {
@@ -539,10 +570,7 @@ syncDevModeUI();
       return;
     }
 
-    const root = document.documentElement;
-    const req = root.requestFullscreen
-      ? root.requestFullscreen({ navigationUI: 'hide' }).catch(() => root.requestFullscreen())
-      : (root.webkitRequestFullscreen ? Promise.resolve(root.webkitRequestFullscreen()) : null);
+    const req = requestConfiguredFullscreen();
 
     if (req && typeof req.then === 'function') {
       req.then(lockLandscapeIfMobile).catch(() => { });
@@ -636,4 +664,240 @@ syncDevModeUI();
       checkForRemoteAppUpdate();
     }
   });
+})();
+
+// ============================================================================
+// SILK FULLSCREEN DIAGNOSTIC & EXPERIMENT LAB (DEVELOPER MODE ONLY)
+// ============================================================================
+(function initSilkFullscreenDiagnostic() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+  const CONSUME_EXCLUDE_SELECTOR = [
+    'input',
+    'textarea',
+    'select',
+    '#npRightLyrics',
+    '#npQueueListContainer',
+    '#npScrubberTrack',
+    '.np-scrubber-wrap',
+    '#npVolumeTrack',
+    '#npGrabberZone',
+    '#debugLogPanel',
+    '#debugLogToggleBtn',
+    '.scroll-container',
+    '.view-scroll',
+    '.modal-body-scroll'
+  ].join(', ');
+
+  const CLICKABLE_SELECTOR = [
+    'button',
+    'a',
+    '[role="button"]',
+    '[role="switch"]',
+    '[data-open-entity]',
+    '[data-nav]',
+    '.track-row',
+    '.artist-track-item',
+    '.album-card',
+    '.jump-card',
+    '.np-transport-btn',
+    '.np-dock-btn',
+    '.np-circle-btn',
+    '.modal-action-card-btn',
+    '.modal-setting-row'
+  ].join(', ');
+
+  function normalizeTarget(raw) {
+    return (raw && raw.nodeType === 3) ? raw.parentElement : raw;
+  }
+
+  function describeEl(el) {
+    const node = normalizeTarget(el);
+    if (!node || !node.tagName) return 'none';
+    const tag = String(node.tagName).toLowerCase();
+    if (node.id) return `${tag}#${node.id}`;
+    const cls = typeof node.className === 'string'
+      ? node.className.trim().split(/\s+/).filter(Boolean).slice(0, 2).join('.')
+      : '';
+    return cls ? `${tag}.${cls}` : tag;
+  }
+
+  function getFullscreenEl() {
+    return document.fullscreenElement
+      || document.webkitFullscreenElement
+      || document.mozFullScreenElement
+      || document.msFullscreenElement
+      || null;
+  }
+
+  function getViewportSnapshot() {
+    const vv = window.visualViewport;
+    const vvStr = vv ? `${Math.round(vv.width)}x${Math.round(vv.height)}@${Math.round(vv.offsetTop)}` : 'na';
+    const scrollY = typeof window.scrollY === 'number' ? Math.round(window.scrollY) : 0;
+    return `inner=${window.innerWidth}x${window.innerHeight} vv=${vvStr} scrollY=${scrollY} fsEl=${describeEl(getFullscreenEl())} active=${describeEl(document.activeElement)}`;
+  }
+
+  function silkLog(msg) {
+    if (state.devModeEnabled && typeof uiLog === 'function') {
+      uiLog('SILK-FS', msg);
+    }
+  }
+
+  function isConsumeTouchEnabled() {
+    return typeof safeStorage !== 'undefined' && safeStorage && safeStorage.getItem('sp_silk_consume_touch') === 'true';
+  }
+
+  function syncSilkLabControlsUI() {
+    const mode = getSilkFsTargetMode();
+    const targetLabel = document.getElementById('silkFsTargetLabel');
+    if (targetLabel) {
+      targetLabel.textContent = mode;
+    }
+
+    const consumeOn = isConsumeTouchEnabled();
+    const consumeSwitch = document.getElementById('silkConsumeTouchSwitch');
+    if (consumeSwitch) {
+      consumeSwitch.classList.toggle('active', consumeOn);
+      consumeSwitch.setAttribute('aria-checked', consumeOn ? 'true' : 'false');
+    }
+  }
+
+  syncSilkLabControlsUI();
+
+  const targetBtn = document.getElementById('silkFsTargetBtn');
+  if (targetBtn) {
+    targetBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const current = getSilkFsTargetMode();
+      const idx = SILK_FS_MODES.indexOf(current);
+      const nextMode = SILK_FS_MODES[(idx + 1) % SILK_FS_MODES.length];
+      if (typeof safeStorage !== 'undefined' && safeStorage) {
+        safeStorage.setItem('sp_silk_fs_target', nextMode);
+      }
+      syncSilkLabControlsUI();
+      silkLog(`target=${nextMode} | ${getViewportSnapshot()}`);
+
+      const req = requestConfiguredFullscreen(nextMode);
+      if (req && typeof req.then === 'function') {
+        req
+          .then(() => {
+            syncFullscreenSwitchUI();
+            silkLog(`requestFS ok (${nextMode}) | ${getViewportSnapshot()}`);
+          })
+          .catch((err) => {
+            silkLog(`requestFS err (${nextMode}): ${(err && err.message) || err}`);
+          });
+      }
+    });
+  }
+
+  function toggleConsumeTouchMode(e) {
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+    const next = !isConsumeTouchEnabled();
+    if (typeof safeStorage !== 'undefined' && safeStorage) {
+      safeStorage.setItem('sp_silk_consume_touch', next ? 'true' : 'false');
+    }
+    syncSilkLabControlsUI();
+    silkLog(`consumeTouch=${next} | ${getViewportSnapshot()}`);
+  }
+
+  const consumeRow = document.getElementById('silkConsumeTouchRow');
+  if (consumeRow) consumeRow.addEventListener('click', toggleConsumeTouchMode);
+  const consumeSwitch = document.getElementById('silkConsumeTouchSwitch');
+  if (consumeSwitch) consumeSwitch.addEventListener('click', toggleConsumeTouchMode);
+
+  let lastViewportSnapshot = getViewportSnapshot();
+  function logViewportChange(source) {
+    const snap = getViewportSnapshot();
+    if (source.indexOf('fullscreen') === 0 || snap !== lastViewportSnapshot) {
+      lastViewportSnapshot = snap;
+      silkLog(`${source} | ${snap}`);
+    }
+  }
+
+  document.addEventListener('fullscreenchange', () => logViewportChange('fullscreenchange'));
+  document.addEventListener('webkitfullscreenchange', () => logViewportChange('webkitfullscreenchange'));
+  window.addEventListener('resize', () => logViewportChange('resize'));
+  if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
+    window.visualViewport.addEventListener('resize', () => logViewportChange('vv.resize'));
+  }
+
+  window.addEventListener('blur', () => silkLog(`blur | ${getViewportSnapshot()}`));
+  window.addEventListener('focus', () => silkLog(`focus | ${getViewportSnapshot()}`));
+  document.addEventListener('visibilitychange', () => {
+    silkLog(`visibility:${document.visibilityState} | ${getViewportSnapshot()}`);
+  });
+
+  // Experimental Blink touch consumer (runs BEFORE passive diagnostic touchstart listener)
+  let pendingConsumedTouch = null;
+
+  document.addEventListener('touchstart', (e) => {
+    if (!isConsumeTouchEnabled() || !isFullscreenActive()) {
+      pendingConsumedTouch = null;
+      return;
+    }
+    if (!e.touches || e.touches.length !== 1) {
+      pendingConsumedTouch = null;
+      return;
+    }
+    const target = normalizeTarget(e.target);
+    if (!target || (target.closest && target.closest(CONSUME_EXCLUDE_SELECTOR))) {
+      pendingConsumedTouch = null;
+      return;
+    }
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+    pendingConsumedTouch = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      t: Date.now(),
+      target
+    };
+  }, { capture: true, passive: false });
+
+  document.addEventListener('touchend', (e) => {
+    const pending = pendingConsumedTouch;
+    pendingConsumedTouch = null;
+    if (!pending) return;
+    if (!e.changedTouches || e.changedTouches.length === 0) return;
+
+    const touch = e.changedTouches[0];
+    const dist = Math.hypot(touch.clientX - pending.x, touch.clientY - pending.y);
+    const elapsed = Date.now() - pending.t;
+    if (dist < 14 && elapsed < 500) {
+      const clickTarget = (pending.target && pending.target.closest ? pending.target.closest(CLICKABLE_SELECTOR) : null)
+        || (pending.target && typeof pending.target.click === 'function' ? pending.target : null);
+      if (clickTarget && typeof clickTarget.click === 'function') {
+        silkLog(`consume->click ${describeEl(clickTarget)} (${Math.round(touch.clientX)},${Math.round(touch.clientY)})`);
+        clickTarget.click();
+      }
+    }
+  }, { capture: true, passive: true });
+
+  document.addEventListener('touchcancel', () => {
+    pendingConsumedTouch = null;
+  }, { capture: true, passive: true });
+
+  function logInteractionEvent(kind, clientX, clientY, e) {
+    if (!state.devModeEnabled) return;
+    const target = normalizeTarget(e.target);
+    if (target && target.closest && target.closest('#debugLogPanel, #debugLogToggleBtn')) return;
+    const vv = window.visualViewport;
+    const vvH = vv ? Math.round(vv.height) : 'na';
+    const scrollY = typeof window.scrollY === 'number' ? Math.round(window.scrollY) : 0;
+    const fsEl = describeEl(getFullscreenEl());
+    const consumeMode = isConsumeTouchEnabled();
+    silkLog(`${kind} x=${Math.round(clientX)} y=${Math.round(clientY)} target=${describeEl(target)} dp=${Boolean(e.defaultPrevented)} fsEl=${fsEl} vvH=${vvH} scrollY=${scrollY} consume=${consumeMode}`);
+  }
+
+  document.addEventListener('touchstart', (e) => {
+    const touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+    if (!touch) return;
+    logInteractionEvent('touchstart', touch.clientX, touch.clientY, e);
+  }, { capture: true, passive: true });
+
+  document.addEventListener('pointerdown', (e) => {
+    logInteractionEvent(`pointerdown:${e.pointerType || 'unk'}`, e.clientX, e.clientY, e);
+  }, { capture: true, passive: true });
 })();
