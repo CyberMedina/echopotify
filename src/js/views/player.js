@@ -1129,7 +1129,10 @@ function scrollLyricsByDelta(deltaPx, opts = {}) {
     if (isLyricsPanelActive() && typeof e.stopPropagation === 'function') {
       e.stopPropagation();
     }
-    if (!e.touches || e.touches.length !== 1) return;
+    if (!e.touches || e.touches.length !== 1) {
+      if (pointerMode === 'touch') handlePointerEnd();
+      return;
+    }
     handlePointerStart('touch', e.touches[0].clientX, e.touches[0].clientY);
   }, { passive: true });
 
@@ -1137,15 +1140,25 @@ function scrollLyricsByDelta(deltaPx, opts = {}) {
     if (isLyricsPanelActive() && typeof e.stopPropagation === 'function') {
       e.stopPropagation();
     }
-    if (pointerMode !== 'touch' || !e.touches || e.touches.length !== 1) return;
+    if (pointerMode !== 'touch') return;
+    if (!e.touches || e.touches.length !== 1) {
+      handlePointerEnd();
+      return;
+    }
     handlePointerMove(e.touches[0].clientX, e.touches[0].clientY, e);
   }, { passive: false });
 
-  npRightLyrics.addEventListener('touchend', () => {
+  npRightLyrics.addEventListener('touchend', (e) => {
+    if (isLyricsPanelActive() && e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
     if (pointerMode === 'touch') handlePointerEnd();
   }, { passive: true });
 
-  npRightLyrics.addEventListener('touchcancel', () => {
+  npRightLyrics.addEventListener('touchcancel', (e) => {
+    if (isLyricsPanelActive() && e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
     if (pointerMode === 'touch') handlePointerEnd();
   }, { passive: true });
 
@@ -1157,13 +1170,23 @@ function scrollLyricsByDelta(deltaPx, opts = {}) {
     handlePointerStart('mouse', e.clientX, e.clientY);
   });
 
-  window.addEventListener('mousemove', (e) => {
-    if (pointerMode === 'mouse') handlePointerMove(e.clientX, e.clientY, e);
-  });
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('touchend', () => {
+      if (pointerMode === 'touch') handlePointerEnd();
+    }, { passive: true });
 
-  window.addEventListener('mouseup', () => {
-    if (pointerMode === 'mouse') handlePointerEnd();
-  });
+    window.addEventListener('touchcancel', () => {
+      if (pointerMode === 'touch') handlePointerEnd();
+    }, { passive: true });
+
+    window.addEventListener('mousemove', (e) => {
+      if (pointerMode === 'mouse') handlePointerMove(e.clientX, e.clientY, e);
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (pointerMode === 'mouse') handlePointerEnd();
+    });
+  }
 
   npRightLyrics.addEventListener('wheel', (e) => {
     if (!isLyricsPanelActive()) return;
@@ -1400,7 +1423,7 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
     npTimeRemaining.textContent = `-${formatTime(remaining)}`;
 
     if (
-      (state.hasCustomReorderedQueue || (state.isLocalContextQueue && state.singleTrackPlayback)) &&
+      (state.hasCustomReorderedQueue || (state.isLocalContextQueue && state.singleTrackPlayback) || state.isAutoplayQueue) &&
       state.isPlaying &&
       !state.isBuffering &&
       state.durationSec >= 15 &&
@@ -2204,7 +2227,15 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
   const qRes = await spotifyFetch('/me/player/queue');
   if (reqActionSeq !== playbackActionSeq || reqTrackId !== state.playingTrackId) return;
 
-  if (qRes && Array.isArray(qRes.queue) && qRes.queue.length > 0) {
+  const hasCurPlayingField = Boolean(qRes && 'currently_playing' in qRes);
+  const qCur = (qRes && qRes.currently_playing) ? qRes.currently_playing : null;
+  const qCurCid = qCur ? cleanTrackId(qCur.id || qCur.uri) : '';
+  const qCurTitleLow = qCur ? (qCur.name || qCur.title || '').trim().toLowerCase() : '';
+  const queueMatchesCurrentTrack = !hasCurPlayingField
+    ? true
+    : Boolean(qCur && ((curCid && qCurCid === curCid) || (curTitleLow && qCurTitleLow === curTitleLow)));
+
+  if (qRes && Array.isArray(qRes.queue) && qRes.queue.length > 0 && queueMatchesCurrentTrack) {
     const apiQueue = buildMergedQueue(qRes.queue);
     if (apiQueue.length > 0) {
       const usingLocalSdk = typeof isLocalWebPlayerActive === 'function' && isLocalWebPlayerActive();

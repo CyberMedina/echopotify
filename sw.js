@@ -11,6 +11,20 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+
+  const isHtmlNav =
+    event.request.mode === 'navigate' ||
+    url.pathname.endsWith('/') ||
+    url.pathname.endsWith('/index.html');
+
+  if (isHtmlNav) {
+    const cacheMode = (url.searchParams.has('_') || url.searchParams.has('r')) ? 'no-store' : 'no-cache';
+    event.respondWith(
+      fetch(event.request, { cache: cacheMode }).catch(() => fetch(event.request))
+    );
+    return;
+  }
+
   event.respondWith(fetch(event.request));
 });
 

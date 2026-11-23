@@ -552,3 +552,88 @@ syncDevModeUI();
   document.addEventListener('pointerdown', requestAutoFullscreen, { capture: true, passive: true });
   document.addEventListener('keydown', requestAutoFullscreen, { capture: true, passive: true });
 })();
+
+// ============================================================================
+// SILK BROWSER / PWA UPDATE DETECTOR & 1-TAP CACHE-BUST RELOAD
+// ============================================================================
+(function initSilkUpdateController() {
+  const buildMeta = document.querySelector('meta[name="app-build"]');
+  const currentBuild = buildMeta ? (buildMeta.getAttribute('content') || '').trim() : '';
+  const buildLabel = document.getElementById('appBuildVersionLabel');
+  if (buildLabel && currentBuild) {
+    buildLabel.textContent = `v${currentBuild}`;
+  }
+
+  let isReloading = false;
+  async function forceHardReloadApp(tag) {
+    if (isReloading) return;
+    isReloading = true;
+    try {
+      if ('caches' in window && typeof caches.keys === 'function') {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    } catch (e) { }
+    try {
+      if ('serviceWorker' in navigator && typeof navigator.serviceWorker.getRegistrations === 'function') {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.update().catch(() => { })));
+      }
+    } catch (e) { }
+    const bust = encodeURIComponent(tag || String(Date.now()));
+    window.location.replace(`${window.location.pathname}?r=${bust}`);
+  }
+
+  const forceUpdateBtn = document.getElementById('forceUpdateAppBtn');
+  if (forceUpdateBtn) {
+    forceUpdateBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (typeof showToast === 'function') {
+        showToast('Actualizando SpotiEcho...', true);
+      }
+      forceHardReloadApp(String(Date.now()));
+    });
+  }
+
+  if (window.location.protocol !== 'http:' && window.location.protocol !== 'https:') {
+    return;
+  }
+
+  let lastCheckAt = 0;
+  async function checkForRemoteAppUpdate() {
+    if (!currentBuild || isReloading) return;
+    const now = Date.now();
+    if (now - lastCheckAt < 180000) return;
+    lastCheckAt = now;
+
+    try {
+      const res = await fetch(`./index.html?_=${now}`, { cache: 'no-store' });
+      if (!res || !res.ok) return;
+      const html = await res.text();
+      const match = html.match(/<meta[^>]+name=["']app-build["'][^>]+content=["']([^"']+)["']/i);
+      const remoteBuild = match ? match[1].trim() : '';
+      if (!remoteBuild || remoteBuild === currentBuild) return;
+
+      let alreadyAutoReloaded = false;
+      try {
+        alreadyAutoReloaded = sessionStorage.getItem('sp_auto_reloaded_build') === remoteBuild;
+      } catch (e) { }
+
+      if (!state.isPlaying && !alreadyAutoReloaded) {
+        try {
+          sessionStorage.setItem('sp_auto_reloaded_build', remoteBuild);
+        } catch (e) { }
+        forceHardReloadApp(remoteBuild);
+      } else if (typeof showToast === 'function') {
+        showToast('Nueva versión lista · Actualiza desde Perfil', true);
+      }
+    } catch (e) { }
+  }
+
+  setTimeout(checkForRemoteAppUpdate, 2500);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      checkForRemoteAppUpdate();
+    }
+  });
+})();

@@ -135,12 +135,14 @@ function goBack() {
 
 let npCloseAnimationTimer = null;
 let npOpenTimer = null;
+let resetNowPlayingSwipeState = () => {};
 
 function openNowPlaying(opts = {}) {
   const instant = Boolean(opts && opts.instant);
   state.isNowPlayingOpen = true;
   clearTimeout(npCloseAnimationTimer);
   clearTimeout(npOpenTimer);
+  resetNowPlayingSwipeState();
 
   if (instant) {
     document.body.classList.add('np-fully-open');
@@ -206,6 +208,7 @@ function openNowPlaying(opts = {}) {
 
 function closeNowPlaying(opts = {}) {
   state.startupPlaybackChecked = true;
+  resetNowPlayingSwipeState();
   if (!state.isNowPlayingOpen && !nowPlayingOverlay.classList.contains('open')) return;
 
   if (typeof exitLyricsManualScroll === 'function') {
@@ -252,6 +255,28 @@ function closeNowPlaying(opts = {}) {
   let isTracking = false;
   let isDragging = false;
   let currentDy = 0;
+  let snapBackTimer = null;
+
+  function resetSwipeState(opts = {}) {
+    const restoreTransform = Boolean(opts && opts.restoreTransform);
+    const wasDragging = isDragging;
+    clearTimeout(snapBackTimer);
+    snapBackTimer = null;
+    isTracking = false;
+    isDragging = false;
+    currentDy = 0;
+    state.isSwipingNowPlaying = false;
+    if (grabberPill) {
+      grabberPill.style.transform = '';
+      grabberPill.style.background = '';
+    }
+    if (restoreTransform && wasDragging && state.isNowPlayingOpen && overlay.classList.contains('open')) {
+      overlay.style.transition = '';
+      overlay.style.transform = 'translate3d(0, 0, 0)';
+      document.body.classList.add('np-fully-open');
+    }
+  }
+  resetNowPlayingSwipeState = () => resetSwipeState({ restoreTransform: false });
 
   function isInsideReservedScrollArea(target, clientX) {
     const el = (target && target.nodeType === 3) ? target.parentElement : target;
@@ -263,7 +288,7 @@ function closeNowPlaying(opts = {}) {
     }
     if (typeof clientX === 'number') {
       const rect = overlay.getBoundingClientRect();
-      if (rect && rect.width > 0 && ((clientX - rect.left) / rect.width) >= 0.43) {
+      if (rect && rect.width > 0 && ((clientX - rect.left) / rect.width) >= 0.40) {
         return true;
       }
     }
@@ -271,15 +296,17 @@ function closeNowPlaying(opts = {}) {
   }
 
   function shouldIgnoreEvent(target, clientX) {
+    if (state.isScrubbing || state.isDraggingQueueRow) return true;
     const el = (target && target.nodeType === 3) ? target.parentElement : target;
     if (isInsideReservedScrollArea(el, clientX)) return true;
     if (!el || !el.closest) return false;
+    if (el.closest('#npGrabberZone')) return false;
     // 1. Scrubber track & volume track (interacción precisa de seek)
     if (el.closest('.np-scrubber-wrap') || el.closest('#npScrubberTrack') || el.closest('#npVolumeTrack')) return true;
-    // 2. Botones de transporte (play, pause, next, prev, shuffle, repeat)
-    if (el.closest('.np-transport-btn')) return true;
+    // 2. Botones de transporte y metadata interactiva
+    if (el.closest('button, .np-transport-btn, .np-transport-row, .np-meta-actions, #npMetaTextCol')) return true;
     // 3. Botones dock inferiores (Letra / Cola), favoritos y selector de dispositivo
-    if (el.closest('.np-dock-btn') || el.closest('.np-circle-btn') || el.closest('#npDeviceIndicatorRow')) return true;
+    if (el.closest('.np-dock-btn, .np-dock-controls, .np-circle-btn, #npDeviceIndicatorRow')) return true;
     // 4. Lista de cola scrolleada hacia abajo: permitir scroll interno de la cola
     const queueList = el.closest('#npQueueListContainer');
     if (queueList && queueList.scrollTop > 5) return true;
@@ -287,6 +314,7 @@ function closeNowPlaying(opts = {}) {
   }
 
   function handleStart(clientX, clientY, target) {
+    resetSwipeState({ restoreTransform: true });
     if (!state.isNowPlayingOpen) return false;
     if (shouldIgnoreEvent(target, clientX)) return false;
 
@@ -301,14 +329,18 @@ function closeNowPlaying(opts = {}) {
 
   function handleMove(clientX, clientY, cancelableEvent) {
     if (!isTracking) return;
+    if (!state.isNowPlayingOpen || state.isScrubbing || state.isDraggingQueueRow) {
+      resetSwipeState({ restoreTransform: isDragging });
+      return;
+    }
 
     const vpScale = window._echoViewportScale || 1;
     const dx = (clientX - startX) / vpScale;
     const dy = (clientY - startY) / vpScale;
 
     if (!isDragging) {
-      // Iniciar arrastre si el movimiento es hacia abajo (> 6px) y vertical
-      if (dy > 6 && dy > Math.abs(dx) * 0.85) {
+      // Iniciar arrastre solo ante desplazamiento vertical deliberado hacia abajo (> 16px)
+      if (dy > 16 && dy > Math.abs(dx) * 1.15) {
         isDragging = true;
         state.isSwipingNowPlaying = true;
         clearTimeout(npOpenTimer);
@@ -341,30 +373,36 @@ function closeNowPlaying(opts = {}) {
 
   function handleEnd() {
     if (!isTracking && !isDragging) return;
-    isTracking = false;
-
-    if (!isDragging) {
-      state.isSwipingNowPlaying = false;
-      return;
-    }
-
+    const wasDragging = isDragging;
+    const finalDy = currentDy;
     const elapsed = Math.max(1, Date.now() - startTime);
-    const velocityY = currentDy / elapsed; // px/ms
+    isTracking = false;
+    isDragging = false;
+    currentDy = 0;
 
     if (grabberPill) {
       grabberPill.style.transform = '';
       grabberPill.style.background = '';
     }
 
-    // Umbral súper intuitivo: más de 45px O velocidad rápida hacia abajo (> 0.20 px/ms y > 18px)
-    if (currentDy > 45 || (currentDy > 18 && velocityY > 0.20)) {
+    if (!wasDragging) {
+      state.isSwipingNowPlaying = false;
+      return;
+    }
+
+    const velocityY = finalDy / elapsed; // px/ms
+
+    // Umbral balanceado: más de 85px O flick rápido hacia abajo (> 0.45 px/ms y > 48px)
+    if (finalDy > 85 || (finalDy > 48 && velocityY > 0.45)) {
       state.isNowPlayingOpen = false;
       clearTimeout(npOpenTimer);
       clearTimeout(npCloseAnimationTimer);
+      clearTimeout(snapBackTimer);
+      snapBackTimer = null;
       document.body.classList.remove('np-fully-open');
 
       const overlayH = overlay.offsetHeight || 640;
-      const remaining = Math.max(0, overlayH - currentDy);
+      const remaining = Math.max(0, overlayH - finalDy);
       const exitDuration = Math.min(0.38, Math.max(0.20, remaining / (Math.max(velocityY, 1.4) * 1000)));
 
       overlay.style.transition = `transform ${exitDuration.toFixed(2)}s cubic-bezier(0.22, 1, 0.36, 1)`;
@@ -383,24 +421,35 @@ function closeNowPlaying(opts = {}) {
       overlay.style.transition = 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)';
       overlay.style.transform = 'translate3d(0, 0, 0)';
 
-      setTimeout(() => {
+      clearTimeout(snapBackTimer);
+      snapBackTimer = setTimeout(() => {
+        snapBackTimer = null;
         if (state.isNowPlayingOpen && overlay.classList.contains('open')) {
           overlay.style.transition = '';
           document.body.classList.add('np-fully-open');
         }
-        state.isSwipingNowPlaying = false;
+        if (!isDragging) {
+          state.isSwipingNowPlaying = false;
+        }
       }, 300);
     }
   }
 
   // 1. TOUCH EVENTS (Nativo Echo Show 8 / Android)
   overlay.addEventListener('touchstart', (e) => {
-    if (!e.touches || e.touches.length !== 1) return;
+    if (!e.touches || e.touches.length !== 1) {
+      resetSwipeState({ restoreTransform: isDragging });
+      return;
+    }
     handleStart(e.touches[0].clientX, e.touches[0].clientY, e.target);
   }, { passive: true });
 
   window.addEventListener('touchmove', (e) => {
-    if (!isTracking || !e.touches || e.touches.length !== 1) return;
+    if (!isTracking) return;
+    if (!e.touches || e.touches.length !== 1) {
+      resetSwipeState({ restoreTransform: isDragging });
+      return;
+    }
     handleMove(e.touches[0].clientX, e.touches[0].clientY, e);
   }, { passive: false });
 
@@ -409,22 +458,32 @@ function closeNowPlaying(opts = {}) {
   }, { passive: true });
 
   window.addEventListener('touchcancel', () => {
-    // Si ya se había desplazado significativamente (> 40px), proceder con dismiss en vez de abortar
-    if (isDragging && currentDy > 40) {
+    // Si ya superó el umbral de cierre (> 85px), completar dismiss; si no, rebotar limpiamente
+    if (isDragging && currentDy > 85) {
       handleEnd();
-    } else {
+    } else if (isDragging) {
       isTracking = false;
-      if (isDragging) {
-        overlay.style.transition = 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)';
-        overlay.style.transform = 'translate3d(0, 0, 0)';
-        setTimeout(() => {
-          if (state.isNowPlayingOpen && overlay.classList.contains('open')) {
-            overlay.style.transition = '';
-            document.body.classList.add('np-fully-open');
-          }
-          state.isSwipingNowPlaying = false;
-        }, 300);
+      isDragging = false;
+      currentDy = 0;
+      if (grabberPill) {
+        grabberPill.style.transform = '';
+        grabberPill.style.background = '';
       }
+      overlay.style.transition = 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)';
+      overlay.style.transform = 'translate3d(0, 0, 0)';
+      clearTimeout(snapBackTimer);
+      snapBackTimer = setTimeout(() => {
+        snapBackTimer = null;
+        if (state.isNowPlayingOpen && overlay.classList.contains('open')) {
+          overlay.style.transition = '';
+          document.body.classList.add('np-fully-open');
+        }
+        if (!isDragging) {
+          state.isSwipingNowPlaying = false;
+        }
+      }, 300);
+    } else {
+      resetSwipeState({ restoreTransform: false });
     }
   }, { passive: true });
 
@@ -447,12 +506,11 @@ function closeNowPlaying(opts = {}) {
   let wheelAccumulator = 0;
   let wheelResetTimer = null;
   overlay.addEventListener('wheel', (e) => {
-    if (!state.isNowPlayingOpen) return;
-    if (isInsideReservedScrollArea(e.target, e.clientX)) {
+    if (!state.isNowPlayingOpen) {
       wheelAccumulator = 0;
       return;
     }
-    if (e.target && e.target.closest && e.target.closest('#npQueueListContainer')) {
+    if (shouldIgnoreEvent(e.target, e.clientX) || (e.target && e.target.closest && e.target.closest('#npQueueListContainer'))) {
       wheelAccumulator = 0;
       return;
     }
@@ -461,7 +519,7 @@ function closeNowPlaying(opts = {}) {
       wheelAccumulator += e.deltaY;
       clearTimeout(wheelResetTimer);
       wheelResetTimer = setTimeout(() => { wheelAccumulator = 0; }, 260);
-      if (wheelAccumulator > 70) {
+      if (wheelAccumulator > 180) {
         wheelAccumulator = 0;
         closeNowPlaying();
       }

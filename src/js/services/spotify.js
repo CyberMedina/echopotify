@@ -1104,8 +1104,9 @@ async function playSingleTrackWithAutoplay(seedTrack) {
       prewarmImageUrls(nextThree.map(t => t.thumb || t.cover));
     }
 
-    // Queue next 5 tracks on Spotify's real player queue so Track 0 -> Track 1 transitions naturally
-    enqueueTracksOnSpotify(upcoming, devQ, cmdSeq, 5);
+    // Do NOT push Radio tracks to POST /me/player/queue: Spotify persists its User Queue across
+    // context_uri switches and would hijack subsequent Album/Playlist playback with old Radio tracks.
+    // Radio tracks advance via skipNextTrack() / end-of-track playSpotifyUris().
   } else {
     if (typeof renderQueuePanelUI === 'function') renderQueuePanelUI();
     if (typeof updateNowPlayingRightPanelMode === 'function') updateNowPlayingRightPanelMode();
@@ -1151,11 +1152,6 @@ async function replenishAutoplayQueue() {
         state.liveQueueTracks = state.autoplaySessionTracks.slice(idx + 1);
         state.contextUpcomingTracks = state.liveQueueTracks;
         if (typeof renderQueuePanelUI === 'function') renderQueuePanelUI();
-        // Keep Spotify's hardware queue topped up for uninterrupted playback
-        const devQ = await getTargetDeviceQuery();
-        if (cmdSeq === playbackActionSeq && state.isAutoplayQueue) {
-          enqueueTracksOnSpotify(fresh, devQ, cmdSeq, 4);
-        }
       }
     }
   } finally {
