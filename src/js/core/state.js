@@ -112,6 +112,7 @@ const state = {
   shuffleToggleLockUntil: 0,
   repeatToggleLockUntil: 0,
   isLocalContextQueue: false,
+  hasPollutedCloudQueue: false,
   activeContextType: '',
   activeContextId: '',
   activeContextUri: '',

@@ -2416,6 +2416,165 @@ test('28. Cold-reload mini-player resume rehydrates persisted Liked Songs contex
   });
 });
 
+test('29. Playing an album track ignores polluted Spotify cloud User Queue (old Radio) and preserves album order on Cola & Next', async (t) => {
+  const h = createPlaybackHarness();
+  t.after(() => h.cleanup());
+
+  h.setFetchHandler(async (url, init) => {
+    if (url.includes('/me/player/queue')) {
+      return jsonResponse({
+        currently_playing: {
+          id: 'alb_t1',
+          uri: 'spotify:track:alb_t1',
+          name: 'Album Track 1',
+          duration_ms: 200000,
+          artists: [{ name: 'Album Artist' }],
+          album: { name: 'My Album', images: [{ url: 'https://example.com/alb.jpg' }] }
+        },
+        queue: [
+          {
+            id: 'old_rad_1',
+            uri: 'spotify:track:old_rad_1',
+            name: 'Old Radio 1',
+            duration_ms: 180000,
+            artists: [{ name: 'Radio Artist' }],
+            album: { name: 'Radio Single', images: [{ url: 'https://example.com/r1.jpg' }] }
+          },
+          {
+            id: 'old_rad_2',
+            uri: 'spotify:track:old_rad_2',
+            name: 'Old Radio 2',
+            duration_ms: 190000,
+            artists: [{ name: 'Radio Artist 2' }],
+            album: { name: 'Radio Single 2', images: [{ url: 'https://example.com/r2.jpg' }] }
+          },
+          {
+            id: 'alb_t2',
+            uri: 'spotify:track:alb_t2',
+            name: 'Album Track 2',
+            duration_ms: 210000,
+            artists: [{ name: 'Album Artist' }],
+            album: { name: 'My Album', images: [{ url: 'https://example.com/alb.jpg' }] }
+          }
+        ]
+      });
+    }
+    if (url.includes('/me/player/play') && init.method === 'PUT') {
+      return emptyResponse(204);
+    }
+    return emptyResponse(204);
+  });
+
+  h.eval(`
+    initWebPlayer();
+    spotifyAuth.activeDeviceId = 'web_dev_1';
+    webPlayerDeviceId = 'web_dev_1';
+    webPlayerTransferredOnce = true;
+    spotifyAuth.shuffleState = false;
+    webPlayer.nextTrack = async () => { throw new Error('Should not call SDK nextTrack when cloud queue is polluted'); };
+    webPlayer.getCurrentState = async () => ({
+      paused: false,
+      position: 500,
+      shuffle: false,
+      repeat_mode: 0,
+      track_window: {
+        current_track: {
+          id: 'alb_t1',
+          uri: 'spotify:track:alb_t1',
+          name: 'Album Track 1',
+          duration_ms: 200000,
+          artists: [{ name: 'Album Artist' }],
+          album: { name: 'My Album', images: [{ url: 'https://example.com/alb.jpg' }] }
+        },
+        next_tracks: [
+          {
+            id: 'old_rad_1',
+            uri: 'spotify:track:old_rad_1',
+            name: 'Old Radio 1',
+            duration_ms: 180000,
+            artists: [{ name: 'Radio Artist' }],
+            album: { name: 'Radio Single', images: [{ url: 'https://example.com/r1.jpg' }] }
+          }
+        ]
+      }
+    });
+    liveCatalog.entities['alb_clean'] = {
+      id: 'alb_clean',
+      spotifyId: 'albclean',
+      type: 'album',
+      uri: 'spotify:album:albclean',
+      title: 'My Album',
+      artist: 'Album Artist',
+      cover: 'https://example.com/alb.jpg',
+      coverLarge: 'https://example.com/alb.jpg',
+      tracks: [
+        { id: 'alb_t1', uri: 'spotify:track:alb_t1', title: 'Album Track 1', artist: 'Album Artist', duration: 200 },
+        { id: 'alb_t2', uri: 'spotify:track:alb_t2', title: 'Album Track 2', artist: 'Album Artist', duration: 210 },
+        { id: 'alb_t3', uri: 'spotify:track:alb_t3', title: 'Album Track 3', artist: 'Album Artist', duration: 220 }
+      ]
+    };
+    state.selectedEntityId = 'alb_clean';
+    state.nowPlayingMode = 'queue';
+    startAlbumOrPlaylistPlayback(false);
+  `);
+
+  h.emitSdkEvent('ready', { device_id: 'web_dev_1' });
+  await h.flushMicrotasks();
+
+  // Simulate polluted SDK player_state_changed arriving right after album starts
+  h.emitSdkEvent('player_state_changed', {
+    paused: false,
+    position: 1000,
+    shuffle: false,
+    repeat_mode: 0,
+    track_window: {
+      current_track: {
+        id: 'alb_t1',
+        uri: 'spotify:track:alb_t1',
+        name: 'Album Track 1',
+        duration_ms: 200000,
+        artists: [{ name: 'Album Artist' }],
+        album: { name: 'My Album', images: [{ url: 'https://example.com/alb.jpg' }] }
+      },
+      next_tracks: [
+        {
+          id: 'old_rad_1',
+          uri: 'spotify:track:old_rad_1',
+          name: 'Old Radio 1',
+          duration_ms: 180000,
+          artists: [{ name: 'Radio Artist' }],
+          album: { name: 'Radio Single', images: [{ url: 'https://example.com/r1.jpg' }] }
+        }
+      ]
+    }
+  });
+
+  await h.eval('fetchAndRenderQueueForCurrentTrack()');
+  await h.flushMicrotasks();
+
+  // Queue must still show ONLY the album's upcoming tracks (NOT Old Radio 1)
+  assert.equal(h.eval('state.hasPollutedCloudQueue'), true);
+  assert.deepEqual(
+    JSON.parse(h.eval('JSON.stringify(state.liveQueueTracks.map(x => x.id))')),
+    ['alb_t2', 'alb_t3']
+  );
+
+  // Pressing Next must play Album Track 2 directly via URIs instead of jumping to Old Radio 1
+  await h.eval('skipNextTrack()');
+  await h.flushMicrotasks();
+
+  assert.equal(h.eval('state.playingTrackId'), 'alb_t2');
+  assert.equal(h.eval('state.hasPollutedCloudQueue'), true);
+  assert.deepEqual(
+    JSON.parse(h.eval('JSON.stringify(state.liveQueueTracks.map(x => x.id))')),
+    ['alb_t3']
+  );
+  const lastPlay = [...h.fetchCalls].reverse().find(c => c.url.includes('/me/player/play') && c.method === 'PUT');
+  assert.deepEqual(lastPlay.bodyJson, {
+    uris: ['spotify:track:alb_t2', 'spotify:track:alb_t3']
+  });
+});
+
 
 
 

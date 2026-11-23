@@ -1423,7 +1423,7 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
     npTimeRemaining.textContent = `-${formatTime(remaining)}`;
 
     if (
-      (state.hasCustomReorderedQueue || (state.isLocalContextQueue && state.singleTrackPlayback) || state.isAutoplayQueue) &&
+      (state.hasCustomReorderedQueue || (state.isLocalContextQueue && state.singleTrackPlayback) || state.hasPollutedCloudQueue || state.isAutoplayQueue) &&
       state.isPlaying &&
       !state.isBuffering &&
       state.durationSec >= 15 &&
@@ -2105,7 +2105,7 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
     }
   };
 
-  if (!state.isAutoplayQueue && (state.hasCustomReorderedQueue || state.isLocalContextQueue) && Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > 0) {
+  if (!state.isAutoplayQueue && (state.hasCustomReorderedQueue || state.isLocalContextQueue || state.hasPollutedCloudQueue) && Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > 0) {
     state.discoveryTracks = [];
     state.queueLoading = false;
     if (state.nowPlayingMode === 'queue') {
@@ -2115,6 +2115,25 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
     updateNowPlayingRightPanelMode();
     return;
   }
+
+  const isSequentialNativeContext = Boolean(
+    !state.isAutoplayQueue &&
+    !spotifyAuth.shuffleState &&
+    (state.activeContextType === 'album' || state.activeContextType === 'playlist') &&
+    Array.isArray(state.contextUpcomingTracks) &&
+    state.contextUpcomingTracks.length > 0
+  );
+  const trackMatchesSequentialContext = (t) => {
+    if (!t || !Array.isArray(state.contextUpcomingTracks) || state.contextUpcomingTracks.length === 0) return false;
+    const tCid = cleanTrackId(t.id || t.uri);
+    const tLow = (t.title || t.name || '').trim().toLowerCase();
+    return state.contextUpcomingTracks.some(ct => {
+      if (!ct) return false;
+      const cCid = cleanTrackId(ct.id || ct.uri);
+      const cLow = (ct.title || ct.name || '').trim().toLowerCase();
+      return (tCid && cCid && tCid === cCid) || (tLow && cLow && tLow === cLow);
+    });
+  };
 
   const curCid = cleanTrackId(state.playingTrackId || state.playingTrackUri);
   const curTitleLow = (state.playingTrackTitle || '').trim().toLowerCase();
@@ -2174,7 +2193,13 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
         )
       );
       if (sdkMatchesCurrentTrack && Array.isArray(localState.track_window.next_tracks)) {
-        state.sdkNextTracks = buildMergedQueue(localState.track_window.next_tracks);
+        const sdkCandidate = buildMergedQueue(localState.track_window.next_tracks);
+        if (isSequentialNativeContext && sdkCandidate.length > 0 && !trackMatchesSequentialContext(sdkCandidate[0])) {
+          state.hasPollutedCloudQueue = true;
+          state.sdkNextTracks = [];
+        } else {
+          state.sdkNextTracks = sdkCandidate;
+        }
       } else if (!sdkMatchesCurrentTrack) {
         state.sdkNextTracks = [];
       }
@@ -2238,19 +2263,23 @@ async function fetchAndRenderQueueForCurrentTrack(trackObj) {
   if (qRes && Array.isArray(qRes.queue) && qRes.queue.length > 0 && queueMatchesCurrentTrack) {
     const apiQueue = buildMergedQueue(qRes.queue);
     if (apiQueue.length > 0) {
-      const usingLocalSdk = typeof isLocalWebPlayerActive === 'function' && isLocalWebPlayerActive();
-      const mergedQueue = (usingLocalSdk && Array.isArray(state.sdkNextTracks) && state.sdkNextTracks.length > 0)
-        ? buildMergedQueue(state.sdkNextTracks, apiQueue)
-        : apiQueue;
-      state.liveQueueTracks = mergedQueue;
-      state.discoveryTracks = [];
-      state.queueLoading = false;
-      if (state.nowPlayingMode === 'queue') {
-        renderQueuePanelUI();
+      if (isSequentialNativeContext && !trackMatchesSequentialContext(apiQueue[0])) {
+        state.hasPollutedCloudQueue = true;
+      } else {
+        const usingLocalSdk = typeof isLocalWebPlayerActive === 'function' && isLocalWebPlayerActive();
+        const mergedQueue = (usingLocalSdk && Array.isArray(state.sdkNextTracks) && state.sdkNextTracks.length > 0)
+          ? buildMergedQueue(state.sdkNextTracks, apiQueue)
+          : apiQueue;
+        state.liveQueueTracks = mergedQueue;
+        state.discoveryTracks = [];
+        state.queueLoading = false;
+        if (state.nowPlayingMode === 'queue') {
+          renderQueuePanelUI();
+        }
+        prewarmUpcomingSlice(mergedQueue);
+        updateNowPlayingRightPanelMode();
+        return;
       }
-      prewarmUpcomingSlice(mergedQueue);
-      updateNowPlayingRightPanelMode();
-      return;
     }
   }
 

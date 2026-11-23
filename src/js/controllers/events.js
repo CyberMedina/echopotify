@@ -192,6 +192,7 @@ document.addEventListener('click', async (e) => {
     state.hasCustomReorderedQueue = false;
     state.singleTrackPlayback = false;
     state.isLocalContextQueue = usesLocalContext;
+    state.hasPollutedCloudQueue = false;
     if (usesNativeContext) {
       state.activeContextType = entity.type || '';
       state.activeContextId = entity.id || '';
@@ -1349,7 +1350,8 @@ async function skipNextTrack() {
   // Usar cola completa reordenada si el usuario movió canciones; si no, fusionar sdkNextTracks (#1 real) con liveQueueTracks completos para no recortar la cola a 2 temas
   const usingLocalSdk = typeof isLocalWebPlayerActive === 'function' && isLocalWebPlayerActive();
   const wasCustomReordered = Boolean(state.hasCustomReorderedQueue);
-  const wasLocalContext = Boolean(state.isLocalContextQueue);
+  const wasPollutedCloudQueue = Boolean(state.hasPollutedCloudQueue);
+  const wasLocalContext = Boolean(state.isLocalContextQueue || wasPollutedCloudQueue);
   let queueSource = [];
   if ((wasCustomReordered || wasLocalContext) && Array.isArray(state.liveQueueTracks) && state.liveQueueTracks.length > 0) {
     queueSource = state.liveQueueTracks;
@@ -1414,7 +1416,8 @@ async function skipNextTrack() {
       if (nextUris.length > 0) {
         await playSpotifyUris(nextUris, pickedRemaining, {
           keepAutoplaySession: Boolean(state.isAutoplayQueue),
-          keepLocalContext: wasLocalContext
+          keepLocalContext: Boolean(state.isLocalContextQueue),
+          keepPollutedGuard: wasPollutedCloudQueue
         });
         return;
       }

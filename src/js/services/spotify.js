@@ -246,13 +246,34 @@ function handleWebPlayerStateChanged(sdkState) {
     seenSdkKeys.add(key);
     sdkNext.push(nt);
   }
+  const isSequentialNativeContext = Boolean(
+    !state.isAutoplayQueue &&
+    !spotifyAuth.shuffleState &&
+    (state.activeContextType === 'album' || state.activeContextType === 'playlist') &&
+    Array.isArray(state.contextUpcomingTracks) &&
+    state.contextUpcomingTracks.length > 0
+  );
+  const sdkMatchesSequentialContext = !isSequentialNativeContext || (
+    sdkNext.length > 0 && state.contextUpcomingTracks.some(ct => {
+      if (!ct) return false;
+      const cCid = cleanTrackId(ct.id || ct.uri);
+      const cLow = (ct.title || ct.name || '').trim().toLowerCase();
+      const sCid = cleanTrackId(sdkNext[0].id || sdkNext[0].uri);
+      const sLow = (sdkNext[0].title || '').trim().toLowerCase();
+      return (sCid && cCid && sCid === cCid) || (sLow && cLow && sLow === cLow);
+    })
+  );
+  if (isSequentialNativeContext && sdkNext.length > 0 && !sdkMatchesSequentialContext) {
+    state.hasPollutedCloudQueue = true;
+    state.sdkNextTracks = [];
+  }
   const keepCustomOrder = Boolean(
     state.hasCustomReorderedQueue &&
     Array.isArray(state.liveQueueTracks) &&
     state.liveQueueTracks.length > 0
   );
   const keepLocalContext = Boolean(
-    state.isLocalContextQueue &&
+    (state.isLocalContextQueue || state.hasPollutedCloudQueue) &&
     Array.isArray(state.liveQueueTracks) &&
     state.liveQueueTracks.length > 0
   );
@@ -832,6 +853,7 @@ async function playSpotifyContext(contextUri, offsetPosition = 0, upcomingSlice 
   const cmdSeq = playbackActionSeq;
   if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
   state.isLocalContextQueue = false;
+  state.hasPollutedCloudQueue = false;
   state.singleTrackPlayback = false;
   state.sdkNextTracks = [];
   state.contextUpcomingTracks = Array.isArray(upcomingSlice) ? upcomingSlice : [];
@@ -876,6 +898,7 @@ async function playSpotifyUris(urisArray, upcomingSlice = [], opts = {}) {
 
   state.singleTrackPlayback = safeUris.length === 1;
   state.isLocalContextQueue = Boolean(opts && opts.keepLocalContext);
+  state.hasPollutedCloudQueue = Boolean(opts && opts.keepPollutedGuard);
   if (!opts || !opts.keepAutoplaySession) {
     if (typeof clearAutoplayRadioSession === 'function') clearAutoplayRadioSession();
   }
