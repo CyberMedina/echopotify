@@ -220,6 +220,8 @@ function syncFullscreenSwitchUI() {
   }
 }
 
+let userManuallyExitedFullscreen = false;
+
 function toggleFullscreen() {
   const doc = document;
   const docEl = doc.documentElement;
@@ -232,6 +234,7 @@ function toggleFullscreen() {
   }
 
   if (!isFs) {
+    userManuallyExitedFullscreen = false;
     const req = (typeof docEl.requestFullscreen === 'function')
       ? docEl.requestFullscreen({ navigationUI: 'hide' }).catch(() => docEl.requestFullscreen())
       : (requestFs ? Promise.resolve(requestFs.call(docEl)) : null);
@@ -244,6 +247,7 @@ function toggleFullscreen() {
         });
     }
   } else {
+    userManuallyExitedFullscreen = true;
     if (exitFs) {
       Promise.resolve(exitFs.call(doc))
         .then(() => syncFullscreenSwitchUI())
@@ -551,16 +555,26 @@ syncDevModeUI();
     lockLandscapeIfMobile();
   }
 
-  if (isDisplayFullscreen || window.navigator.standalone === true) {
+  // On iOS Safari standalone PWA, requestFullscreen is unsupported; on Android Chrome PWA,
+  // Android exits immersive mode on lock/unlock or edge gestures, so we re-arm fullscreen on return!
+  if (window.navigator.standalone === true) {
     return;
   }
 
-  let autoFsAttempted = false;
-  const requestAutoFullscreen = () => {
-    if (autoFsAttempted) return;
-    autoFsAttempted = true;
-    document.removeEventListener('pointerdown', requestAutoFullscreen, true);
-    document.removeEventListener('keydown', requestAutoFullscreen, true);
+  let needsAutoFullscreen = true;
+  const armAutoFullscreen = () => {
+    if (userManuallyExitedFullscreen) return;
+    if (typeof isFullscreenActive === 'function' && isFullscreenActive()) return;
+    needsAutoFullscreen = true;
+  };
+
+  const requestAutoFullscreen = (e) => {
+    if (!needsAutoFullscreen || userManuallyExitedFullscreen) return;
+    // Don't hijack clicks on the manual fullscreen toggle in Settings
+    if (e && e.target && e.target.closest && e.target.closest('#fullscreenSettingRow, #fullscreenToggleSwitch, #fullscreenBtn')) {
+      return;
+    }
+    needsAutoFullscreen = false;
 
     if (typeof isFullscreenActive === 'function' && isFullscreenActive()) {
       lockLandscapeIfMobile();
@@ -579,6 +593,22 @@ syncDevModeUI();
 
   document.addEventListener('pointerdown', requestAutoFullscreen, { capture: true, passive: true });
   document.addEventListener('keydown', requestAutoFullscreen, { capture: true, passive: true });
+
+  // Re-calibrate viewport & re-arm sticky fullscreen whenever returning from phone lock / app switch
+  const onResumeApp = () => {
+    if (typeof scheduleFitViewport === 'function') scheduleFitViewport();
+    lockLandscapeIfMobile();
+    armAutoFullscreen();
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') onResumeApp();
+  });
+  window.addEventListener('focus', onResumeApp);
+  document.addEventListener('fullscreenchange', () => {
+    if (typeof isFullscreenActive === 'function' && !isFullscreenActive() && !userManuallyExitedFullscreen) {
+      armAutoFullscreen();
+    }
+  });
 })();
 
 // ============================================================================

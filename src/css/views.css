@@ -807,9 +807,10 @@
    ========================================================================== */
 #view-album {
   background: transparent;
-  overflow-y: auto;
+  overflow: hidden;
+  height: 100%;
   scrollbar-width: none;
-  padding: 28px 48px 108px 48px;
+  padding: 28px 48px 0 48px;
 }
 
 #view-album::-webkit-scrollbar {
@@ -840,12 +841,13 @@
   display: grid;
   grid-template-columns: 286px 1fr;
   gap: 44px;
-  align-items: start;
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
 }
 
 .album-left-col {
-  position: sticky;
-  top: 0;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-self: flex-start;
@@ -971,8 +973,19 @@
 .album-tracklist {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
   padding-top: 6px;
-  padding-bottom: 0;
+  padding-bottom: 120px;
+}
+
+.album-tracklist::-webkit-scrollbar {
+  display: none;
 }
 
 .track-row {
@@ -1101,8 +1114,13 @@ body.artist-view-active .ambient-bg {
 }
 
 body.artist-view-active .mini-player-v1 {
-  background: rgba(14, 18, 16, 0.90);
-  border-color: rgba(255, 255, 255, 0.14);
+  top: 110px;
+  bottom: auto;
+  right: 48px;
+  width: 384px;
+  background: rgba(14, 18, 16, 0.72);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
   color: #ffffff;
 }
 
@@ -1173,6 +1191,7 @@ body.artist-view-active .mini-ctrl-btn {
   align-items: center;
   gap: 22px;
   margin-bottom: 12px;
+  padding-right: 404px;
   flex-shrink: 0;
 }
 
@@ -1388,8 +1407,8 @@ body.artist-view-active .mini-ctrl-btn {
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   padding-right: 6px;
-  padding-bottom: 108px;
-  /* clearance for bottom dock */
+  padding-bottom: 28px;
+  /* Mini-player docked in artist header; clean bottom breathing room */
 }
 
 .artist-tracklist::-webkit-scrollbar {

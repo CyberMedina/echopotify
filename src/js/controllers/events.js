@@ -462,12 +462,12 @@ if (albumDetailArtistEl) {
   });
 }
 
-// Progressive Scroll / Infinite Pagination trigger on Album View
-const viewAlbumEl = document.getElementById('view-album');
-if (viewAlbumEl) {
-  viewAlbumEl.addEventListener('scroll', () => {
+// Progressive Scroll / Infinite Pagination trigger on Album/Playlist Tracklist
+const albumTracklistScrollEl = document.getElementById('albumTracklistContainer');
+if (albumTracklistScrollEl) {
+  albumTracklistScrollEl.addEventListener('scroll', () => {
     if (state.activeScreen !== 'album') return;
-    const scrollRemaining = viewAlbumEl.scrollHeight - viewAlbumEl.scrollTop - viewAlbumEl.clientHeight;
+    const scrollRemaining = albumTracklistScrollEl.scrollHeight - albumTracklistScrollEl.scrollTop - albumTracklistScrollEl.clientHeight;
     if (scrollRemaining < 500) {
       const currentEntity = liveCatalog.entities[state.selectedEntityId];
       if (currentEntity && currentEntity.hasMoreTracks && !currentEntity.isLoadingMoreTracks) {
@@ -2975,10 +2975,13 @@ function scheduleFitViewport() {
   fitViewportTimers.push(setTimeout(fitViewport, 360));
 }
 
-window.addEventListener('resize', fitViewport);
+window.addEventListener('resize', scheduleFitViewport);
 window.addEventListener('orientationchange', scheduleFitViewport);
 window.addEventListener('pageshow', scheduleFitViewport);
 window.addEventListener('load', scheduleFitViewport);
+if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
+  window.visualViewport.addEventListener('resize', scheduleFitViewport);
+}
 // cards-scroll-row horizontal mouse wheel scrolling for PC browser testing
 document.addEventListener('wheel', (e) => {
   if (state.isNowPlayingOpen) return;
