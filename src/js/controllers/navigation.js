@@ -37,6 +37,7 @@ function switchScreen(screenName, opts = {}) {
       }
     }
   }
+  const prevScreen = state.activeScreen;
   state.activeScreen = screenName;
 
   document.querySelectorAll('.screen-view').forEach(sec => {
@@ -88,6 +89,16 @@ function switchScreen(screenName, opts = {}) {
     }
   } else {
     document.body.classList.remove('album-view-active', 'artist-view-active', 'album-dark-active', 'album-light-active');
+    if (
+      screenName === 'home' &&
+      prevScreen &&
+      prevScreen !== 'home' &&
+      prevScreen !== 'login' &&
+      typeof HomeFeed !== 'undefined' &&
+      typeof HomeFeed.onReturnToHome === 'function'
+    ) {
+      HomeFeed.onReturnToHome();
+    }
   }
 
   if (typeof uiLog === 'function') {
@@ -256,10 +267,38 @@ function closeNowPlaying(opts = {}) {
   let isDragging = false;
   let currentDy = 0;
   let snapBackTimer = null;
+  let cachedOverlayH = 640;
+  let activeSwipeMode = null;
+  let swipeRafId = null;
+  let pendingSwipeVisualDy = null;
+
+  function cancelPendingSwipeFrame() {
+    if (swipeRafId !== null) {
+      if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(swipeRafId);
+      else clearTimeout(swipeRafId);
+      swipeRafId = null;
+    }
+    pendingSwipeVisualDy = null;
+  }
+
+  function detachSwipeWindowListeners() {
+    if (typeof window === 'undefined' || typeof window.removeEventListener !== 'function') return;
+    if (activeSwipeMode === 'touch') {
+      window.removeEventListener('touchmove', onWindowSwipeTouchMove, { passive: false });
+      window.removeEventListener('touchend', onWindowSwipeTouchEnd);
+      window.removeEventListener('touchcancel', onWindowSwipeTouchCancel);
+    } else if (activeSwipeMode === 'mouse') {
+      window.removeEventListener('mousemove', onWindowSwipeMouseMove);
+      window.removeEventListener('mouseup', onWindowSwipeMouseUp);
+    }
+    activeSwipeMode = null;
+  }
 
   function resetSwipeState(opts = {}) {
     const restoreTransform = Boolean(opts && opts.restoreTransform);
     const wasDragging = isDragging;
+    cancelPendingSwipeFrame();
+    detachSwipeWindowListeners();
     clearTimeout(snapBackTimer);
     snapBackTimer = null;
     isTracking = false;
@@ -313,17 +352,30 @@ function closeNowPlaying(opts = {}) {
     return false;
   }
 
-  function handleStart(clientX, clientY, target) {
+  function handleStart(mode, clientX, clientY, target) {
     resetSwipeState({ restoreTransform: true });
     if (!state.isNowPlayingOpen) return false;
     if (shouldIgnoreEvent(target, clientX)) return false;
 
+    cachedOverlayH = overlay.offsetHeight || 640;
     startX = clientX;
     startY = clientY;
     startTime = Date.now();
     isTracking = true;
     isDragging = false;
     currentDy = 0;
+    activeSwipeMode = mode;
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      if (mode === 'touch') {
+        window.addEventListener('touchmove', onWindowSwipeTouchMove, { passive: false });
+        window.addEventListener('touchend', onWindowSwipeTouchEnd, { passive: true });
+        window.addEventListener('touchcancel', onWindowSwipeTouchCancel, { passive: true });
+      } else {
+        window.addEventListener('mousemove', onWindowSwipeMouseMove);
+        window.addEventListener('mouseup', onWindowSwipeMouseUp);
+      }
+    }
     return true;
   }
 
@@ -347,9 +399,13 @@ function closeNowPlaying(opts = {}) {
         clearTimeout(npCloseAnimationTimer);
         document.body.classList.remove('np-fully-open');
         overlay.style.transition = 'none';
+        if (grabberPill) {
+          grabberPill.style.transform = 'scaleX(1.30)';
+          grabberPill.style.background = 'rgba(255, 255, 255, 0.90)';
+        }
       } else if (Math.abs(dx) > 12 || dy < -10) {
-        // Gesto lateral o hacia arriba: cancelar tracking
-        isTracking = false;
+        // Gesto lateral o hacia arriba: cancelar tracking y soltar listeners globales
+        resetSwipeState({ restoreTransform: false });
         return;
       }
     }
@@ -359,20 +415,28 @@ function closeNowPlaying(opts = {}) {
         cancelableEvent.preventDefault();
       }
       currentDy = Math.max(0, dy);
-      const overlayH = overlay.offsetHeight || 640;
-      const dragLimit = Math.round(overlayH * 0.65);
+      const dragLimit = Math.round(cachedOverlayH * 0.65);
       const visualDy = currentDy > dragLimit ? dragLimit + Math.round((currentDy - dragLimit) * 0.38) : currentDy;
-      overlay.style.transform = `translate3d(0, ${visualDy}px, 0)`;
-
-      if (grabberPill) {
-        grabberPill.style.transform = 'scaleX(1.30)';
-        grabberPill.style.background = 'rgba(255, 255, 255, 0.90)';
+      pendingSwipeVisualDy = visualDy;
+      if (swipeRafId === null) {
+        const flushSwipe = () => {
+          swipeRafId = null;
+          if (pendingSwipeVisualDy !== null && isDragging) {
+            const y = pendingSwipeVisualDy;
+            pendingSwipeVisualDy = null;
+            overlay.style.transform = `translate3d(0, ${y}px, 0)`;
+          }
+        };
+        if (typeof requestAnimationFrame === 'function') swipeRafId = requestAnimationFrame(flushSwipe);
+        else flushSwipe();
       }
     }
   }
 
   function handleEnd() {
     if (!isTracking && !isDragging) return;
+    cancelPendingSwipeFrame();
+    detachSwipeWindowListeners();
     const wasDragging = isDragging;
     const finalDy = currentDy;
     const elapsed = Math.max(1, Date.now() - startTime);
@@ -401,8 +465,7 @@ function closeNowPlaying(opts = {}) {
       snapBackTimer = null;
       document.body.classList.remove('np-fully-open');
 
-      const overlayH = overlay.offsetHeight || 640;
-      const remaining = Math.max(0, overlayH - finalDy);
+      const remaining = Math.max(0, cachedOverlayH - finalDy);
       const exitDuration = Math.min(0.38, Math.max(0.20, remaining / (Math.max(velocityY, 1.4) * 1000)));
 
       overlay.style.transition = `transform ${exitDuration.toFixed(2)}s cubic-bezier(0.22, 1, 0.36, 1)`;
@@ -435,33 +498,25 @@ function closeNowPlaying(opts = {}) {
     }
   }
 
-  // 1. TOUCH EVENTS (Nativo Echo Show 8 / Android)
-  overlay.addEventListener('touchstart', (e) => {
-    if (!e.touches || e.touches.length !== 1) {
-      resetSwipeState({ restoreTransform: isDragging });
-      return;
-    }
-    handleStart(e.touches[0].clientX, e.touches[0].clientY, e.target);
-  }, { passive: true });
-
-  window.addEventListener('touchmove', (e) => {
+  function onWindowSwipeTouchMove(e) {
     if (!isTracking) return;
     if (!e.touches || e.touches.length !== 1) {
       resetSwipeState({ restoreTransform: isDragging });
       return;
     }
     handleMove(e.touches[0].clientX, e.touches[0].clientY, e);
-  }, { passive: false });
+  }
 
-  window.addEventListener('touchend', () => {
+  function onWindowSwipeTouchEnd() {
     handleEnd();
-  }, { passive: true });
+  }
 
-  window.addEventListener('touchcancel', () => {
-    // Si ya superó el umbral de cierre (> 85px), completar dismiss; si no, rebotar limpiamente
+  function onWindowSwipeTouchCancel() {
     if (isDragging && currentDy > 85) {
       handleEnd();
     } else if (isDragging) {
+      cancelPendingSwipeFrame();
+      detachSwipeWindowListeners();
       isTracking = false;
       isDragging = false;
       currentDy = 0;
@@ -485,21 +540,30 @@ function closeNowPlaying(opts = {}) {
     } else {
       resetSwipeState({ restoreTransform: false });
     }
+  }
+
+  function onWindowSwipeMouseMove(e) {
+    if (!isTracking) return;
+    handleMove(e.clientX, e.clientY, e);
+  }
+
+  function onWindowSwipeMouseUp() {
+    if (isTracking || isDragging) handleEnd();
+  }
+
+  // 1. TOUCH EVENTS (Nativo Echo Show 8 / Android)
+  overlay.addEventListener('touchstart', (e) => {
+    if (!e.touches || e.touches.length !== 1) {
+      resetSwipeState({ restoreTransform: isDragging });
+      return;
+    }
+    handleStart('touch', e.touches[0].clientX, e.touches[0].clientY, e.target);
   }, { passive: true });
 
   // 2. MOUSE EVENTS (Para pruebas en desktop)
   overlay.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
-    handleStart(e.clientX, e.clientY, e.target);
-  });
-
-  window.addEventListener('mousemove', (e) => {
-    if (!isTracking) return;
-    handleMove(e.clientX, e.clientY, e);
-  });
-
-  window.addEventListener('mouseup', () => {
-    if (isTracking || isDragging) handleEnd();
+    handleStart('mouse', e.clientX, e.clientY, e.target);
   });
 
   // 3. WHEEL SCROLL DOWN

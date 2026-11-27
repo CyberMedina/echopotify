@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="robots" content="noindex, nofollow" />
-  <meta name="app-build" content="2026.11.22-5" />
+  <meta name="app-build" content="2026.11.27-13" />
   <meta name="theme-color" content="#0c0f14" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -21,9 +21,9 @@
   <link rel="dns-prefetch" href="https://i.scdn.co" />
   <link rel="dns-prefetch" href="https://mosaic.scdn.co" />
   <link rel="stylesheet" href="src/css/base.css?v=7.4" />
-  <link rel="stylesheet" href="src/css/views.css?v=7.6" />
-  <link rel="stylesheet" href="src/css/now-playing.css?v=9.3" />
-  <link rel="stylesheet" href="src/css/theme-modals.css?v=8.7" />
+  <link rel="stylesheet" href="src/css/views.css?v=8.2" />
+  <link rel="stylesheet" href="src/css/now-playing.css?v=10.0" />
+  <link rel="stylesheet" href="src/css/theme-modals.css?v=9.3" />
   <script src="https://cdn.html.games.alexa.a2z.com/alexa-html/latest/alexa-html.js"></script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 </head>
@@ -75,60 +75,95 @@
       </section>
 
       <!-- ================================================================
-           VIEW 1: HOME
+           VIEW 1: HOME (Dynamic Personalized Feed — Spanish)
            ================================================================ -->
       <section class="screen-view" id="view-home">
-        <header class="top-header">
-          <div>
-            <h1 class="page-title" id="homeGreeting">Good morning</h1>
-            <p class="page-subtitle" id="homeSubtitle">Your music, your mood.</p>
+        <header class="top-header home-top-header">
+          <div class="home-header-titles">
+            <h1 class="page-title" id="homeGreeting">Buenas noches</h1>
+            <p class="page-subtitle" id="homeSubtitle">Tu música, tu momento.</p>
           </div>
-          <button class="profile-btn" title="Profile / Settings" id="profileBtnHome">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-              <circle cx="12" cy="7" r="4"></circle>
-            </svg>
-          </button>
+          <div class="home-header-actions">
+            <button class="profile-btn" title="Perfil y ajustes" id="profileBtnHome">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+            </button>
+          </div>
         </header>
 
-        <!-- Section 1: Jump back in (Scrollable rail) -->
-        <div class="section-block">
-          <div class="section-header">
-            <h2 class="section-title">Jump back in</h2>
-          </div>
-          <div class="cards-scroll-row" id="homeJumpBackGrid"></div>
+        <!-- Dynamic Mode Filter Pills -->
+        <div class="home-filter-pills" id="homeFilterPills" role="tablist" aria-label="Filtros de inicio">
+          <button type="button" class="home-filter-pill active" data-home-filter="all">Para ti</button>
+          <button type="button" class="home-filter-pill" data-home-filter="rotation">En rotación</button>
+          <button type="button" class="home-filter-pill" data-home-filter="releases">Novedades</button>
+          <button type="button" class="home-filter-pill" data-home-filter="radios">Radios</button>
+          <button type="button" class="home-filter-pill" data-home-filter="rediscover">Redescubrir</button>
         </div>
 
-        <!-- Section 2: Made for you (Dynamic feature banners) -->
-        <div class="section-block" id="homeMadeForYouSection">
-          <div class="section-header">
-            <h2 class="section-title">Made for you</h2>
+        <!-- Reorderable Dynamic Sections Stack -->
+        <div class="home-sections-stack" id="homeSectionsStack">
+          <!-- Section 1: Quick Access 3x2 Compact Grid -->
+          <div class="section-block" id="homeQuickAccessSection">
+            <div class="quick-access-grid" id="homeQuickAccessGrid"></div>
           </div>
-          <div class="banners-2-cols" id="homeMadeForYouGrid"></div>
-        </div>
 
-        <!-- Section 3: Favorite artists (Circular avatars) -->
-        <div class="section-block" id="homeTopArtistsSection">
-          <div class="section-header">
-            <h2 class="section-title">Favorite artists</h2>
+          <!-- Section 2: Dynamic Mixes & Stations (EchoRadio + Time of Day) -->
+          <div class="section-block" id="homeMixesSection">
+            <div class="section-header">
+              <h2 class="section-title" id="homeMixesTitle">Mixes y estaciones para ti</h2>
+            </div>
+            <div class="mixes-scroll-row" id="homeMixesGrid"></div>
           </div>
-          <div class="cards-scroll-row" id="homeTopArtistsGrid"></div>
-        </div>
 
-        <!-- Section 4: Recently played (One-touch play) -->
-        <div class="section-block" id="homeRecentlyPlayedSection">
-          <div class="section-header">
-            <h2 class="section-title">Recently played</h2>
+          <!-- Section 3: Quick Picks 2x4 Tracks (1-Tap Play) -->
+          <div class="section-block" id="homeQuickPicksSection">
+            <div class="section-header">
+              <h2 class="section-title" id="homeQuickPicksTitle">Selección rápida</h2>
+            </div>
+            <div class="quick-picks-grid" id="homeQuickPicksGrid"></div>
           </div>
-          <div class="cards-scroll-row" id="homeRecentlyPlayedGrid"></div>
-        </div>
 
-        <!-- Section 5: Saved albums (User library) -->
-        <div class="section-block" id="homeSavedAlbumsSection" style="margin-bottom:0;">
-          <div class="section-header">
-            <h2 class="section-title">Saved albums</h2>
+          <!-- Section 4: Recently Played (Live-updating) -->
+          <div class="section-block" id="homeRecentlyPlayedSection">
+            <div class="section-header">
+              <h2 class="section-title">Escuchado recientemente</h2>
+            </div>
+            <div class="cards-scroll-row" id="homeRecentlyPlayedGrid"></div>
           </div>
-          <div class="cards-scroll-row" id="homeSavedAlbumsGrid"></div>
+
+          <!-- Section 5: Because You Listened To [Artist] -->
+          <div class="section-block hidden" id="homeBecauseSection">
+            <div class="section-header">
+              <h2 class="section-title" id="homeBecauseTitle">Porque escuchaste</h2>
+            </div>
+            <div class="cards-scroll-row" id="homeBecauseGrid"></div>
+          </div>
+
+          <!-- Section 6: New Releases from Your Artists -->
+          <div class="section-block hidden" id="homeNewReleasesSection">
+            <div class="section-header">
+              <h2 class="section-title">Novedades de tus artistas</h2>
+            </div>
+            <div class="cards-scroll-row" id="homeNewReleasesGrid"></div>
+          </div>
+
+          <!-- Section 7: Artists in Rotation (Circular avatars) -->
+          <div class="section-block" id="homeTopArtistsSection">
+            <div class="section-header">
+              <h2 class="section-title" id="homeTopArtistsTitle">Tus artistas en rotación</h2>
+            </div>
+            <div class="cards-scroll-row" id="homeTopArtistsGrid"></div>
+          </div>
+
+          <!-- Section 8: Rediscover Your Library (Daily rotated) -->
+          <div class="section-block" id="homeRediscoverSection" style="margin-bottom:0;">
+            <div class="section-header">
+              <h2 class="section-title" id="homeRediscoverTitle">Redescubre tu biblioteca</h2>
+            </div>
+            <div class="cards-scroll-row" id="homeRediscoverGrid"></div>
+          </div>
         </div>
       </section>
 
@@ -523,6 +558,11 @@
         <!-- LEFT COLUMN: Cover Art + Song Info + Scrubber + Transport -->
         <div class="np-left-player" id="npLeftPlayer">
           <div class="np-cover-stage" id="npCoverStage">
+            <div class="np-cover-skeleton" aria-hidden="true">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z" />
+              </svg>
+            </div>
             <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='500' height='500'/>" alt="" class="np-cover-art np-cover-ghost" id="npCoverGhost" crossorigin="anonymous" decoding="async" aria-hidden="true" draggable="false" />
             <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='500' height='500'/>" alt="Now Playing" class="np-cover-art" id="npCoverArt" crossorigin="anonymous" decoding="async" draggable="false" />
           </div>
@@ -895,25 +935,26 @@
   </div>
 
   <!-- Core Architecture -->
-  <script src="src/js/core/state.js?v=8.9"></script>
+  <script src="src/js/core/state.js?v=9.2"></script>
   <script src="src/js/core/dom.js?v=7.1"></script>
   <script src="src/js/core/color.js?v=7.0"></script>
 
-  <!-- External Services (OAuth 2.0 PKCE, Spotify API & Web Playback SDK, EchoRadio, LRCLIB) -->
+  <!-- External Services (OAuth 2.0 PKCE, Spotify API & Web Playback SDK, EchoRadio, HomeFeed, LRCLIB) -->
   <script src="src/js/services/auth.js?v=7.0"></script>
-  <script src="src/js/services/spotify.js?v=9.0"></script>
-  <script src="src/js/services/radio.js?v=7.0"></script>
+  <script src="src/js/services/spotify.js?v=9.2"></script>
+  <script src="src/js/services/radio.js?v=7.2"></script>
+  <script src="src/js/services/homeFeed.js?v=1.5"></script>
   <script src="src/js/services/lyrics.js?v=7.9"></script>
 
   <!-- UI Views & Renderers -->
-  <script src="src/js/views/catalog.js?v=7.9"></script>
-  <script src="src/js/views/details.js?v=7.1"></script>
-  <script src="src/js/views/player.js?v=9.5"></script>
+  <script src="src/js/views/catalog.js?v=8.4"></script>
+  <script src="src/js/views/details.js?v=7.2"></script>
+  <script src="src/js/views/player.js?v=10.4"></script>
 
   <!-- Controllers & Bootstrap -->
-  <script src="src/js/controllers/navigation.js?v=8.2"></script>
-  <script src="src/js/controllers/events.js?v=10.1"></script>
-  <script src="src/js/main.js?v=8.1"></script>
+  <script src="src/js/controllers/navigation.js?v=8.5"></script>
+  <script src="src/js/controllers/events.js?v=10.4"></script>
+  <script src="src/js/main.js?v=8.8"></script>
 </body>
 </html>
 

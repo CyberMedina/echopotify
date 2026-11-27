@@ -5,6 +5,34 @@
 
 
 document.addEventListener('click', async (e) => {
+  // 0A. Home Dynamic Mode Filter Pills
+  const homeFilterBtn = e.target.closest('.home-filter-pill[data-home-filter]');
+  if (homeFilterBtn) {
+    e.stopPropagation();
+    const filter = homeFilterBtn.getAttribute('data-home-filter') || 'all';
+    if (typeof HomeFeed !== 'undefined' && typeof HomeFeed.setFilter === 'function') {
+      HomeFeed.setFilter(filter);
+    }
+    return;
+  }
+
+  // 0B. Home Direct Play Button on Quick Access Tiles & Mix Cards (1-tap play without opening detail)
+  const homeDirectPlayEntityBtn = e.target.closest('.home-direct-play-entity[data-play-entity]');
+  if (homeDirectPlayEntityBtn) {
+    e.stopPropagation();
+    const targetEntityId = homeDirectPlayEntityBtn.getAttribute('data-play-entity');
+    const ent = targetEntityId ? liveCatalog.entities[targetEntityId] : null;
+    if (ent) {
+      state.selectedEntityId = ent.id;
+      if (typeof startAlbumOrPlaylistPlayback === 'function' && (ent.uri || (Array.isArray(ent.tracks) && ent.tracks.length > 0))) {
+        startAlbumOrPlaylistPlayback(false);
+        return;
+      }
+      openEntityDetail(ent.id);
+    }
+    return;
+  }
+
   const topPlayTrigger = e.target.closest('.search-top-play-btn[data-play-direct-uri]');
   if (topPlayTrigger) {
     e.stopPropagation();
@@ -1828,9 +1856,13 @@ if (npScrubberTrack) {
   const scrubberHitTarget = scrubberWrap || npScrubberTrack;
   let scrubPreviewSec = 0;
   let lastScrubEndAt = 0;
+  let cachedScrubRect = null;
+  let scrubRafId = null;
+  let pendingScrubClientX = null;
+  let activeScrubMode = null;
 
   const ratioFromClientX = (clientX) => {
-    const rect = npScrubberTrack.getBoundingClientRect();
+    const rect = cachedScrubRect || npScrubberTrack.getBoundingClientRect();
     if (!rect || rect.width <= 0) return 0;
     return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
   };
@@ -1873,18 +1905,89 @@ if (npScrubberTrack) {
     }
   };
 
-  const startScrub = (clientX, ev) => {
+  const cancelPendingScrubFrame = () => {
+    if (scrubRafId !== null) {
+      if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(scrubRafId);
+      else clearTimeout(scrubRafId);
+      scrubRafId = null;
+    }
+    pendingScrubClientX = null;
+  };
+
+  const schedulePreviewScrub = (clientX) => {
+    pendingScrubClientX = clientX;
+    if (scrubRafId === null) {
+      const flush = () => {
+        scrubRafId = null;
+        if (pendingScrubClientX !== null && state.isScrubbing) {
+          const x = pendingScrubClientX;
+          pendingScrubClientX = null;
+          previewScrubAt(x);
+        }
+      };
+      if (typeof requestAnimationFrame === 'function') scrubRafId = requestAnimationFrame(flush);
+      else flush();
+    }
+  };
+
+  const onWindowScrubTouchMove = (e) => {
+    if (!state.isScrubbing || !e.touches || e.touches.length !== 1) return;
+    if (e.cancelable) e.preventDefault();
+    schedulePreviewScrub(e.touches[0].clientX);
+  };
+  const onWindowScrubMouseMove = (e) => {
+    if (!state.isScrubbing) return;
+    schedulePreviewScrub(e.clientX);
+  };
+  const onWindowScrubEnd = () => endScrub(false);
+  const onWindowScrubCancel = () => endScrub(true);
+
+  const detachScrubListeners = () => {
+    if (typeof window === 'undefined' || typeof window.removeEventListener !== 'function') return;
+    if (activeScrubMode === 'touch') {
+      window.removeEventListener('touchmove', onWindowScrubTouchMove, { passive: false });
+      window.removeEventListener('touchend', onWindowScrubEnd);
+      window.removeEventListener('touchcancel', onWindowScrubCancel);
+    } else if (activeScrubMode === 'mouse') {
+      window.removeEventListener('mousemove', onWindowScrubMouseMove);
+      window.removeEventListener('mouseup', onWindowScrubEnd);
+    }
+    activeScrubMode = null;
+  };
+
+  const startScrub = (mode, clientX, ev) => {
     if (state.isBuffering) return;
     if (ev && ev.cancelable) ev.preventDefault();
     if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+    detachScrubListeners();
+    cancelPendingScrubFrame();
+    cachedScrubRect = npScrubberTrack.getBoundingClientRect();
     state.isScrubbing = true;
+    activeScrubMode = mode;
     if (scrubberWrap) scrubberWrap.classList.add('is-scrubbing');
     previewScrubAt(clientX);
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      if (mode === 'touch') {
+        window.addEventListener('touchmove', onWindowScrubTouchMove, { passive: false });
+        window.addEventListener('touchend', onWindowScrubEnd, { passive: true });
+        window.addEventListener('touchcancel', onWindowScrubCancel, { passive: true });
+      } else {
+        window.addEventListener('mousemove', onWindowScrubMouseMove);
+        window.addEventListener('mouseup', onWindowScrubEnd);
+      }
+    }
   };
 
   const endScrub = (cancelled = false) => {
     if (!state.isScrubbing) return;
+    if (pendingScrubClientX !== null) {
+      previewScrubAt(pendingScrubClientX);
+    }
+    cancelPendingScrubFrame();
+    detachScrubListeners();
     state.isScrubbing = false;
+    cachedScrubRect = null;
     if (scrubberWrap) scrubberWrap.classList.remove('is-scrubbing');
     lastScrubEndAt = Date.now();
     if (cancelled) {
@@ -1896,34 +1999,18 @@ if (npScrubberTrack) {
 
   scrubberHitTarget.addEventListener('touchstart', (e) => {
     if (!e.touches || e.touches.length !== 1) return;
-    startScrub(e.touches[0].clientX, e);
+    startScrub('touch', e.touches[0].clientX, e);
   }, { passive: false });
 
   scrubberHitTarget.addEventListener('mousedown', (e) => {
     if (e.button !== undefined && e.button !== 0) return;
-    startScrub(e.clientX, e);
+    startScrub('mouse', e.clientX, e);
   });
-
-  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-    window.addEventListener('touchmove', (e) => {
-      if (!state.isScrubbing || !e.touches || e.touches.length !== 1) return;
-      if (e.cancelable) e.preventDefault();
-      previewScrubAt(e.touches[0].clientX);
-    }, { passive: false });
-
-    window.addEventListener('mousemove', (e) => {
-      if (!state.isScrubbing) return;
-      previewScrubAt(e.clientX);
-    });
-
-    window.addEventListener('touchend', () => endScrub(false), { passive: true });
-    window.addEventListener('touchcancel', () => endScrub(true), { passive: true });
-    window.addEventListener('mouseup', () => endScrub(false));
-  }
 
   // Fallback for direct programmatic clicks (avoid double-seek right after drag release)
   npScrubberTrack.addEventListener('click', (e) => {
     if (state.isBuffering || (Date.now() - lastScrubEndAt) < 350) return;
+    cachedScrubRect = null;
     const targetSec = ratioFromClientX(e.clientX) * (state.durationSec || 0);
     commitScrubberSeek(targetSec);
   });
@@ -2894,6 +2981,7 @@ window.addEventListener('pageshow', scheduleFitViewport);
 window.addEventListener('load', scheduleFitViewport);
 // cards-scroll-row horizontal mouse wheel scrolling for PC browser testing
 document.addEventListener('wheel', (e) => {
+  if (state.isNowPlayingOpen) return;
   const row = e.target.closest('.cards-scroll-row');
   if (row && e.deltaY !== 0 && !e.deltaX) {
     e.preventDefault();

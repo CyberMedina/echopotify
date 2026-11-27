@@ -7,12 +7,20 @@
 // 6. LOAD MEDINA JHONATAN'S REAL SPOTIFY DATA INTO ALL 5 SCREENS
 // --------------------------------------------------------------------------
 function updateGreeting() {
+  if (typeof HomeFeed !== 'undefined' && typeof HomeFeed.composeHomeModel === 'function') {
+    const model = HomeFeed.composeHomeModel();
+    const titleEl = document.getElementById('homeGreeting');
+    const subEl = document.getElementById('homeSubtitle');
+    if (titleEl && model && model.header) titleEl.textContent = model.header.title;
+    if (subEl && model && model.header) subEl.textContent = model.header.subtitle;
+    return;
+  }
   const hr = new Date().getHours();
   const titleEl = document.querySelector('#view-home .page-title');
   if (!titleEl) return;
-  if (hr < 12) titleEl.textContent = 'Good morning';
-  else if (hr < 19) titleEl.textContent = 'Good afternoon';
-  else titleEl.textContent = 'Good evening';
+  if (hr >= 5 && hr < 12) titleEl.textContent = 'Buenos días';
+  else if (hr >= 12 && hr < 19) titleEl.textContent = 'Buenas tardes';
+  else titleEl.textContent = 'Buenas noches';
 }
 
 
@@ -23,16 +31,34 @@ async function loadAllRealSpotifyData() {
     return;
   }
 
-  // Fetch all endpoints in parallel for <400ms startup
-  const [me, likedRes, plsRes, albRes, artRes, topTracksRes, recentRes] = await Promise.all([
+  // Fetch all endpoints in parallel (including short/long term horizons for dynamic Home!)
+  const [
+    me,
+    likedRes,
+    plsRes,
+    albRes,
+    artMedRes,
+    topTracksMedRes,
+    recentRes,
+    artShortRes,
+    topTracksShortRes,
+    artLongRes,
+    topTracksLongRes
+  ] = await Promise.all([
     spotifyFetch('/me'),
     spotifyFetch('/me/tracks?limit=50'),
     spotifyFetch('/me/playlists?limit=50'),
-    spotifyFetch('/me/albums?limit=24'),
-    spotifyFetch('/me/top/artists?limit=18'),
-    spotifyFetch('/me/top/tracks?limit=25'),
-    spotifyFetch('/me/player/recently-played?limit=30')
+    spotifyFetch('/me/albums?limit=32'),
+    spotifyFetch('/me/top/artists?time_range=medium_term&limit=18'),
+    spotifyFetch('/me/top/tracks?time_range=medium_term&limit=25'),
+    spotifyFetch('/me/player/recently-played?limit=40'),
+    spotifyFetch('/me/top/artists?time_range=short_term&limit=16').catch(() => null),
+    spotifyFetch('/me/top/tracks?time_range=short_term&limit=25').catch(() => null),
+    spotifyFetch('/me/top/artists?time_range=long_term&limit=16').catch(() => null),
+    spotifyFetch('/me/top/tracks?time_range=long_term&limit=25').catch(() => null)
   ]);
+  const artRes = artMedRes;
+  const topTracksRes = topTracksMedRes;
 
   // 1. User Profile
   let currentUserProfile = null;
@@ -431,16 +457,46 @@ async function loadAllRealSpotifyData() {
     cover: al.cover
   }));
 
-  // Save persistent home cache for instant startup
-  const homeEntitiesCache = {};
-  jumpCards.concat(recentCards).concat(topArtistsCards).concat(savedAlbumsCards).forEach(c => {
-    if (liveCatalog.entities[c.entityId]) {
-      homeEntitiesCache[c.entityId] = liveCatalog.entities[c.entityId];
+  // Feed all multi-horizon data into HomeFeed dynamic composer
+  let dynamicHomeModel = null;
+  if (typeof HomeFeed !== 'undefined' && typeof HomeFeed.ingestCatalogData === 'function') {
+    HomeFeed.ingestCatalogData({
+      userName: me && me.display_name ? me.display_name : '',
+      shortTracksRes: topTracksShortRes,
+      mediumTracksRes: topTracksMedRes,
+      longTracksRes: topTracksLongRes,
+      shortArtistsRes: artShortRes,
+      mediumArtistsRes: artMedRes,
+      longArtistsRes: artLongRes,
+      recentRes
+    });
+    // Wait for secondary shelves (Novedades + Porque escuchaste) so Home transitions ONCE from skeletons -> complete feed without popping!
+    if (typeof HomeFeed.preloadSecondaryShelves === 'function') {
+      const hasCachedV9 = Boolean(typeof loadHomeCache === 'function' && loadHomeCache());
+      await HomeFeed.preloadSecondaryShelves(hasCachedV9 ? 1200 : 2600);
     }
-  });
-  madeForYouBanners.forEach(b => {
-    if (liveCatalog.entities[b.entityId]) {
-      homeEntitiesCache[b.entityId] = liveCatalog.entities[b.entityId];
+    dynamicHomeModel = HomeFeed.composeHomeModel();
+  }
+
+  // Save persistent home cache for instant 0ms startup
+  const homeEntitiesCache = {};
+  const collectEntityIds = [];
+  if (dynamicHomeModel) {
+    (dynamicHomeModel.quickAccess || []).forEach(c => collectEntityIds.push(c.entityId));
+    (dynamicHomeModel.mixes || []).forEach(c => collectEntityIds.push(c.entityId));
+    (dynamicHomeModel.newReleases || []).forEach(c => collectEntityIds.push(c.entityId));
+    (dynamicHomeModel.artists || []).forEach(c => collectEntityIds.push(c.entityId));
+    (dynamicHomeModel.rediscoverAlbums || []).forEach(c => collectEntityIds.push(c.entityId));
+    if (dynamicHomeModel.becauseShelf && Array.isArray(dynamicHomeModel.becauseShelf.items)) {
+      dynamicHomeModel.becauseShelf.items.forEach(c => collectEntityIds.push(c.entityId));
+    }
+  } else {
+    jumpCards.concat(topArtistsCards).concat(savedAlbumsCards).forEach(c => collectEntityIds.push(c.entityId));
+    madeForYouBanners.forEach(b => collectEntityIds.push(b.entityId));
+  }
+  collectEntityIds.forEach(eid => {
+    if (eid && liveCatalog.entities[eid]) {
+      homeEntitiesCache[eid] = liveCatalog.entities[eid];
     }
   });
 
@@ -449,6 +505,7 @@ async function loadAllRealSpotifyData() {
     : null;
 
   saveHomeCache({
+    model: dynamicHomeModel,
     jumpCards: jumpCards,
     recentCards: recentCards,
     banners: madeForYouBanners,
@@ -459,7 +516,11 @@ async function loadAllRealSpotifyData() {
     userProfile: currentUserProfile
   });
 
-  renderHome(jumpCards, recentCards, madeForYouBanners, topArtistsCards, savedAlbumsCards);
+  if (dynamicHomeModel) {
+    renderHomeFromModel(dynamicHomeModel);
+  } else {
+    renderHome(jumpCards, recentCards, madeForYouBanners, topArtistsCards, savedAlbumsCards);
+  }
   renderSearch(recentCards);
   renderLibrary(liveCatalog.libraryFilter);
 
@@ -518,85 +579,129 @@ function buildSkeletonTracksHTML(count = 7) {
   `).join('');
 }
 
-function buildSkeletonBannersHTML() {
-  return `
-    <div class="feature-banner skeleton-banner skeleton-shimmer"></div>
-    <div class="feature-banner skeleton-banner skeleton-shimmer"></div>
-  `;
+function buildSkeletonQuickAccessHTML(count = 6) {
+  return Array.from({ length: count }).map(() => `
+    <div class="skeleton-quick-tile">
+      <div class="skeleton-quick-cover skeleton-shimmer"></div>
+      <div class="skeleton-quick-meta">
+        <div class="skeleton-line-title skeleton-shimmer" style="width: 74%; margin-bottom: 0;"></div>
+        <div class="skeleton-line-sub skeleton-shimmer" style="width: 48%;"></div>
+      </div>
+      <div class="skeleton-quick-btn skeleton-shimmer"></div>
+    </div>
+  `).join('');
 }
 
-function updateHomeGreeting() {
-  const el = document.getElementById('homeGreeting');
-  if (!el) return;
-  const hour = new Date().getHours();
-  if (hour >= 5 && hour < 12) {
-    el.textContent = 'Good morning';
-  } else if (hour >= 12 && hour < 19) {
-    el.textContent = 'Good afternoon';
-  } else {
-    el.textContent = 'Good evening';
+function buildSkeletonMixesHTML(count = 3) {
+  return Array.from({ length: count }).map(() => `
+    <div class="skeleton-mix-card">
+      <div class="skeleton-mix-art skeleton-shimmer"></div>
+      <div class="skeleton-mix-meta">
+        <div class="skeleton-line-sub skeleton-shimmer" style="width: 38%;"></div>
+        <div class="skeleton-line-title skeleton-shimmer" style="width: 78%; margin-bottom: 0;"></div>
+        <div class="skeleton-line-sub skeleton-shimmer" style="width: 58%;"></div>
+      </div>
+      <div class="skeleton-mix-btn skeleton-shimmer"></div>
+    </div>
+  `).join('');
+}
+
+function buildSkeletonQuickPicksHTML(count = 8) {
+  const widths = ['68%', '56%', '74%', '62%', '70%', '52%', '66%', '60%'];
+  return Array.from({ length: count }).map((_, idx) => `
+    <div class="skeleton-pick-row">
+      <div class="skeleton-pick-thumb skeleton-shimmer"></div>
+      <div class="skeleton-pick-meta">
+        <div class="skeleton-line-title skeleton-shimmer" style="width: ${widths[idx % widths.length]}; margin-bottom: 0;"></div>
+        <div class="skeleton-line-sub skeleton-shimmer" style="width: 44%;"></div>
+      </div>
+      <div class="skeleton-pick-btn skeleton-shimmer"></div>
+    </div>
+  `).join('');
+}
+
+function persistCurrentHomeCache() {
+  if (typeof HomeFeed === 'undefined' || typeof HomeFeed.composeHomeModel !== 'function') return;
+  try {
+    const existing = (typeof loadHomeCache === 'function' ? loadHomeCache() : null) || {};
+    const model = HomeFeed.composeHomeModel();
+    const entities = Object.assign({}, existing.entities || {});
+    const ids = [];
+    (model.quickAccess || []).forEach(c => ids.push(c.entityId));
+    (model.mixes || []).forEach(c => ids.push(c.entityId));
+    (model.newReleases || []).forEach(c => ids.push(c.entityId));
+    (model.artists || []).forEach(c => ids.push(c.entityId));
+    (model.rediscoverAlbums || []).forEach(c => ids.push(c.entityId));
+    if (model.becauseShelf && Array.isArray(model.becauseShelf.items)) {
+      model.becauseShelf.items.forEach(c => ids.push(c.entityId));
+    }
+    ids.forEach(eid => {
+      if (eid && liveCatalog.entities[eid]) {
+        entities[eid] = liveCatalog.entities[eid];
+      }
+    });
+    saveHomeCache({
+      ...existing,
+      model: { ...model, releasesLoading: false },
+      entities
+    });
+  } catch (e) {
+    console.warn('[persistCurrentHomeCache]', e);
   }
 }
 
-function renderHomeMadeForYou(banners) {
-  const grid = document.getElementById('homeMadeForYouGrid');
-  if (!grid) return;
-  if (!banners || banners.length === 0) {
-    grid.innerHTML = '';
-    delete grid.dataset.sig;
+function updateHomeGreeting(headerOverride = null) {
+  const titleEl = document.getElementById('homeGreeting');
+  const subEl = document.getElementById('homeSubtitle');
+  if (headerOverride && headerOverride.title) {
+    if (titleEl) titleEl.textContent = headerOverride.title;
+    if (subEl && headerOverride.subtitle) subEl.textContent = headerOverride.subtitle;
     return;
   }
-  const sig = banners.slice(0, 2).map(b => `${b.entityId}:${b.cover}:${b.title}`).join('|');
-  if (grid.dataset.sig === sig) return; // Identical: preserve DOM & avoid image reload flicker
-  grid.dataset.sig = sig;
-
-  const styles = [
-    { cls: 'discover-weekly' },
-    { cls: 'release-radar' }
-  ];
-
-  grid.innerHTML = banners.slice(0, 2).map((b, idx) => {
-    const st = styles[idx % styles.length];
-    return `
-      <div class="feature-banner ${st.cls}" data-open-entity="${b.entityId}">
-        <div class="banner-ambient-glow" style="background-image: url('${b.cover}');"></div>
-        <div class="banner-left">
-          <div class="banner-artwork-wrap">
-            ${renderOptImg(b.cover, b.title, 'banner-artwork', 'fetchpriority="high"')}
-          </div>
-          <div class="banner-meta">
-            <span class="banner-tag">${b.tag || 'Made for you'}</span>
-            <div class="banner-title">${b.title}</div>
-            <div class="banner-subtitle">${b.subtitle || ''}</div>
-          </div>
-        </div>
-        <button class="banner-play-btn" title="Play">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="7 5 19 12 7 19 7 5"></polygon>
-          </svg>
-        </button>
-      </div>
-    `;
-  }).join('');
-  hydrateImages(grid);
+  updateGreeting();
 }
 
 function renderInitialSkeletons() {
   updateHomeGreeting();
-  const jumpGrid = document.getElementById('homeJumpBackGrid');
-  if (jumpGrid) jumpGrid.innerHTML = buildSkeletonCardsHTML(4, true);
+  const qaSec = document.getElementById('homeQuickAccessSection');
+  if (qaSec) qaSec.classList.remove('hidden');
+  const qaGrid = document.getElementById('homeQuickAccessGrid');
+  if (qaGrid) { delete qaGrid.dataset.sig; qaGrid.innerHTML = buildSkeletonQuickAccessHTML(6); }
 
-  const mfuGrid = document.getElementById('homeMadeForYouGrid');
-  if (mfuGrid) mfuGrid.innerHTML = buildSkeletonBannersHTML();
+  const mixesSec = document.getElementById('homeMixesSection');
+  if (mixesSec) mixesSec.classList.remove('hidden');
+  const mixesGrid = document.getElementById('homeMixesGrid');
+  if (mixesGrid) { delete mixesGrid.dataset.sig; mixesGrid.innerHTML = buildSkeletonMixesHTML(3); }
 
-  const artistsGrid = document.getElementById('homeTopArtistsGrid');
-  if (artistsGrid) artistsGrid.innerHTML = buildSkeletonArtistsHTML(4);
+  const picksSec = document.getElementById('homeQuickPicksSection');
+  if (picksSec) picksSec.classList.remove('hidden');
+  const picksGrid = document.getElementById('homeQuickPicksGrid');
+  if (picksGrid) { delete picksGrid.dataset.sig; picksGrid.innerHTML = buildSkeletonQuickPicksHTML(8); }
 
+  const recentSec = document.getElementById('homeRecentlyPlayedSection');
+  if (recentSec) recentSec.classList.remove('hidden');
   const recentGrid = document.getElementById('homeRecentlyPlayedGrid');
-  if (recentGrid) recentGrid.innerHTML = buildSkeletonCardsHTML(4, false);
+  if (recentGrid) { delete recentGrid.dataset.sig; recentGrid.innerHTML = buildSkeletonCardsHTML(4, true); }
 
-  const savedGrid = document.getElementById('homeSavedAlbumsGrid');
-  if (savedGrid) savedGrid.innerHTML = buildSkeletonCardsHTML(4, true);
+  const becauseSec = document.getElementById('homeBecauseSection');
+  if (becauseSec) becauseSec.classList.remove('hidden');
+  const becauseGrid = document.getElementById('homeBecauseGrid');
+  if (becauseGrid) { delete becauseGrid.dataset.sig; becauseGrid.innerHTML = buildSkeletonCardsHTML(4, true); }
+
+  const relSec = document.getElementById('homeNewReleasesSection');
+  if (relSec) relSec.classList.remove('hidden');
+  const relGrid = document.getElementById('homeNewReleasesGrid');
+  if (relGrid) { delete relGrid.dataset.sig; relGrid.innerHTML = buildSkeletonCardsHTML(4, true); }
+
+  const artistsSec = document.getElementById('homeTopArtistsSection');
+  if (artistsSec) artistsSec.classList.remove('hidden');
+  const artistsGrid = document.getElementById('homeTopArtistsGrid');
+  if (artistsGrid) { delete artistsGrid.dataset.sig; artistsGrid.innerHTML = buildSkeletonArtistsHTML(4); }
+
+  const rediscoverSec = document.getElementById('homeRediscoverSection');
+  if (rediscoverSec) rediscoverSec.classList.remove('hidden');
+  const rediscoverGrid = document.getElementById('homeRediscoverGrid');
+  if (rediscoverGrid) { delete rediscoverGrid.dataset.sig; rediscoverGrid.innerHTML = buildSkeletonCardsHTML(4, true); }
 
   const searchesRow = document.getElementById('recentSearchesRow');
   if (searchesRow) searchesRow.innerHTML = buildSkeletonChipsHTML(5);
@@ -608,123 +713,356 @@ function renderInitialSkeletons() {
   if (libGrid) libGrid.innerHTML = buildSkeletonCardsHTML(10, true);
 }
 
-function renderHome(jumpCards, recentCards, banners, topArtists, savedAlbums) {
-  updateHomeGreeting();
+const HOME_FILTER_SECTION_ORDER = {
+  all: {
+    homeQuickAccessSection: 1,
+    homeMixesSection: 2,
+    homeQuickPicksSection: 3,
+    homeRecentlyPlayedSection: 4,
+    homeBecauseSection: 5,
+    homeNewReleasesSection: 6,
+    homeTopArtistsSection: 7,
+    homeRediscoverSection: 8
+  },
+  rotation: {
+    homeRecentlyPlayedSection: 1,
+    homeQuickPicksSection: 2,
+    homeTopArtistsSection: 3,
+    homeQuickAccessSection: 4,
+    homeMixesSection: 5,
+    homeBecauseSection: 6,
+    homeNewReleasesSection: 7,
+    homeRediscoverSection: 8
+  },
+  releases: {
+    homeNewReleasesSection: 1,
+    homeBecauseSection: 2,
+    homeMixesSection: 3,
+    homeQuickPicksSection: 4,
+    homeRecentlyPlayedSection: 5,
+    homeQuickAccessSection: 6,
+    homeTopArtistsSection: 7,
+    homeRediscoverSection: 8
+  },
+  radios: {
+    homeMixesSection: 1,
+    homeQuickPicksSection: 2,
+    homeBecauseSection: 3,
+    homeTopArtistsSection: 4,
+    homeQuickAccessSection: 5,
+    homeRecentlyPlayedSection: 6,
+    homeNewReleasesSection: 7,
+    homeRediscoverSection: 8
+  },
+  rediscover: {
+    homeRediscoverSection: 1,
+    homeMixesSection: 2,
+    homeTopArtistsSection: 3,
+    homeQuickPicksSection: 4,
+    homeQuickAccessSection: 5,
+    homeRecentlyPlayedSection: 6,
+    homeBecauseSection: 7,
+    homeNewReleasesSection: 8
+  }
+};
 
-  const jumpList = (jumpCards && jumpCards.length > 0) ? jumpCards : [];
-  const jumpGrid = document.getElementById('homeJumpBackGrid');
-  if (jumpGrid) {
-    if (jumpList.length > 0) {
-      const sig = jumpList.slice(0, 8).map(i => `${i.entityId}:${i.cover}:${i.title}`).join('|');
-      if (jumpGrid.dataset.sig !== sig) {
-        jumpGrid.dataset.sig = sig;
-        jumpGrid.innerHTML = jumpList.slice(0, 8).map((item, idx) => `
-          <div class="media-card" data-open-entity="${item.entityId}">
-            <div class="media-card-cover-wrap">
-              ${renderOptImg(item.cover, item.title, 'media-card-cover', idx < 4 ? 'fetchpriority="high"' : '')}
+function applyHomeFilterOrdering(filter) {
+  const orderMap = HOME_FILTER_SECTION_ORDER[filter] || HOME_FILTER_SECTION_ORDER.all;
+  Object.keys(orderMap).forEach(secId => {
+    const el = document.getElementById(secId);
+    if (el) el.style.order = String(orderMap[secId]);
+  });
+
+  document.querySelectorAll('#homeFilterPills .home-filter-pill').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-home-filter') === filter);
+  });
+
+  const artistsTitle = document.getElementById('homeTopArtistsTitle');
+  if (artistsTitle) {
+    artistsTitle.textContent = filter === 'rediscover' ? 'Tus artistas de siempre' : 'Tus artistas en rotación';
+  }
+}
+
+function renderCardRail(gridEl, items, opts = {}) {
+  if (!gridEl) return;
+  const list = Array.isArray(items) ? items.slice(0, opts.max || 8) : [];
+  if (list.length === 0) {
+    delete gridEl.dataset.sig;
+    gridEl.innerHTML = opts.fallbackSkeleton ? buildSkeletonCardsHTML(4, true) : '';
+    return;
+  }
+  const sig = list.map(i => `${i.entityId || i.uri || i.trackId}:${i.cover}:${i.title}:${i.badge || ''}`).join('|');
+  if (gridEl.dataset.sig === sig) return;
+  gridEl.dataset.sig = sig;
+
+  gridEl.innerHTML = list.map((item, idx) => {
+    if (item.isArtist && item.entityId) {
+      return `
+        <div class="artist-card" data-open-entity="${item.entityId}">
+          <div class="artist-card-avatar-wrap">
+            ${renderOptImg(item.cover, item.title, 'artist-card-avatar')}
+          </div>
+          <div class="artist-card-name">${escapeHtml(item.title)}</div>
+          <div class="artist-card-meta">${escapeHtml(item.subtitle || 'Artista')}</div>
+        </div>
+      `;
+    }
+    const isTrackDirect = Boolean(opts.directTrackPlay && item.uri);
+    const actionAttr = isTrackDirect
+      ? `data-play-direct-uri="${escapeHtml(item.uri)}" data-title="${escapeHtml(item.title || '')}" data-artist="${escapeHtml(item.subtitle || '')}" data-cover="${escapeHtml(item.coverLarge || item.cover || '')}" data-thumb="${escapeHtml(item.thumb || item.cover || '')}" data-duration="${item.durationMs ? Math.round(item.durationMs / 1000) : ''}"`
+      : `data-open-entity="${escapeHtml(item.entityId || '')}"`;
+    const badgeHtml = item.badge
+      ? `<span class="media-card-badge ${item.badge === 'NUEVO' ? 'is-new' : ''}">${escapeHtml(item.badge)}</span>`
+      : '';
+    return `
+      <div class="media-card" ${actionAttr}>
+        <div class="media-card-cover-wrap">
+          ${renderOptImg(item.cover, item.title || 'Música', 'media-card-cover', idx < 4 && opts.highPriority ? 'fetchpriority="high"' : '')}
+          ${badgeHtml}
+        </div>
+        <div class="media-card-title">${escapeHtml(item.title || '')}</div>
+        <div class="media-card-subtitle">${escapeHtml(item.subtitle || '')}</div>
+      </div>
+    `;
+  }).join('');
+  hydrateImages(gridEl);
+}
+
+function renderHomeFromModel(model) {
+  if (!model) return;
+  updateHomeGreeting(model.header);
+  applyHomeFilterOrdering(model.filter || 'all');
+
+  // 1. Quick Access 3x2 Tiles
+  const qaSec = document.getElementById('homeQuickAccessSection');
+  const qaGrid = document.getElementById('homeQuickAccessGrid');
+  const qaList = Array.isArray(model.quickAccess) ? model.quickAccess.slice(0, 6) : [];
+  if (qaGrid) {
+    if (qaList.length > 0) {
+      if (qaSec) qaSec.classList.remove('hidden');
+      const sig = qaList.map(q => `${q.entityId}:${q.cover}:${q.title}`).join('|');
+      if (qaGrid.dataset.sig !== sig) {
+        qaGrid.dataset.sig = sig;
+        qaGrid.innerHTML = qaList.map((tile, idx) => `
+          <div class="quick-tile" data-open-entity="${escapeHtml(tile.entityId)}">
+            ${renderOptImg(tile.cover, tile.title, 'quick-tile-cover', idx < 3 ? 'fetchpriority="high"' : '')}
+            <div class="quick-tile-meta">
+              <div class="quick-tile-title">${escapeHtml(tile.title)}</div>
+              <div class="quick-tile-sub">${escapeHtml(tile.subtitle || '')}</div>
             </div>
-            <div class="media-card-title">${item.title}</div>
-            <div class="media-card-subtitle">${item.subtitle}</div>
+            <button type="button" class="quick-tile-play home-direct-play-entity" data-play-entity="${escapeHtml(tile.entityId)}" title="Reproducir">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+            </button>
           </div>
         `).join('');
-        hydrateImages(jumpGrid);
+        hydrateImages(qaGrid);
+      }
+    } else if (qaSec) {
+      qaSec.classList.add('hidden');
+    }
+  }
+
+  // 2. Dynamic Mixes & Stations Rail
+  const mixesSec = document.getElementById('homeMixesSection');
+  const mixesGrid = document.getElementById('homeMixesGrid');
+  const mixesList = Array.isArray(model.mixes) ? model.mixes.slice(0, 4) : [];
+  if (mixesGrid) {
+    if (mixesList.length > 0) {
+      if (mixesSec) mixesSec.classList.remove('hidden');
+      const sig = mixesList.map(m => `${m.entityId}:${m.title}:${m.cover}`).join('|');
+      if (mixesGrid.dataset.sig !== sig) {
+        mixesGrid.dataset.sig = sig;
+        mixesGrid.innerHTML = mixesList.map((m, idx) => {
+          const artHtml = (Array.isArray(m.collageCovers) && m.collageCovers.length >= 4)
+            ? `<div class="mix-collage-grid">${m.collageCovers.slice(0, 4).map(c => renderOptImg(c, m.title, '')).join('')}</div>`
+            : renderOptImg(m.cover, m.title, '', idx < 2 ? 'fetchpriority="high"' : '');
+          return `
+            <div class="mix-card ${m.accentCls || ''}" data-open-entity="${escapeHtml(m.entityId)}">
+              <div class="mix-card-art">${artHtml}</div>
+              <div class="mix-card-meta">
+                <span class="mix-card-tag">${escapeHtml(m.tag || 'HECHO PARA TI')}</span>
+                <div class="mix-card-title">${escapeHtml(m.title)}</div>
+                <div class="mix-card-sub">${escapeHtml(m.subtitle || '')}</div>
+              </div>
+              <button type="button" class="banner-play-btn home-direct-play-entity" data-play-entity="${escapeHtml(m.entityId)}" title="Reproducir">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="7 5 19 12 7 19 7 5"></polygon>
+                </svg>
+              </button>
+            </div>
+          `;
+        }).join('');
+        hydrateImages(mixesGrid);
+      }
+    } else if (mixesSec) {
+      mixesSec.classList.add('hidden');
+    }
+  }
+
+  // 3. Quick Picks 2x4 Track Grid (One-tap play) — never wipe DOM when only playingTrackId changes!
+  const picksSec = document.getElementById('homeQuickPicksSection');
+  const picksGrid = document.getElementById('homeQuickPicksGrid');
+  const picksList = Array.isArray(model.quickPicks) ? model.quickPicks.slice(0, 8) : [];
+  if (picksGrid) {
+    if (picksList.length > 0) {
+      if (picksSec) picksSec.classList.remove('hidden');
+      const curPlayingId = state.playingTrackId || '';
+      const sig = picksList.map(t => `${t.trackId || t.id}:${t.title}`).join('|');
+      if (picksGrid.dataset.sig !== sig) {
+        picksGrid.dataset.sig = sig;
+        picksGrid.innerHTML = picksList.map(t => {
+          const tid = t.trackId || t.id || '';
+          const isPlaying = Boolean(curPlayingId && tid === curPlayingId);
+          return `
+            <div class="quick-pick-row ${isPlaying ? 'is-playing' : ''}"
+                 data-pick-track-id="${escapeHtml(tid)}"
+                 data-play-direct-uri="${escapeHtml(t.uri)}"
+                 data-title="${escapeHtml(t.title)}"
+                 data-artist="${escapeHtml(t.subtitle || t.artist || '')}"
+                 data-cover="${escapeHtml(t.coverLarge || t.cover || '')}"
+                 data-thumb="${escapeHtml(t.thumb || t.cover || '')}"
+                 data-duration="${t.durationMs ? Math.round(t.durationMs / 1000) : ''}">
+              ${renderOptImg(t.thumb || t.cover, t.title, 'quick-pick-thumb')}
+              <div class="quick-pick-meta">
+                <div class="quick-pick-title">${escapeHtml(t.title)}</div>
+                <div class="quick-pick-artist">${escapeHtml(t.subtitle || t.artist || '')}</div>
+              </div>
+              <span class="quick-pick-play-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+              </span>
+            </div>
+          `;
+        }).join('');
+        hydrateImages(picksGrid);
+      } else {
+        picksGrid.querySelectorAll('.quick-pick-row').forEach(row => {
+          const tid = row.getAttribute('data-pick-track-id') || '';
+          row.classList.toggle('is-playing', Boolean(curPlayingId && tid === curPlayingId));
+        });
+      }
+    } else if (picksSec) {
+      picksSec.classList.add('hidden');
+    }
+  }
+
+  // 4. Recently Played (Live-updating)
+  const recentSec = document.getElementById('homeRecentlyPlayedSection');
+  const recentGrid = document.getElementById('homeRecentlyPlayedGrid');
+  if (recentGrid) {
+    const rec = Array.isArray(model.recentTracks) ? model.recentTracks : [];
+    if (recentSec) recentSec.classList.toggle('hidden', rec.length === 0);
+    renderCardRail(recentGrid, rec, { directTrackPlay: true });
+  }
+
+  // 5. Because You Listened To [Artist]
+  const becauseSec = document.getElementById('homeBecauseSection');
+  const becauseTitle = document.getElementById('homeBecauseTitle');
+  const becauseGrid = document.getElementById('homeBecauseGrid');
+  if (becauseSec && becauseGrid) {
+    const shelf = model.becauseShelf;
+    if (shelf && Array.isArray(shelf.items) && shelf.items.length > 0) {
+      becauseSec.classList.remove('hidden');
+      if (becauseTitle) becauseTitle.textContent = shelf.title;
+      renderCardRail(becauseGrid, shelf.items);
+    } else if (shelf && shelf.loading) {
+      becauseSec.classList.remove('hidden');
+      if (becauseTitle) becauseTitle.textContent = shelf.title;
+      if (becauseGrid.dataset.sig !== '__skeleton__') {
+        becauseGrid.dataset.sig = '__skeleton__';
+        becauseGrid.innerHTML = buildSkeletonCardsHTML(4, true);
       }
     } else {
-      delete jumpGrid.dataset.sig;
-      jumpGrid.innerHTML = buildSkeletonCardsHTML(4, true);
+      becauseSec.classList.add('hidden');
     }
   }
 
-  if (banners && banners.length > 0) {
-    renderHomeMadeForYou(banners);
-  } else {
-    const mfuGrid = document.getElementById('homeMadeForYouGrid');
-    if (mfuGrid && !mfuGrid.children.length) {
-      delete mfuGrid.dataset.sig;
-      mfuGrid.innerHTML = buildSkeletonBannersHTML();
+  // 6. New Releases from Your Artists
+  const relSec = document.getElementById('homeNewReleasesSection');
+  const relGrid = document.getElementById('homeNewReleasesGrid');
+  if (relSec && relGrid) {
+    const rels = Array.isArray(model.newReleases) ? model.newReleases : [];
+    if (rels.length > 0) {
+      relSec.classList.remove('hidden');
+      renderCardRail(relGrid, rels);
+    } else if (model.releasesLoading) {
+      relSec.classList.remove('hidden');
+      if (relGrid.dataset.sig !== '__skeleton__') {
+        relGrid.dataset.sig = '__skeleton__';
+        relGrid.innerHTML = buildSkeletonCardsHTML(4, true);
+      }
+    } else {
+      relSec.classList.add('hidden');
     }
   }
 
-  // Render Favorite Artists (Circular bubbles)
+  // 7. Artists in Rotation (Circular avatars)
+  const artistsSec = document.getElementById('homeTopArtistsSection');
   const artistsGrid = document.getElementById('homeTopArtistsGrid');
-  const artistsList = (topArtists && topArtists.length > 0) ? topArtists : [];
+  const artistsList = Array.isArray(model.artists) ? model.artists.slice(0, 8) : [];
   if (artistsGrid) {
     if (artistsList.length > 0) {
-      const sig = artistsList.slice(0, 8).map(a => `${a.entityId}:${a.cover}:${a.name}`).join('|');
+      if (artistsSec) artistsSec.classList.remove('hidden');
+      const sig = artistsList.map(a => `${a.entityId}:${a.cover}:${a.name}`).join('|');
       if (artistsGrid.dataset.sig !== sig) {
         artistsGrid.dataset.sig = sig;
-        artistsGrid.innerHTML = artistsList.slice(0, 8).map(item => `
-          <div class="artist-card" data-open-entity="${item.entityId}">
+        artistsGrid.innerHTML = artistsList.map(item => `
+          <div class="artist-card" data-open-entity="${escapeHtml(item.entityId)}">
             <div class="artist-card-avatar-wrap">
               ${renderOptImg(item.cover, item.name, 'artist-card-avatar')}
             </div>
-            <div class="artist-card-name">${item.name}</div>
-            <div class="artist-card-meta">${item.meta || 'Artist'}</div>
+            <div class="artist-card-name">${escapeHtml(item.name)}</div>
+            <div class="artist-card-meta">${escapeHtml(item.meta || 'Artista')}</div>
           </div>
         `).join('');
         hydrateImages(artistsGrid);
       }
-    } else {
-      delete artistsGrid.dataset.sig;
-      artistsGrid.innerHTML = buildSkeletonArtistsHTML(4);
+    } else if (artistsSec) {
+      artistsSec.classList.add('hidden');
     }
   }
 
-  // Build balanced recent list of up to 8 tracks:
-  let finalRecent = (recentCards && recentCards.length > 0) ? [...recentCards] : [];
-
-  const recentGrid = document.getElementById('homeRecentlyPlayedGrid');
-  if (recentGrid) {
-    if (finalRecent.length > 0) {
-      const sig = finalRecent.slice(0, 8).map(item => `${item.uri || item.trackId || item.entityId}:${item.cover}:${item.title}`).join('|');
-      if (recentGrid.dataset.sig !== sig) {
-        recentGrid.dataset.sig = sig;
-        recentGrid.innerHTML = finalRecent.slice(0, 8).map(item => {
-          const actionAttr = item.uri
-            ? `data-play-direct-uri="${item.uri}" data-title="${(item.title || '').replace(/"/g, '&quot;')}" data-artist="${(item.subtitle || '').replace(/"/g, '&quot;')}" data-cover="${item.coverLarge || item.cover}" data-thumb="${item.thumb || item.cover}" data-duration="${item.durationMs ? Math.round(item.durationMs / 1000) : ''}"`
-            : `data-open-entity="${item.entityId}"`;
-          return `
-            <div class="media-card" ${actionAttr}>
-              <div class="media-card-cover-wrap">
-                ${renderOptImg(item.cover, item.title || 'Track', 'media-card-cover')}
-              </div>
-              <div class="media-card-title">${item.title}</div>
-              <div class="media-card-subtitle">${item.subtitle || ''}</div>
-            </div>
-          `;
-        }).join('');
-        hydrateImages(recentGrid);
-      }
-    } else {
-      delete recentGrid.dataset.sig;
-      recentGrid.innerHTML = buildSkeletonCardsHTML(4, false);
-    }
+  // 8. Rediscover Your Library
+  const rediscoverSec = document.getElementById('homeRediscoverSection');
+  const rediscoverGrid = document.getElementById('homeRediscoverGrid');
+  if (rediscoverSec && rediscoverGrid) {
+    const albs = Array.isArray(model.rediscoverAlbums) ? model.rediscoverAlbums : [];
+    rediscoverSec.classList.toggle('hidden', albs.length === 0);
+    renderCardRail(rediscoverGrid, albs);
   }
+}
 
-  // Render Saved Albums (Library)
-  const savedAlbumsGrid = document.getElementById('homeSavedAlbumsGrid');
-  const savedList = (savedAlbums && savedAlbums.length > 0) ? savedAlbums : [];
-  if (savedAlbumsGrid) {
-    if (savedList.length > 0) {
-      const sig = savedList.slice(0, 8).map(al => `${al.entityId}:${al.cover}:${al.title}`).join('|');
-      if (savedAlbumsGrid.dataset.sig !== sig) {
-        savedAlbumsGrid.dataset.sig = sig;
-        savedAlbumsGrid.innerHTML = savedList.slice(0, 8).map(item => `
-          <div class="media-card" data-open-entity="${item.entityId}">
-            <div class="media-card-cover-wrap">
-              ${renderOptImg(item.cover, item.title, 'media-card-cover')}
-            </div>
-            <div class="media-card-title">${item.title}</div>
-            <div class="media-card-subtitle">${item.subtitle || ''}</div>
-          </div>
-        `).join('');
-        hydrateImages(savedAlbumsGrid);
-      }
-    } else {
-      delete savedAlbumsGrid.dataset.sig;
-      savedAlbumsGrid.innerHTML = buildSkeletonCardsHTML(4, true);
-    }
-  }
+function renderDynamicHome() {
+  if (typeof HomeFeed === 'undefined' || typeof HomeFeed.composeHomeModel !== 'function') return;
+  const model = HomeFeed.composeHomeModel();
+  renderHomeFromModel(model);
+}
+
+// Backwards-compatible fallback renderer (used if legacy cache is loaded before fresh API data)
+function renderHome(jumpCards, recentCards, banners, topArtists, savedAlbums) {
+  renderHomeFromModel({
+    filter: 'all',
+    header: null,
+    quickAccess: (jumpCards || []).slice(0, 6).map(j => ({
+      entityId: j.entityId,
+      title: j.title,
+      subtitle: j.subtitle,
+      cover: j.cover
+    })),
+    mixes: (banners || []).map((b, i) => ({
+      entityId: b.entityId,
+      title: b.title,
+      subtitle: b.subtitle,
+      tag: b.tag || 'HECHO PARA TI',
+      accentCls: i === 0 ? 'mix-accent-time' : 'mix-accent-radio',
+      cover: b.cover
+    })),
+    quickPicks: (recentCards || []).slice(0, 8),
+    recentTracks: recentCards || [],
+    becauseShelf: null,
+    newReleases: [],
+    artists: topArtists || [],
+    rediscoverAlbums: savedAlbums || []
+  });
 }
 
 const RECENT_SEARCHES_STORAGE_KEY = 'sp_recent_searches_v1';

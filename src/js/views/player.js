@@ -43,33 +43,110 @@ let metaSwapTimer = null;
 let scrubberResetTimer = null;
 let trackWorkDeferTimer = null;
 
-function crossfadeNowPlayingCover(rawCoverUrl, thumbUrl, animateSwap) {
+function findReadyCoverVariant(coverUrl, thumbUrl, extraPreviewUrls = []) {
+  const candidates = [];
+  const addCand = (u) => {
+    if (u && typeof u === 'string' && !candidates.includes(u)) candidates.push(u);
+  };
+  addCand(coverUrl);
+  if (Array.isArray(extraPreviewUrls)) {
+    for (let i = 0; i < extraPreviewUrls.length; i++) addCand(extraPreviewUrls[i]);
+  }
+  if (coverUrl && coverUrl.includes('ab67616d0000b273')) {
+    addCand(coverUrl.replace('ab67616d0000b273', 'ab67616d00001e02'));
+    addCand(coverUrl.replace('ab67616d0000b273', 'ab67616d00004851'));
+  }
+  addCand(thumbUrl);
+
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i];
+    if (c.startsWith('data:') || decodedImageUrls.has(c)) return c;
+  }
+  if (typeof document !== 'undefined' && document.images && document.images.length > 0) {
+    const domImgs = document.images;
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i];
+      for (let j = 0; j < domImgs.length; j++) {
+        const img = domImgs[j];
+        if (img && img.complete && img.naturalWidth > 0 && img.src === c) {
+          decodedImageUrls.add(c);
+          return c;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function crossfadeNowPlayingCover(rawCoverUrl, thumbUrl, animateSwap, extraPreviewUrls = []) {
   const coverUrl = ensureHighResSpotifyCover(rawCoverUrl);
   if (!npCoverArt || !coverUrl) return;
   const prevSrc = npCoverArt.getAttribute('src') || npCoverArt.dataset.currentSrc || '';
   const isInitialPlaceholder = !prevSrc || prevSrc.startsWith('data:image/svg+xml');
+  const wasLoadingSkeleton = Boolean(npCoverStage && npCoverStage.classList.contains('is-cover-loading'));
   const now = Date.now();
   const rapidUpdate = (now - lastCoverCrossfadeAt) < 260;
 
   npCoverArt.dataset.currentSrc = coverUrl;
 
-  if (!animateSwap || isInitialPlaceholder || !npCoverGhost || prevSrc === coverUrl || rapidUpdate) {
-    const immediateSrc = (coverUrl.startsWith('data:') || decodedImageUrls.has(coverUrl))
-      ? coverUrl
-      : ((thumbUrl && decodedImageUrls.has(thumbUrl)) ? thumbUrl : null);
+  const readySrc = findReadyCoverVariant(coverUrl, thumbUrl, extraPreviewUrls);
 
-    if (immediateSrc) {
-      if (npCoverArt.getAttribute('src') !== immediateSrc) {
-        npCoverArt.src = immediateSrc;
-      }
-      npCoverArt.style.opacity = '1';
-      if (npCoverGhost && !coverCrossfadeTimer) {
-        npCoverGhost.src = immediateSrc;
-      }
+  const setCoverLoadingState = (loading) => {
+    if (!npCoverStage) return;
+    npCoverStage.classList.toggle('is-cover-loading', Boolean(loading));
+  };
+
+  const revealDecodedCoverFromSkeleton = (finalUrl) => {
+    if (state.lastRenderedCover !== coverUrl) return;
+    npCoverArt.src = finalUrl;
+    if (npCoverGhost && !coverCrossfadeTimer) {
+      npCoverGhost.src = finalUrl;
     }
-    if (immediateSrc !== coverUrl) {
-      decodeImageInBackground(coverUrl).then(() => {
-        if (state.lastRenderedCover === coverUrl) {
+    requestAnimationFrame(() => {
+      if (state.lastRenderedCover !== coverUrl) return;
+      setCoverLoadingState(false);
+      npCoverArt.style.opacity = '1';
+    });
+  };
+
+  // Nivel 2 (Apple Music): si ninguna resolución de la nueva portada está en caché/DOM,
+  // nunca dejar la foto de la canción anterior congelada -> mostrar skeleton translúcido con shimmer
+  if (!readySrc) {
+    clearTimeout(coverCrossfadeTimer);
+    coverCrossfadeTimer = null;
+    if (nowPlayingOverlay) nowPlayingOverlay.classList.remove('np-switching');
+    if (npCoverGhost) {
+      npCoverGhost.style.transition = 'none';
+      npCoverGhost.style.opacity = '0';
+      npCoverGhost.classList.remove('ghost-fading');
+    }
+    setCoverLoadingState(true);
+
+    decodeImageInBackground(coverUrl).then((ok) => {
+      if (state.lastRenderedCover !== coverUrl) return;
+      revealDecodedCoverFromSkeleton(ok ? coverUrl : (thumbUrl || DEFAULT_ALBUM_COVER));
+    });
+    return;
+  }
+
+  if (!animateSwap || isInitialPlaceholder || wasLoadingSkeleton || !npCoverGhost || prevSrc === readySrc || rapidUpdate) {
+    clearTimeout(coverCrossfadeTimer);
+    coverCrossfadeTimer = null;
+    if (nowPlayingOverlay) nowPlayingOverlay.classList.remove('np-switching');
+    if (npCoverGhost) {
+      npCoverGhost.style.transition = 'none';
+      npCoverGhost.style.opacity = '0';
+      npCoverGhost.classList.remove('ghost-fading');
+      npCoverGhost.src = readySrc;
+    }
+    if (npCoverArt.getAttribute('src') !== readySrc) {
+      npCoverArt.src = readySrc;
+    }
+    setCoverLoadingState(false);
+    npCoverArt.style.opacity = '1';
+    if (readySrc !== coverUrl) {
+      decodeImageInBackground(coverUrl).then((ok) => {
+        if (ok && state.lastRenderedCover === coverUrl) {
           npCoverArt.src = coverUrl;
           npCoverArt.style.opacity = '1';
           if (npCoverGhost && !coverCrossfadeTimer) {
@@ -78,19 +155,16 @@ function crossfadeNowPlayingCover(rawCoverUrl, thumbUrl, animateSwap) {
         }
       });
     }
-    if (!rapidUpdate && npCoverGhost) {
-      npCoverGhost.style.opacity = '0';
-      npCoverGhost.classList.remove('ghost-fading');
-    }
     return;
   }
 
   lastCoverCrossfadeAt = now;
 
-  // Cross-dissolve en 0ms sin forzar reflow síncrono (sin offsetWidth) y pausando blobs durante los 360ms
+  // Nivel 1 (0ms): Cross-dissolve inmediato con la resolución ya disponible (640px, 300px o 64px)
   const executeAppleMusicCoverTransition = (displayUrl) => {
     if (state.lastRenderedCover !== coverUrl) return;
     clearTimeout(coverCrossfadeTimer);
+    setCoverLoadingState(false);
 
     if (nowPlayingOverlay) nowPlayingOverlay.classList.add('np-switching');
     npCoverGhost.style.transition = 'none';
@@ -121,32 +195,17 @@ function crossfadeNowPlayingCover(rawCoverUrl, thumbUrl, animateSwap) {
     });
   };
 
-  if (coverUrl.startsWith('data:') || decodedImageUrls.has(coverUrl)) {
-    executeAppleMusicCoverTransition(coverUrl);
-    return;
-  }
-
-  // Si la miniatura (thumbUrl) o versión media ya está en caché/DOM, iniciar el crossfade en 0ms con ella
-  // para que la portada cambie al unísono con el título sin esperar 300ms de red, y actualizar a HD en silencio
-  const hasReadyThumb = thumbUrl && (decodedImageUrls.has(thumbUrl) || (document.images && Array.from(document.images).some(img => img.complete && img.naturalWidth > 0 && img.src === thumbUrl)));
-  if (hasReadyThumb) {
-    executeAppleMusicCoverTransition(thumbUrl);
-    decodeImageInBackground(coverUrl).then(() => {
-      if (state.lastRenderedCover === coverUrl) {
+  executeAppleMusicCoverTransition(readySrc);
+  if (readySrc !== coverUrl) {
+    decodeImageInBackground(coverUrl).then((ok) => {
+      if (ok && state.lastRenderedCover === coverUrl) {
         npCoverArt.src = coverUrl;
         if (!coverCrossfadeTimer && npCoverGhost) {
           npCoverGhost.src = coverUrl;
         }
       }
     });
-    return;
   }
-
-  decodeImageInBackground(coverUrl).then(() => {
-    if (state.lastRenderedCover === coverUrl) {
-      executeAppleMusicCoverTransition(coverUrl);
-    }
-  });
 }
 
 function resolveArtistIdByName(name) {
@@ -380,7 +439,7 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
   const nextId = cleanTrackId(trackObj.id || trackObj.uri || nextTitle);
   const isFirstTrack = !state.playingTrackId && Boolean(nextId || nextTitle);
   const trackChanged = isFirstTrack || (state.playingTrackId !== nextId) || (state.playingTrackTitle !== nextTitle);
-  const shouldAnimateTransition = trackChanged && !isFirstTrack;
+  const shouldAnimateTransition = trackChanged && !isFirstTrack && Boolean(state.isNowPlayingOpen);
   state.isCachedPlaceholderTrack = (source === 'cache');
   if (source === 'cache' && trackObj) {
     if (trackObj.contextType) state.activeContextType = trackObj.contextType;
@@ -474,22 +533,40 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
     !String(state.playingTrackUri || '').match(/^spotify:(album|playlist|artist):/) &&
     typeof saveLastPlayedTrack === 'function'
   ) {
-    saveLastPlayedTrack({
-      id: nextId,
-      uri: state.playingTrackUri,
-      name: nextTitle,
-      artist: artistName,
-      artists: artistsList,
-      album: albumName,
-      thumb: thumbUrl,
-      cover: coverUrl,
-      coverLarge: coverUrl,
-      duration: hasRealDuration ? durationSec : 0,
-      contextType: state.activeContextType || '',
-      contextName: state.activeContextName || '',
-      contextId: state.activeContextId || '',
-      contextUri: state.activeContextUri || ''
-    });
+    const saveSig = `${nextId}|${nextTitle}|${hasRealDuration ? durationSec : 0}|${state.activeContextType || ''}|${state.activeContextId || ''}|${state.activeContextUri || ''}`;
+    if (trackChanged || state.lastSavedTrackSig !== saveSig) {
+      state.lastSavedTrackSig = saveSig;
+      saveLastPlayedTrack({
+        id: nextId,
+        uri: state.playingTrackUri,
+        name: nextTitle,
+        artist: artistName,
+        artists: artistsList,
+        album: albumName,
+        thumb: thumbUrl,
+        cover: coverUrl,
+        coverLarge: coverUrl,
+        duration: hasRealDuration ? durationSec : 0,
+        contextType: state.activeContextType || '',
+        contextName: state.activeContextName || '',
+        contextId: state.activeContextId || '',
+        contextUri: state.activeContextUri || ''
+      });
+      if (trackChanged && typeof HomeFeed !== 'undefined' && typeof HomeFeed.onTrackChanged === 'function') {
+        HomeFeed.onTrackChanged({
+          id: nextId,
+          uri: state.playingTrackUri,
+          name: nextTitle,
+          artist: artistName,
+          artists: artistsList,
+          album: albumName,
+          thumb: thumbUrl,
+          cover: coverUrl,
+          duration: hasRealDuration ? durationSec : 210,
+          contextId: state.activeContextId || ''
+        });
+      }
+    }
   }
 
   // Use hardware PCM clock when playing on Echo Show 8; only fall back to HTTP progress_ms for remote devices
@@ -515,7 +592,8 @@ function applyTrackToUI(trackObj, progressSec = 0, isPlaying = false, source = '
   // Guarded DOM mutations with smooth cross-dissolve on song switch
   if (state.lastRenderedCover !== coverUrl && coverUrl) {
     state.lastRenderedCover = coverUrl;
-    crossfadeNowPlayingCover(coverUrl, thumbUrl, shouldAnimateTransition);
+    const mediumCoverUrl = imgs.length > 0 ? getSpotifyImage(imgs, 'medium') : (trackObj.cover || '');
+    crossfadeNowPlayingCover(coverUrl, thumbUrl, shouldAnimateTransition, [mediumCoverUrl, rawCoverUrl]);
   }
   transitionTrackMetadataUI(state.playingTrackTitle, artistName, thumbUrl, shouldAnimateTransition);
 
@@ -645,10 +723,18 @@ function reconcileIncomingPlaybackState(item, rawSec, incomingIsPlaying, source 
       }
 
       // 3. Ya llegó la nueva canción: mantener isPlaying = true mientras termina de hacer buffer
+      //    y descartar posiciones imposibles arrastradas de la pista anterior (ej. 0:20 a los 300ms de iniciar)
+      const elapsedSinceSwitchSec = Math.max(0, (now - intent.startedAt) / 1000);
+      const isStaleCarriedPosition = (targetIdMatch || targetTitleMatch) &&
+        elapsedSinceSwitchSec < 2.6 &&
+        rawSec > (elapsedSinceSwitchSec + 3.5);
+      if (isStaleCarriedPosition) {
+        rawSec = 0;
+      }
       if (now < intent.startedAt + 2400) {
         incomingIsPlaying = true;
       }
-      if ((targetIdMatch || targetTitleMatch) && incomingIsPlaying && rawSec > 0.05) {
+      if ((targetIdMatch || targetTitleMatch) && incomingIsPlaying && !isStaleCarriedPosition && rawSec > 0.05) {
         state.userIntent = null;
       }
     } else if (intent.type === 'seek') {
@@ -775,17 +861,20 @@ function getLyricLineClass(idx, activeIdx) {
     if (idx === 0) return 'lyric-line distance-1';
     if (idx === 1) return 'lyric-line distance-2';
     if (idx === 2) return 'lyric-line distance-3';
-    return 'lyric-line distance-far';
+    if (idx <= 9) return 'lyric-line distance-far';
+    return 'lyric-line distance-far lyric-offscreen';
   }
   const diff = idx - activeIdx;
   if (diff === 0) return 'lyric-line active';
   if (diff === -1) return 'lyric-line distance-prev';
-  if (diff <= -2) return 'lyric-line distance-prev-far';
+  if (diff >= -3 && diff <= -2) return 'lyric-line distance-prev-far';
+  if (diff < -3) return 'lyric-line distance-prev-far lyric-offscreen';
   if (diff === 1) return 'lyric-line distance-1';
   if (diff === 2) return 'lyric-line distance-2';
   if (diff === 3) return 'lyric-line distance-3';
   if (diff === 4) return 'lyric-line distance-4';
-  return 'lyric-line distance-far';
+  if (diff <= 7) return 'lyric-line distance-far';
+  return 'lyric-line distance-far lyric-offscreen';
 }
 
 const FAST_CONNECTOR_WORDS = new Set([
@@ -812,7 +901,18 @@ function cacheLyricLineOffsets() {
   if (!cache || cache.length === 0) return;
   for (let i = 0; i < cache.length; i++) {
     cache[i].targetOffset = Math.max(0, cache[i].el.offsetTop - LYRICS_ANCHOR_OFFSET);
+    const words = cache[i].words;
+    if (words) {
+      for (let w = 0; w < words.length; w++) {
+        const wWidth = words[w].el.offsetWidth;
+        if (wWidth > 0) words[w].widthPx = wWidth;
+      }
+    }
   }
+  const lastTarget = cache[cache.length - 1].targetOffset || 0;
+  const viewH = (npRightLyrics && npRightLyrics.clientHeight) ? npRightLyrics.clientHeight : 0;
+  const trackH = (lyricsScrollTrack && lyricsScrollTrack.scrollHeight) ? lyricsScrollTrack.scrollHeight : 0;
+  state.lyricsMaxScrollOffset = Math.max(0, lastTarget, trackH > viewH ? (trackH - viewH) : 0);
 }
 
 function getLyricsActiveTargetOffset() {
@@ -828,13 +928,11 @@ function getLyricsActiveTargetOffset() {
 function getLyricsMaxScrollOffset() {
   const cache = state.lyricDOMCache;
   if (!cache || cache.length === 0) return 0;
-  const lastLine = cache[cache.length - 1];
-  const lastTarget = typeof lastLine.targetOffset === 'number'
-    ? lastLine.targetOffset
-    : Math.max(0, (lastLine.el && lastLine.el.offsetTop ? lastLine.el.offsetTop : 0) - LYRICS_ANCHOR_OFFSET);
-  const viewH = (npRightLyrics && npRightLyrics.clientHeight) ? npRightLyrics.clientHeight : 0;
-  const trackH = (lyricsScrollTrack && lyricsScrollTrack.scrollHeight) ? lyricsScrollTrack.scrollHeight : 0;
-  return Math.max(0, lastTarget, trackH > viewH ? (trackH - viewH) : 0);
+  if (typeof state.lyricsMaxScrollOffset === 'number' && state.lyricsMaxScrollOffset >= 0) {
+    return state.lyricsMaxScrollOffset;
+  }
+  cacheLyricLineOffsets();
+  return state.lyricsMaxScrollOffset || 0;
 }
 
 function rubberBandLyricsOffset(rawOffset, maxOffset) {
@@ -963,6 +1061,20 @@ function scrollLyricsByDelta(deltaPx, opts = {}) {
   let dragOriginOffset = 0;
   let hasDragged = false;
   let scrollVelocity = 0; // px/ms, positive moves lyrics toward bottom (offset increases)
+  let dragRafId = null;
+  let pendingDragOffset = null;
+
+  function cancelPendingDragFrame() {
+    if (dragRafId !== null) {
+      if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(dragRafId);
+      } else {
+        clearTimeout(dragRafId);
+      }
+      dragRafId = null;
+    }
+    pendingDragOffset = null;
+  }
 
   function isLyricsPanelActive() {
     return Boolean(state.isNowPlayingOpen && state.nowPlayingMode === 'lyrics');
@@ -980,6 +1092,7 @@ function scrollLyricsByDelta(deltaPx, opts = {}) {
 
   function handlePointerStart(mode, clientX, clientY) {
     if (!canScrollLyricsNow()) return false;
+    cancelPendingDragFrame();
     cancelLyricsInertia();
     clearTimeout(lyricsSnapBackTimer);
     lyricsSnapBackTimer = null;
@@ -1037,7 +1150,25 @@ function scrollLyricsByDelta(deltaPx, opts = {}) {
 
     const maxOffset = getLyricsMaxScrollOffset();
     const rawOffset = dragOriginOffset - dy;
-    applyLyricsScrollOffset(rubberBandLyricsOffset(rawOffset, maxOffset));
+    const nextOffset = rubberBandLyricsOffset(rawOffset, maxOffset);
+    state.lyricsScrollOffset = nextOffset;
+    pendingDragOffset = nextOffset;
+
+    if (dragRafId === null) {
+      const flushDrag = () => {
+        dragRafId = null;
+        if (pendingDragOffset !== null) {
+          const offsetToApply = pendingDragOffset;
+          pendingDragOffset = null;
+          applyLyricsScrollOffset(offsetToApply);
+        }
+      };
+      if (typeof requestAnimationFrame === 'function') {
+        dragRafId = requestAnimationFrame(flushDrag);
+      } else {
+        flushDrag();
+      }
+    }
   }
 
   function settleToBoundsAndScheduleSnap() {
@@ -1058,6 +1189,10 @@ function scrollLyricsByDelta(deltaPx, opts = {}) {
 
   function handlePointerEnd() {
     if (!pointerMode) return;
+    if (pendingDragOffset !== null) {
+      applyLyricsScrollOffset(pendingDragOffset);
+    }
+    cancelPendingDragFrame();
     const endedDrag = hasDragged;
     const releaseVel = scrollVelocity;
     const timeSinceMove = Date.now() - lastTime;
@@ -1246,6 +1381,7 @@ function renderLyricsLoadingSkeleton() {
 function buildLyricsDOM(lyricsArray) {
   exitLyricsManualScroll({ skipSnapBack: true });
   applyLyricsScrollOffset(0);
+  state.lyricsMaxScrollOffset = -1;
   const firstLineStart = (lyricsArray[0] && lyricsArray[0].start) || 0;
   const hasIntroInterlude = firstLineStart >= 4.0;
   const introHtml = hasIntroInterlude
@@ -1371,14 +1507,18 @@ function buildLyricsDOM(lyricsArray) {
         const wEnd = parseFloat(wEl.getAttribute('data-wend')) || (wStart + 0.4);
         return {
           el: wEl,
+          text: wEl.textContent || '',
           wStart,
           wEnd,
           wDur: Math.max(0.08, wEnd - wStart),
           isPunchy: wEl.getAttribute('data-punchy') === '1',
           isHeld: wEl.getAttribute('data-held') === '1',
           isLast: wEl.getAttribute('data-last') === '1',
+          widthPx: 0,
           state: 'pending',
-          lastWipe: -999
+          clipEl: null,
+          fillEl: null,
+          lastShiftPx: -1
         };
       })
     };
@@ -1401,6 +1541,47 @@ function formatTime(sec) {
 
 // Hardware PCM clock already accounts for AudioTrack + AudioFlinger buffer latency
 const LYRIC_SYNC_LEAD_SEC = 0.04;
+const LYRIC_WIPE_FEATHER_PX = 14;
+const wordWipePool = [];
+const MAX_WORD_WIPE_POOL = 8;
+
+function clearWordWipeOverlay(wObj) {
+  if (!wObj || !wObj.clipEl) return;
+  const clipEl = wObj.clipEl;
+  const fillEl = wObj.fillEl;
+  clipEl.remove();
+  wObj.clipEl = null;
+  wObj.fillEl = null;
+  wObj.lastShiftPx = -1;
+  if (wordWipePool.length < MAX_WORD_WIPE_POOL) {
+    wordWipePool.push({ clipEl, fillEl });
+  }
+}
+
+function ensureWordWipeOverlay(wObj, initialShiftPx) {
+  if (!wObj || wObj.clipEl) return;
+  let clipEl;
+  let fillEl;
+  if (wordWipePool.length > 0) {
+    const pooled = wordWipePool.pop();
+    clipEl = pooled.clipEl;
+    fillEl = pooled.fillEl;
+  } else {
+    clipEl = document.createElement('span');
+    clipEl.className = 'lw-clip';
+    clipEl.setAttribute('aria-hidden', 'true');
+    fillEl = document.createElement('span');
+    fillEl.className = 'lw-fill';
+    clipEl.appendChild(fillEl);
+  }
+  fillEl.textContent = wObj.text;
+  const s = initialShiftPx <= 0.01 ? '0' : initialShiftPx.toFixed(2);
+  clipEl.style.transform = `translate3d(${s === '0' ? '0px' : `-${s}px`}, 0, 0)`;
+  fillEl.style.transform = `translate3d(${s}px, 0, 0)`;
+  wObj.el.appendChild(clipEl);
+  wObj.clipEl = clipEl;
+  wObj.fillEl = fillEl;
+}
 
 function updateScrubberAndLyricsUI(forceScroll = false) {
   if (!forceScroll && !state.isNowPlayingOpen) return;
@@ -1486,33 +1667,55 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
     }
   }
 
+  const cacheLen = cache.length;
+  const prevActiveIdx = state.activeLineIndex;
   let newActiveIdx = -1;
-  if (cache.length > 0 && lyricTime >= cache[0].start) {
-    for (let i = 0; i < cache.length; i++) {
-      if (lyricTime >= cache[i].start && lyricTime < cache[i].lineEnd) {
-        newActiveIdx = i;
-        break;
-      } else if (lyricTime >= cache[i].lineEnd) {
-        newActiveIdx = i;
+  if (cacheLen > 0 && lyricTime >= cache[0].start) {
+    if (
+      prevActiveIdx >= 0 &&
+      prevActiveIdx < cacheLen &&
+      lyricTime >= cache[prevActiveIdx].start &&
+      lyricTime < cache[prevActiveIdx].lineEnd
+    ) {
+      newActiveIdx = prevActiveIdx;
+    } else if (
+      prevActiveIdx >= 0 &&
+      prevActiveIdx + 1 < cacheLen &&
+      lyricTime >= cache[prevActiveIdx + 1].start &&
+      lyricTime < cache[prevActiveIdx + 1].lineEnd
+    ) {
+      newActiveIdx = prevActiveIdx + 1;
+    } else {
+      for (let i = 0; i < cacheLen; i++) {
+        if (lyricTime >= cache[i].start && lyricTime < cache[i].lineEnd) {
+          newActiveIdx = i;
+          break;
+        } else if (lyricTime >= cache[i].lineEnd) {
+          newActiveIdx = i;
+        }
       }
     }
   }
 
-  const lineChanged = forceScroll || newActiveIdx !== state.activeLineIndex;
+  const lineChanged = forceScroll || newActiveIdx !== prevActiveIdx;
 
   if (lineChanged) {
-    if (state.activeLineIndex >= 0 && cache[state.activeLineIndex]) {
-      const oldWords = cache[state.activeLineIndex].words;
+    if (prevActiveIdx >= 0 && cache[prevActiveIdx]) {
+      const oldWords = cache[prevActiveIdx].words;
       for (let w = 0; w < oldWords.length; w++) {
-        if (oldWords[w].state !== 'pending') {
+        if (oldWords[w].state !== 'pending' || oldWords[w].clipEl) {
+          clearWordWipeOverlay(oldWords[w]);
           oldWords[w].state = 'pending';
-          oldWords[w].lastWipe = -999;
           oldWords[w].el.className = 'lyric-word pending';
         }
       }
     }
 
-    for (let idx = 0; idx < cache.length; idx++) {
+    const useWindowedUpdate = !forceScroll && prevActiveIdx >= 0 && newActiveIdx >= 0 && Math.abs(newActiveIdx - prevActiveIdx) <= 4;
+    const startIdx = useWindowedUpdate ? Math.max(0, Math.min(prevActiveIdx, newActiveIdx) - 4) : 0;
+    const endIdx = useWindowedUpdate ? Math.min(cacheLen - 1, Math.max(prevActiveIdx, newActiveIdx) + 8) : (cacheLen - 1);
+
+    for (let idx = startIdx; idx <= endIdx; idx++) {
       const item = cache[idx];
       const nextCls = getLyricLineClass(idx, newActiveIdx);
       if (item.lastClass !== nextCls) {
@@ -1524,37 +1727,52 @@ function updateScrubberAndLyricsUI(forceScroll = false) {
 
   const isWordByWord = (state.wordByWordLyrics !== false);
   const activeLine = (newActiveIdx >= 0) ? cache[newActiveIdx] : null;
-  if (activeLine && isWordByWord) {
+  if (activeLine && !isWordByWord) {
+    const words = activeLine.words;
+    for (let i = 0; i < words.length; i++) {
+      if (words[i].clipEl) {
+        clearWordWipeOverlay(words[i]);
+      }
+    }
+  } else if (activeLine && isWordByWord) {
     const words = activeLine.words;
     for (let i = 0; i < words.length; i++) {
       const wObj = words[i];
       if (lyricTime >= wObj.wEnd) {
         if (wObj.state !== 'sung') {
+          clearWordWipeOverlay(wObj);
           wObj.state = 'sung';
           wObj.el.className = wObj.isLast ? 'lyric-word sung last-word-hold' : 'lyric-word sung';
         }
       } else if (lyricTime >= wObj.wStart) {
+        // Real Human Vocal Curve (Attack-Sustain):
+        // Smooth subpixel sweep across the word duration without abrupt jumps
+        const rawProg = Math.min(1, Math.max(0, (lyricTime - wObj.wStart) / wObj.wDur));
+        const attackThreshold = wObj.isPunchy ? 0.78 : 0.90;
+        const normProg = rawProg < attackThreshold ? (rawProg / attackThreshold) : 1.0;
+        const wipeProg = 1 - Math.pow(1 - normProg, 1.25);
+
+        if (!wObj.widthPx) {
+          wObj.widthPx = wObj.el.offsetWidth || 60;
+        }
+        const totalW = wObj.widthPx + LYRIC_WIPE_FEATHER_PX;
+        const shiftPx = Math.max(0, (1 - wipeProg) * totalW);
+
         if (wObj.state !== 'singing') {
           wObj.state = 'singing';
           wObj.el.className = wObj.isHeld ? 'lyric-word singing held' : 'lyric-word singing';
-        }
-        // Real Human Vocal Curve (Attack-Sustain):
-        // Articulation sweeps the word across the first ~72%, and the sustained vowel
-        // holds 100% lit through the final 28% of the duration so it never cuts out early!
-        const rawProg = Math.min(1, Math.max(0, (lyricTime - wObj.wStart) / wObj.wDur));
-        const attackThreshold = wObj.isPunchy ? 0.28 : 0.72;
-        const wipeProg = rawProg < attackThreshold ? (rawProg / attackThreshold) : 1.0;
-
-        const wipeLeft = Math.round(wipeProg * 114 - 14);
-        if (wipeLeft !== wObj.lastWipe) {
-          wObj.lastWipe = wipeLeft;
-          wObj.el.style.setProperty('--wipe-left', `${wipeLeft}%`);
-          wObj.el.style.setProperty('--wipe-right', `${wipeLeft + 22}%`);
+          ensureWordWipeOverlay(wObj, shiftPx);
+          wObj.lastShiftPx = shiftPx;
+        } else if (Math.abs(shiftPx - wObj.lastShiftPx) >= 0.08) {
+          wObj.lastShiftPx = shiftPx;
+          const s = shiftPx <= 0.01 ? '0' : shiftPx.toFixed(2);
+          wObj.clipEl.style.transform = `translate3d(${s === '0' ? '0px' : `-${s}px`}, 0, 0)`;
+          wObj.fillEl.style.transform = `translate3d(${s}px, 0, 0)`;
         }
       } else {
-        if (wObj.state !== 'pending') {
+        if (wObj.state !== 'pending' || wObj.clipEl) {
+          clearWordWipeOverlay(wObj);
           wObj.state = 'pending';
-          wObj.lastWipe = -999;
           wObj.el.className = 'lyric-word pending';
         }
       }
@@ -1640,32 +1858,43 @@ function triggerControlPop(el) {
   }
 }
 
+let cachedShuffleBtn = null;
+let cachedRepeatBtn = null;
+let lastRenderedShuffleState = null;
+let lastRenderedRepeatMode = null;
+
 function updateShuffleButtonUI() {
-  const shufBtn = typeof document !== 'undefined' ? document.getElementById('npShuffleBtn') : null;
-  if (!shufBtn) return;
+  if (!cachedShuffleBtn && typeof document !== 'undefined') {
+    cachedShuffleBtn = document.getElementById('npShuffleBtn');
+  }
+  if (!cachedShuffleBtn) return;
   const active = Boolean(spotifyAuth.shuffleState);
-  shufBtn.classList.toggle('active', active);
-  shufBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
-  shufBtn.title = active ? 'Aleatorio (activo)' : 'Aleatorio';
+  if (lastRenderedShuffleState === active) return;
+  lastRenderedShuffleState = active;
+  cachedShuffleBtn.classList.toggle('active', active);
+  cachedShuffleBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  cachedShuffleBtn.title = active ? 'Aleatorio (activo)' : 'Aleatorio';
 }
 
 function updateRepeatButtonUI() {
-  const repBtn = typeof document !== 'undefined' ? document.getElementById('npRepeatBtn') : null;
-  if (!repBtn) return;
+  if (!cachedRepeatBtn && typeof document !== 'undefined') {
+    cachedRepeatBtn = document.getElementById('npRepeatBtn');
+  }
+  if (!cachedRepeatBtn) return;
   const mode = spotifyAuth.repeatState || 'off';
+  if (lastRenderedRepeatMode === mode) return;
+  lastRenderedRepeatMode = mode;
   const isActive = mode !== 'off';
-  repBtn.classList.toggle('active', isActive);
-  repBtn.classList.toggle('is-repeat-track', mode === 'track');
-  repBtn.setAttribute('data-repeat-mode', mode);
-  repBtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-  repBtn.title = mode === 'track'
+  cachedRepeatBtn.classList.toggle('active', isActive);
+  cachedRepeatBtn.classList.toggle('is-repeat-track', mode === 'track');
+  cachedRepeatBtn.setAttribute('data-repeat-mode', mode);
+  cachedRepeatBtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  cachedRepeatBtn.title = mode === 'track'
     ? 'Repetir canción actual (activo)'
     : (mode === 'context' ? 'Repetir en bucle (activo)' : 'Repetir en bucle');
 }
 
 function updatePlayPauseIcons() {
-  if (npQueueEq) npQueueEq.classList.toggle('playing', !!state.isPlaying);
-  if (npCoverStage) npCoverStage.classList.toggle('is-paused', !state.isPlaying);
   updateShuffleButtonUI();
   updateRepeatButtonUI();
   if (state.lyricsManualScrolling) {
@@ -1678,6 +1907,9 @@ function updatePlayPauseIcons() {
   }
   if (state.lastRenderedIsPlaying === state.isPlaying) return;
   state.lastRenderedIsPlaying = state.isPlaying;
+  if (nowPlayingOverlay) nowPlayingOverlay.classList.toggle('is-playing', !!state.isPlaying);
+  if (npQueueEq) npQueueEq.classList.toggle('playing', !!state.isPlaying);
+  if (npCoverStage) npCoverStage.classList.toggle('is-paused', !state.isPlaying);
   const pauseMarkup = `
     <rect x="5" y="3" width="5.2" height="18" rx="1.4"></rect>
     <rect x="13.8" y="3" width="5.2" height="18" rx="1.4"></rect>
@@ -1991,7 +2223,46 @@ function reorderQueueTrack(fromIdx, toIdx) {
 
     state.isDraggingQueueRow = true;
     row.classList.add('is-dragging');
+    attachQueueDragWindowListeners(mode);
     return true;
+  }
+
+  function onQueueTouchMove(e) {
+    if (activeMode !== 'touch' || !e.touches || e.touches.length !== 1) return;
+    moveDrag(e.touches[0].clientY, e);
+  }
+  function onQueueTouchEnd() {
+    if (activeMode === 'touch') finishDrag(true);
+  }
+  function onQueueTouchCancel() {
+    if (activeMode === 'touch') finishDrag(false);
+  }
+  function onQueueMouseMove(e) {
+    if (activeMode === 'mouse') moveDrag(e.clientY, e);
+  }
+  function onQueueMouseUp() {
+    if (activeMode === 'mouse') finishDrag(true);
+  }
+
+  function attachQueueDragWindowListeners(mode) {
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+    if (mode === 'touch') {
+      window.addEventListener('touchmove', onQueueTouchMove, { passive: false });
+      window.addEventListener('touchend', onQueueTouchEnd, { passive: true });
+      window.addEventListener('touchcancel', onQueueTouchCancel, { passive: true });
+    } else if (mode === 'mouse') {
+      window.addEventListener('mousemove', onQueueMouseMove);
+      window.addEventListener('mouseup', onQueueMouseUp);
+    }
+  }
+
+  function detachQueueDragWindowListeners() {
+    if (typeof window === 'undefined' || typeof window.removeEventListener !== 'function') return;
+    window.removeEventListener('touchmove', onQueueTouchMove, { passive: false });
+    window.removeEventListener('touchend', onQueueTouchEnd);
+    window.removeEventListener('touchcancel', onQueueTouchCancel);
+    window.removeEventListener('mousemove', onQueueMouseMove);
+    window.removeEventListener('mouseup', onQueueMouseUp);
   }
 
   function moveDrag(clientY, cancelableEvent) {
@@ -2027,6 +2298,7 @@ function reorderQueueTrack(fromIdx, toIdx) {
 
   function finishDrag(applyOrder) {
     if (!activeMode) return;
+    detachQueueDragWindowListeners();
     const finalFrom = fromIdx;
     const finalTarget = targetIdx;
 
@@ -2054,33 +2326,12 @@ function reorderQueueTrack(fromIdx, toIdx) {
     }
   }, { passive: true });
 
-  window.addEventListener('touchmove', (e) => {
-    if (activeMode !== 'touch' || !e.touches || e.touches.length !== 1) return;
-    moveDrag(e.touches[0].clientY, e);
-  }, { passive: false });
-
-  window.addEventListener('touchend', () => {
-    if (activeMode === 'touch') finishDrag(true);
-  }, { passive: true });
-
-  window.addEventListener('touchcancel', () => {
-    if (activeMode === 'touch') finishDrag(false);
-  }, { passive: true });
-
   npQueueListContainer.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     if (beginDrag('mouse', e.clientY, e.target)) {
       if (typeof e.preventDefault === 'function') e.preventDefault();
       if (typeof e.stopPropagation === 'function') e.stopPropagation();
     }
-  });
-
-  window.addEventListener('mousemove', (e) => {
-    if (activeMode === 'mouse') moveDrag(e.clientY, e);
-  });
-
-  window.addEventListener('mouseup', () => {
-    if (activeMode === 'mouse') finishDrag(true);
   });
 })();
 
@@ -2361,7 +2612,10 @@ function updateNowPlayingRightPanelMode() {
   if (npMainGrid) {
     npMainGrid.classList.toggle('centered-layout', isCentered);
   }
-  scheduleNowPlayingMarqueeRefresh(true);
+  if (state.lastCenteredLayoutState !== isCentered) {
+    state.lastCenteredLayoutState = isCentered;
+    scheduleNowPlayingMarqueeRefresh(true);
+  }
 
   // 3. Toggle Right Column Sub-Panels (No display:none interruption)
   if (npRightLyrics) npRightLyrics.classList.toggle('hidden', !showLyrics);
@@ -2452,12 +2706,27 @@ function setDeviceConnectingUI(mode = 'connecting') {
   }
 }
 
+let lastRenderedDeviceBadgeKey = '';
+let cachedDeviceOverlineEl = null;
+let cachedDeviceNameEl = null;
+let cachedDeviceRowEl = null;
+
 function updateActiveDeviceBadgeUI(device) {
   if (!device) return;
   const name = device.name || 'Dispositivo';
   spotifyAuth.activeDeviceName = name;
   if (device.id) spotifyAuth.activeDeviceId = device.id;
   if (device.type) spotifyAuth.activeDeviceType = device.type;
+
+  const isLocalDevice = Boolean(
+    (webPlayerDeviceId && device.id && device.id === webPlayerDeviceId) ||
+    (spotifyAuth.engineDeviceId && device.id && device.id === spotifyAuth.engineDeviceId) ||
+    (name && name.toLowerCase().includes('spotiecho'))
+  );
+  const badgeKey = `${device.id || ''}|${name}|${device.type || ''}|${isLocalDevice ? '1' : '0'}`;
+  if (badgeKey === lastRenderedDeviceBadgeKey) return;
+  lastRenderedDeviceBadgeKey = badgeKey;
+
   try {
     if (name && name !== 'Dispositivos disponibles' && name !== 'Conectando SpotiEcho…' && name !== 'Elegir dispositivo') {
       safeStorage.setItem('sp_active_device_name', name);
@@ -2466,27 +2735,23 @@ function updateActiveDeviceBadgeUI(device) {
     if (device.type) safeStorage.setItem('sp_active_device_type', device.type);
   } catch (e) {}
 
-  const npDeviceOverline = document.getElementById('npActiveDeviceOverline');
-  if (npDeviceOverline) {
-    npDeviceOverline.textContent = 'REPRODUCIENDO EN';
+  if (!cachedDeviceOverlineEl) cachedDeviceOverlineEl = document.getElementById('npActiveDeviceOverline');
+  if (!cachedDeviceNameEl) cachedDeviceNameEl = document.getElementById('npActiveDeviceName');
+  if (!cachedDeviceRowEl) cachedDeviceRowEl = document.getElementById('npDeviceIndicatorRow');
+
+  if (cachedDeviceOverlineEl) {
+    cachedDeviceOverlineEl.textContent = 'REPRODUCIENDO EN';
   }
-  const npDeviceName = document.getElementById('npActiveDeviceName');
-  if (npDeviceName) {
-    npDeviceName.textContent = name;
+  if (cachedDeviceNameEl) {
+    cachedDeviceNameEl.textContent = name;
   }
-  const npDevRow = document.getElementById('npDeviceIndicatorRow');
-  if (npDevRow) {
-    const isLocalDevice = Boolean(
-      (webPlayerDeviceId && device.id && device.id === webPlayerDeviceId) ||
-      (spotifyAuth.engineDeviceId && device.id && device.id === spotifyAuth.engineDeviceId) ||
-      (name && name.toLowerCase().includes('spotiecho'))
-    );
-    npDevRow.classList.remove('is-connecting');
-    npDevRow.classList.add('has-device');
-    npDevRow.classList.toggle('is-external-device', !isLocalDevice);
-    npDevRow.title = `Escuchando en: ${name} (toca para cambiar)`;
+  if (cachedDeviceRowEl) {
+    cachedDeviceRowEl.classList.remove('is-connecting');
+    cachedDeviceRowEl.classList.add('has-device');
+    cachedDeviceRowEl.classList.toggle('is-external-device', !isLocalDevice);
+    cachedDeviceRowEl.title = `Escuchando en: ${name} (toca para cambiar)`;
     if (device.type) {
-      const oldIcon = npDevRow.querySelector('.np-device-icon');
+      const oldIcon = cachedDeviceRowEl.querySelector('.np-device-icon');
       if (oldIcon) {
         const temp = document.createElement('div');
         temp.innerHTML = getDeviceTypeSvg(device.type);

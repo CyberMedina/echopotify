@@ -760,6 +760,11 @@
       if (typeof uiLog === 'function') {
         uiLog('RADIO', `Grafo indexado: ${Object.keys(graph.playlists).length} playlists, ${Object.keys(graph.tracks).length} tracks, ${Object.keys(graph.collabEdges).length} artistas`);
       }
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        try {
+          window.dispatchEvent(new CustomEvent('echoradio:graph-ready'));
+        } catch (_) {}
+      }
     } finally {
       isIndexingGraph = false;
     }
@@ -2258,6 +2263,116 @@
     safeStorage.removeItem(COMP_CACHE_KEY);
   }
 
+  function getHomeInsights(opts = {}) {
+    loadPersistedState();
+    const bucket = (typeof opts.bucket === 'number') ? opts.bucket : getTimeBucket(new Date());
+    const allTracks = Object.values(graph.tracks || {}).filter(t => t && t.id && t.uri);
+
+    // 1. Score artists by transitions occurring in this time bucket
+    const bucketArtistScores = {};
+    Object.keys(graph.transitions || {}).forEach(fromId => {
+      const edges = graph.transitions[fromId] || {};
+      Object.keys(edges).forEach(toId => {
+        const entry = edges[toId];
+        if (!entry || !Array.isArray(entry.b)) return;
+        const w = entry.b[bucket] || 0;
+        if (w > 0) {
+          bucketArtistScores[fromId] = (bucketArtistScores[fromId] || 0) + w * 0.6;
+          bucketArtistScores[toId] = (bucketArtistScores[toId] || 0) + w;
+        }
+      });
+    });
+
+    // 2. Time-bucket tracks (tracks whose artists match this time of day + affinity)
+    const timeBucketTracks = allTracks
+      .map(t => {
+        const aIds = getTrackArtistIds(t);
+        let score = (graph.topTrackScores[t.id] || 0) * 0.45;
+        aIds.forEach(aid => {
+          score += (bucketArtistScores[aid] || 0) * 0.75;
+          score += (graph.topArtistScores[aid] || 0) * 0.35;
+        });
+        return { track: t, score };
+      })
+      .filter(x => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 36)
+      .map(x => x.track);
+
+    // 3. Collaborators map helper
+    const getCollaborators = (artistIdRaw, limit = 8) => {
+      const aid = cleanId(artistIdRaw);
+      if (!isValidSpotifyId(aid)) return [];
+      const merged = {};
+      const edges = graph.collabEdges[aid] || {};
+      Object.keys(edges).forEach(cid => {
+        merged[cid] = (merged[cid] || 0) + edges[cid];
+      });
+      const cachedScene = sceneCache[aid];
+      if (cachedScene && Array.isArray(cachedScene.coArtists)) {
+        cachedScene.coArtists.forEach(co => {
+          if (co && isValidSpotifyId(co.id) && co.id !== aid) {
+            merged[co.id] = (merged[co.id] || 0) + (co.weight || 1);
+            if (co.name && !graph.artistNames[co.id]) graph.artistNames[co.id] = co.name;
+          }
+        });
+      }
+      return Object.keys(merged)
+        .map(cid => ({ id: cid, name: graph.artistNames[cid] || '', weight: merged[cid] }))
+        .filter(x => x.name)
+        .sort((a, b) => b.weight - a.weight)
+        .slice(0, limit);
+    };
+
+    // 4. Artist scene tracks helper (tracks by artist + collaborators + shared playlists)
+    const getArtistSceneTracks = (artistIdRaw, limit = 24) => {
+      const aid = cleanId(artistIdRaw);
+      if (!isValidSpotifyId(aid)) return [];
+      const picked = [];
+      const seen = new Set();
+      const pushTrack = (t) => {
+        if (!t || !t.id || seen.has(t.id) || picked.length >= limit) return;
+        seen.add(t.id);
+        picked.push(t);
+      };
+
+      // Artist's own tracks in graph
+      (graph.artistTracks[aid] || []).forEach(tid => pushTrack(graph.tracks[tid]));
+
+      // Tracks from cached scene
+      const cachedScene = sceneCache[aid];
+      if (cachedScene && Array.isArray(cachedScene.tracks)) {
+        cachedScene.tracks.forEach(pushTrack);
+      }
+
+      // Collaborators' tracks
+      const collabs = getCollaborators(aid, 6);
+      collabs.forEach(co => {
+        (graph.artistTracks[co.id] || []).slice(0, 4).forEach(tid => pushTrack(graph.tracks[tid]));
+      });
+
+      // Co-occurring playlist tracks
+      const plIds = (graph.artistToPlaylists[aid] || []).slice(0, 4);
+      plIds.forEach(plId => {
+        const pl = graph.playlists[plId];
+        if (pl && Array.isArray(pl.trackIds)) {
+          pl.trackIds.slice(0, 12).forEach(tid => pushTrack(graph.tracks[tid]));
+        }
+      });
+
+      return picked;
+    };
+
+    return {
+      bucket,
+      trackCount: allTracks.length,
+      timeBucketTracks,
+      allTracks,
+      getCollaborators,
+      getArtistSceneTracks
+    };
+  }
+
   // Eagerly hydrate cached graph & feedback on load
   loadPersistedState();
 
@@ -2271,6 +2386,7 @@
     recordLiveTransition,
     reRankQueueAfterSkip,
     getSessionSubtitle,
+    getHomeInsights,
     clearOnLogout,
     // Diagnostics helper for dev console inspection
     getDebugStats() {

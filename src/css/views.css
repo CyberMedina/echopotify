@@ -1,6 +1,506 @@
 /* ==========================================================================
-   SCREEN 1: HOME
+   SCREEN 1: HOME — Dynamic Personalized Feed (Echo Show 8 @ 1024x640, 60fps)
    ========================================================================== */
+.home-top-header {
+  margin-bottom: 12px;
+}
+
+.home-header-titles {
+  min-width: 0;
+  flex: 1;
+  padding-right: 16px;
+}
+
+.home-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* Home Mode Filter Pills */
+.home-filter-pills {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+
+.home-filter-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.home-filter-pill {
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 26, 29, 0.08);
+  background: rgba(255, 255, 255, 0.52);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.15s ease;
+}
+
+.home-filter-pill:hover {
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--text-primary);
+}
+
+.home-filter-pill:active {
+  transform: scale(0.96);
+}
+
+.home-filter-pill.active {
+  background: #171a1d;
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 6px 16px rgba(23, 26, 29, 0.16);
+}
+
+/* Reorderable Sections Flex Stack */
+.home-sections-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-sections-stack .section-block.hidden {
+  display: none !important;
+}
+
+/* Section 1: Compact 3x2 Quick Access Grid */
+.quick-access-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.quick-tile {
+  height: 64px;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  padding: 0 10px 0 0;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.16s ease, background 0.16s ease;
+}
+
+.quick-tile:hover {
+  background: rgba(255, 255, 255, 0.84);
+  transform: translateY(-2px);
+}
+
+.quick-tile:active {
+  transform: scale(0.98);
+}
+
+.quick-tile-cover {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.quick-tile-meta {
+  min-width: 0;
+  flex: 1;
+  padding: 0 10px 0 12px;
+}
+
+.quick-tile-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.quick-tile-sub {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.quick-tile-play {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(23, 26, 29, 0.08);
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.quick-tile-play:hover {
+  background: #171a1d;
+  color: #ffffff;
+  transform: scale(1.06);
+}
+
+.quick-tile-play:active {
+  transform: scale(0.92);
+}
+
+.skeleton-quick-tile {
+  height: 64px;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  display: flex;
+  align-items: center;
+  padding: 0 10px 0 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.skeleton-quick-cover {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+}
+
+.skeleton-quick-meta {
+  flex: 1;
+  min-width: 0;
+  padding: 0 10px 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.skeleton-quick-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Section 2: Dynamic Mixes & Stations Horizontal Rail */
+.mixes-scroll-row {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0 10px 0;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.mixes-scroll-row::-webkit-scrollbar {
+  display: none;
+}
+
+.mix-card {
+  flex: 0 0 388px;
+  width: 388px;
+  height: 112px;
+  border-radius: 20px;
+  padding: 0 16px 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.06);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.52) 100%);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.mix-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.11);
+}
+
+.mix-card:active {
+  transform: scale(0.985);
+}
+
+.mix-card.mix-accent-time {
+  background: linear-gradient(135deg, rgba(214, 228, 248, 0.86) 0%, rgba(239, 232, 248, 0.68) 100%);
+}
+
+.mix-card.mix-accent-radio {
+  background: linear-gradient(135deg, rgba(212, 242, 232, 0.86) 0%, rgba(234, 246, 240, 0.68) 100%);
+}
+
+.mix-card.mix-accent-capsule {
+  background: linear-gradient(135deg, rgba(248, 232, 214, 0.86) 0%, rgba(247, 239, 228, 0.68) 100%);
+}
+
+.mix-card.mix-accent-discovery {
+  background: linear-gradient(135deg, rgba(245, 222, 238, 0.86) 0%, rgba(235, 232, 250, 0.68) 100%);
+}
+
+.mix-card-art {
+  width: 82px;
+  height: 82px;
+  border-radius: 14px;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.mix-card-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mix-collage-grid {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+
+.mix-collage-grid img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mix-card-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.mix-card-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(23, 26, 29, 0.54);
+  margin-bottom: 3px;
+}
+
+.mix-card-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.22;
+}
+
+.mix-card-sub {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 3px;
+}
+
+.skeleton-mix-card {
+  flex: 0 0 388px;
+  width: 388px;
+  height: 112px;
+  border-radius: 20px;
+  padding: 0 16px 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(255, 255, 255, 0.44);
+  border: 1px solid rgba(255, 255, 255, 0.40);
+  pointer-events: none;
+}
+
+.skeleton-mix-art {
+  width: 82px;
+  height: 82px;
+  border-radius: 14px;
+  flex-shrink: 0;
+}
+
+.skeleton-mix-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.skeleton-mix-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Section 3: Quick Picks 2x4 Track Grid (One-Tap Play) */
+.quick-picks-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 20px;
+}
+
+.quick-pick-row {
+  height: 62px;
+  border-radius: 14px;
+  padding: 0 12px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.46);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.14s ease;
+}
+
+.quick-pick-row:hover {
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.quick-pick-row:active {
+  transform: scale(0.985);
+}
+
+.quick-pick-row.is-playing {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(29, 185, 84, 0.45);
+}
+
+.quick-pick-thumb {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.10);
+}
+
+.quick-pick-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.quick-pick-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.22;
+}
+
+.quick-pick-row.is-playing .quick-pick-title {
+  color: #15803d;
+}
+
+.quick-pick-artist {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.quick-pick-play-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(23, 26, 29, 0.06);
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.skeleton-pick-row {
+  height: 62px;
+  border-radius: 14px;
+  padding: 0 12px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.36);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  pointer-events: none;
+}
+
+.skeleton-pick-thumb {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.skeleton-pick-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.skeleton-pick-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Media Card Release Badge (NUEVO / Year) */
+.media-card-cover-wrap {
+  position: relative;
+}
+
+.media-card-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: rgba(23, 26, 29, 0.78);
+  color: #ffffff;
+  pointer-events: none;
+}
+
+.media-card-badge.is-new {
+  background: #1db954;
+  color: #0b1610;
+}
 
 /* ==========================================================================
    SCREEN 1: HOME - Horizontal Scrollable Rail

@@ -734,10 +734,14 @@ async function executeSpotifyPlay(playBody, cmdSeq, opts = {}) {
     if (cmdSeq !== playbackActionSeq) return null;
   }
 
+  const finalPlayBody = (playBody && typeof playBody === 'object' && typeof playBody.position_ms !== 'number')
+    ? { ...playBody, position_ms: 0 }
+    : playBody;
+
   const playSentAt = Date.now();
   let playRes = await spotifyFetch(`/me/player/play${buildDevQuery(targetDeviceId)}`, {
     method: 'PUT',
-    body: JSON.stringify(playBody)
+    body: JSON.stringify(finalPlayBody)
   });
   if (cmdSeq !== playbackActionSeq) return null;
 
@@ -762,7 +766,7 @@ async function executeSpotifyPlay(playBody, cmdSeq, opts = {}) {
           if (cmdSeq !== playbackActionSeq) return null;
           playRes = await spotifyFetch(`/me/player/play${buildDevQuery(targetDeviceId)}`, {
             method: 'PUT',
-            body: JSON.stringify(playBody)
+            body: JSON.stringify(finalPlayBody)
           });
           if (cmdSeq !== playbackActionSeq) return null;
         } else if (errStatus === 404 && spotifyAuth.activeDeviceId === recoverId) {
@@ -825,7 +829,7 @@ async function executeSpotifyPlay(playBody, cmdSeq, opts = {}) {
 
         const retryRes = await spotifyFetch(`/me/player/play${buildDevQuery(targetDeviceId)}`, {
           method: 'PUT',
-          body: JSON.stringify(playBody)
+          body: JSON.stringify(finalPlayBody)
         });
         if (cmdSeq !== playbackActionSeq) return;
         if (!retryRes || retryRes.error) {
@@ -1046,13 +1050,17 @@ async function playSingleTrackWithAutoplay(seedTrack) {
   const targetId = cleanId || seedTrack.uri;
   const hasMatchingIntent = state.userIntent &&
     state.userIntent.type === 'track_switch' &&
-    Date.now() < state.userIntent.until &&
+    Date.now() < state.userIntent.expiresAt &&
     (!targetId || state.userIntent.targetId === targetId);
   const cmdSeq = hasMatchingIntent
     ? playbackActionSeq
     : lockUserPlaybackIntent('track_switch', {
+        durationMs: 4200,
+        prevId: state.playingTrackId || state.lastConfirmedApiTrackId || '',
+        prevTitle: state.playingTrackTitle || state.lastConfirmedApiTrackTitle || '',
         targetId,
         targetTitle: seedTrack.name || seedTrack.title || 'Track',
+        isSpecificTrack: true,
         targetIsPlaying: true
       });
 

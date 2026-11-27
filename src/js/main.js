@@ -18,8 +18,8 @@ const hasAuth = !!(spotifyAuth.refreshToken || spotifyAuth.accessToken);
 if (!hasAuth) {
   // Si no está autenticado, pantalla de aterrizaje / login limpia
   switchScreen('login');
-} else if (cachedHome && cachedHome.jumpCards && cachedHome.jumpCards.length > 0) {
-  // Instant Cache Render: popular UI sin parpadeos mientras refresca en paralelo
+} else if (cachedHome && cachedHome.model) {
+  // Instant Cache Render (v8): popular UI completa en 0ms sin parpadeos mientras refresca en paralelo
   switchScreen('home');
   if (cachedHome.entities) {
     Object.assign(liveCatalog.entities, cachedHome.entities);
@@ -27,8 +27,6 @@ if (!hasAuth) {
   if (cachedHome.userProfile) {
     renderUserProfile(cachedHome.userProfile);
   }
-  renderHome(cachedHome.jumpCards, cachedHome.recentCards, cachedHome.banners, cachedHome.topArtists, cachedHome.savedAlbums);
-  renderSearch(cachedHome.recentCards);
   const startupLastTrack = (typeof loadLastPlayedTrack === 'function' ? loadLastPlayedTrack() : null)
     || (cachedHome && cachedHome.lastTrack ? cachedHome.lastTrack : null);
   if (startupLastTrack && !state.playingTrackId) {
@@ -36,8 +34,15 @@ if (!hasAuth) {
     const miniEl = document.getElementById('miniPlayer');
     if (miniEl) miniEl.style.display = 'flex';
   }
+  if (typeof HomeFeed !== 'undefined' && typeof HomeFeed.hydrateFromCache === 'function') {
+    HomeFeed.hydrateFromCache(cachedHome.model, cachedHome.userProfile);
+  }
+  if (typeof renderHomeFromModel === 'function') {
+    renderHomeFromModel(cachedHome.model);
+  }
+  renderSearch(cachedHome.recentCards || (cachedHome.model && cachedHome.model.recentTracks) || []);
 } else {
-  // Autenticado pero sin caché aún: Home limpio con Skeletons shimmer (cero mocks)
+  // Autenticado pero sin caché v8 aún: Home limpio con Skeletons shimmer en todas las secciones hasta que cargue todo
   switchScreen('home');
   renderInitialSkeletons();
 }
@@ -101,7 +106,7 @@ function checkHashToken() {
   }
 
   switchScreen('home');
-  if (!cachedHome || !cachedHome.jumpCards || cachedHome.jumpCards.length === 0) {
+  if (!cachedHome || !cachedHome.model) {
     renderInitialSkeletons();
   }
 
@@ -137,10 +142,29 @@ setInterval(refreshSpotifyAccessToken, 40 * 60 * 1000);
 let lastTick = performance.now();
 let lastHwPoll = 0;
 let lastUiSync = 0;
+let fpsFrames = 0;
+let fpsWindowStart = performance.now();
+let fpsMaxFrameMs = 0;
+const fpsReadoutSpan = document.querySelector('#debugLogToggleBtn > span');
 
 function tick(now) {
-  const dt = Math.min(0.1, Math.max(0, (now - lastTick) / 1000));
+  const rawFrameMs = Math.max(0, now - lastTick);
+  const dt = Math.min(0.1, rawFrameMs / 1000);
   lastTick = now;
+
+  if (state.devModeEnabled && fpsReadoutSpan) {
+    fpsFrames++;
+    if (rawFrameMs > fpsMaxFrameMs) fpsMaxFrameMs = rawFrameMs;
+    const fpsElapsed = now - fpsWindowStart;
+    if (fpsElapsed >= 500) {
+      const fps = Math.round((fpsFrames * 1000) / fpsElapsed);
+      const minFps = Math.min(fps, Math.max(1, Math.round(1000 / Math.max(1, fpsMaxFrameMs))));
+      fpsReadoutSpan.textContent = `🐞 ${fps} FPS · min ${minFps}`;
+      fpsFrames = 0;
+      fpsMaxFrameMs = 0;
+      fpsWindowStart = now;
+    }
+  }
 
   if (bridge && bridge.getPlaybackClockJson) {
     const pollInterval = state.isNowPlayingOpen ? 320 : 800;
@@ -150,7 +174,7 @@ function tick(now) {
     }
     if (state.isPlaying && state.pcmFlowing) {
       state.currentTimeSec += dt * (state.clockRate || 1.0);
-      const syncInterval = (state.hasValidLyrics && state.nowPlayingMode === 'lyrics') ? 28 : 65;
+      const syncInterval = (state.hasValidLyrics && state.nowPlayingMode === 'lyrics') ? 0 : 65;
       if (state.isNowPlayingOpen && (now - lastUiSync >= syncInterval)) {
         lastUiSync = now;
         updateScrubberAndLyricsUI(false);
@@ -161,7 +185,7 @@ function tick(now) {
     if (state.currentTimeSec >= state.durationSec) {
       state.currentTimeSec = 0;
     }
-    const syncInterval = (state.hasValidLyrics && state.nowPlayingMode === 'lyrics') ? 28 : 65;
+    const syncInterval = (state.hasValidLyrics && state.nowPlayingMode === 'lyrics') ? 0 : 65;
     if (state.isNowPlayingOpen && (now - lastUiSync >= syncInterval)) {
       lastUiSync = now;
       updateScrubberAndLyricsUI(false);
@@ -325,6 +349,9 @@ function logoutUser() {
   if (typeof EchoRadio !== 'undefined' && typeof EchoRadio.clearOnLogout === 'function') {
     EchoRadio.clearOnLogout();
   }
+  if (typeof HomeFeed !== 'undefined' && typeof HomeFeed.clearOnLogout === 'function') {
+    HomeFeed.clearOnLogout();
+  }
   spotifyAuth.accessToken = '';
   spotifyAuth.refreshToken = '';
   state.isPlaying = false;
@@ -406,6 +433,7 @@ function toggleDevMode() {
     }
   } else {
     if (Array.isArray(window._echoLogs)) window._echoLogs.length = 0;
+    if (fpsReadoutSpan) fpsReadoutSpan.textContent = '🐞 Logs';
   }
 }
 

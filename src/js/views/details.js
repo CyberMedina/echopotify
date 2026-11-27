@@ -517,7 +517,7 @@ function renderAlbumDetailArtist(entity) {
     el.textContent = '';
     return;
   }
-  if (entity.type === 'playlist' || entity.type === 'liked' || entity.id === 'liked_songs') {
+  if (entity.type === 'playlist' || entity.type === 'liked' || entity.type === 'mix' || entity.id === 'liked_songs') {
     el.textContent = entity.artist || '';
     return;
   }

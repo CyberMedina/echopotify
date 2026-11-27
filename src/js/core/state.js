@@ -376,8 +376,8 @@ function prewarmImageUrls(urls) {
 }
 
 // Persistent Instant-Load Cache for Home & Last Track (Stale-While-Revalidate)
-const HOME_CACHE_KEY = 'sp_home_cache_v7';
-const LEGACY_HOME_CACHE_KEY = 'sp_home_cache_v6';
+const HOME_CACHE_KEY = 'sp_home_cache_v9';
+const LEGACY_HOME_CACHE_KEY = 'sp_home_cache_v8';
 const LAST_TRACK_CACHE_KEY = 'sp_last_played_track';
 
 function saveLastPlayedTrack(trackData) {
@@ -442,6 +442,7 @@ function renderUserProfile(profile) {
 function saveHomeCache(data) {
   try {
     safeStorage.setItem(HOME_CACHE_KEY, JSON.stringify({
+      model: data.model || null,
       jumpCards: data.jumpCards || [],
       recentCards: data.recentCards || [],
       banners: data.banners || [],
@@ -459,9 +460,14 @@ function saveHomeCache(data) {
 
 function loadHomeCache() {
   try {
-    const raw = safeStorage.getItem(HOME_CACHE_KEY) || safeStorage.getItem(LEGACY_HOME_CACHE_KEY);
+    // Clean up legacy cache keys so stale partial schemas never cause layout pops
+    safeStorage.removeItem('sp_home_cache_v6');
+    safeStorage.removeItem('sp_home_cache_v7');
+    safeStorage.removeItem('sp_home_cache_v8');
+    const raw = safeStorage.getItem(HOME_CACHE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return (parsed && parsed.model && Array.isArray(parsed.model.quickAccess) && parsed.model.quickAccess.length > 0) ? parsed : null;
   } catch (e) {
     return null;
   }
